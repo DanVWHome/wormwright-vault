@@ -31,7 +31,7 @@ with tempfile.TemporaryDirectory() as name:
     assert len(list((share / '.wormwright-sync-backups').glob('*.sqlite'))) == 2
     assert len(list((root / '.wormwright-sync-backups').glob('*.sqlite'))) == 2
     assert synchronize(b).startswith('Downloaded')
-    assert not b.unlocked
+    assert b.unlocked
     b.unlock('disposable-test-password')
     assert b.entries()[0]['notes'] == '3'
     a.save({**entry, 'id': identity, 'notes': 'from laptop'})

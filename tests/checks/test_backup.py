@@ -36,7 +36,7 @@ with tempfile.TemporaryDirectory() as folder:
     except Exception as error:
         assert not isinstance(error, AssertionError)
     safety=v.restore(backup,pw)
-    assert not v.unlocked
+    assert v.unlocked
     v.unlock(pw)
     assert v.entries()[0]['description']=='Backup test'
     previous=Vault(safety)
