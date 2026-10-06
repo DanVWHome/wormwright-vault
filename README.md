@@ -7,7 +7,7 @@ fallback unlock the vault.
 
 ## Install the prototype
 
-The supplied `wormwright-vault_0.1.11_amd64.deb` targets **Linux Mint 22.x on
+The supplied `wormwright-vault_0.1.12_amd64.deb` targets **Linux Mint 22.x on
 Intel/AMD 64-bit computers** (glibc 2.39 or newer). It bundles Python, Qt,
 and encryption libraries. It does not download Python packages at launch.
 APT may download the Linux display and FIDO-permission prerequisites during
@@ -15,7 +15,7 @@ installation. Mint 21 needs a build made on its older base; this particular
 binary is not claimed compatible with it.
 
 ```sh
-sudo apt install ./wormwright-vault_0.1.11_amd64.deb
+sudo apt install ./wormwright-vault_0.1.12_amd64.deb
 ```
 
 Open **Wormwright Vault** from the application menu. If the key is not detected
@@ -206,3 +206,5 @@ Sync Settings enables background sync by default for configured vaults, with an 
 Network operations run on encrypted local snapshots in a worker thread. Edits during uploads trigger another upload; edits during downloads stop replacement and preserve both copies for review. Results wait until open dialogs close. Shared-folder changes, local-vault switching and manual Sync Now wait for the current worker. Conflicts and unavailable shares appear in the sync status without recurring popups. Click Sync Now for conflict review. Close waits for its final sync attempt; errors warn that the local copy is saved. A crash, forced exit, unavailable NAS can leave changes unsynced.
 
 Remote changes normally arrive within the receiving device’s polling interval when both apps are running and connected; edits are uploaded immediately after saving. Devices editing simultaneously can still require explicit conflict resolution. Background success does not reset the inactivity-lock timer. No-change polls create no retained backups. Automatic backup limits still apply.
+
+The running version is shown in the window title and below the app heading. If Sync Settings says sync runs only when clicking Sync Now, close that older app and install the current release.
