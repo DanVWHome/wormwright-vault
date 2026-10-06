@@ -17,15 +17,24 @@ with tempfile.TemporaryDirectory() as folder:
     buttons = [cell.findChild(QPushButton) for cell in cells]
     assert window.table.item(0, 4).text() == ''
     buttons[0].click()
-    assert labels[0].text() == 'first-demo-secret' and labels[1].text() == '••••••••'
-    assert buttons[0].text() == 'Hide'
+    display = window.password_display
+    assert display.isVisible()
+    assert display.password_text.toPlainText() == 'first-demo-secret'
+    assert display.password_text.font().pointSize() == 32
+    assert labels[0].text() == labels[1].text() == '••••••••'
     buttons[1].click()
-    assert labels[1].text() == 'second-demo-secret'
+    assert display.password_text.toPlainText() == '' and not display.isVisible()
+    assert window.password_display.password_text.toPlainText() == 'second-demo-secret'
+    display = window.password_display
+    display.close()
+    assert display.password_text.toPlainText() == ''
     buttons[0].click()
-    assert labels[0].text() == '••••••••'
+    display = window.password_display
     window.search.setText('B')
-    assert window.table.cellWidget(0, 4).findChild(QLineEdit).text() == '••••••••'
+    assert display.password_text.toPlainText() == '' and window.password_display is None
     window.table.cellWidget(0, 4).findChild(QPushButton).click()
+    display = window.password_display
     window.lock()
+    assert display.password_text.toPlainText() == '' and not display.isVisible()
     assert window.table.rowCount() == 0 and not window.vault.unlocked
-print('PASS: independent row reveal/hide, correct passwords, search re-masking, lock removes rows')
+print('PASS: large password window, masked table, switching/closing/search/lock clear plaintext')

@@ -7,7 +7,7 @@ fallback unlock the vault.
 
 ## Install the prototype
 
-The supplied `wormwright-vault_0.1.2_amd64.deb` targets **Linux Mint 22.x on
+The supplied `wormwright-vault_0.1.9_amd64.deb` targets **Linux Mint 22.x on
 Intel/AMD 64-bit computers** (glibc 2.39 or newer). It bundles Python, Qt,
 and encryption libraries. It does not download Python packages at launch.
 APT may download the Linux display and FIDO-permission prerequisites during
@@ -15,7 +15,7 @@ installation. Mint 21 needs a build made on its older base; this particular
 binary is not claimed compatible with it.
 
 ```sh
-sudo apt install ./wormwright-vault_0.1.2_amd64.deb
+sudo apt install ./wormwright-vault_0.1.9_amd64.deb
 ```
 
 Open **Wormwright Vault** from the application menu. If the key is not detected
@@ -98,8 +98,8 @@ belong in Git. Vault databases, CSV exports, backups, keys, environments, build
 outputs and crash dumps are excluded. Installer artifacts are delivered
 separately. No uploaded Atlas files or personal export is part of this repository.
 
-This remains a prototype. Synchronization and forgotten-password recovery
-are not implemented. Physical YubiKey enrollment/unlock and installer behavior
+This remains a prototype. Forgotten-password recovery is not implemented. Shared-folder sync is manual
+and stops on conflicting edits; it does not merge records. Physical YubiKey enrollment/unlock and installer behavior
 must be checked on each target laptop/desktop before using real credentials.
 No application license has been selected; keep the repository private for now.
 Third-party component licenses remain applicable to bundled dependencies.
@@ -118,3 +118,79 @@ its original `vanwormai-vault` identity to upgrade existing installations.
 Old command names, data paths, local-control endpoint and FIDO relying-party
 identity are retained for compatibility. The `wormwright-*` commands are the
 preferred aliases. No vault or key reenrollment is required.
+
+## Shared-folder sync
+
+Keep a separate local working vault on each machine. Mount a dedicated home-server
+folder using your normal network-share tools (over any VPN that allows access).
+Unlock the vault, open **Sync Settings**, choose that mounted folder, then click
+**Sync Now**. The shared copy is named `wormwright-vault.sqlite`. Never open that
+shared copy directly for editing. Do not use a cloud-mirrored folder.
+
+The first device uploads its vault. Copy that shared vault to a local file on the
+next device, unlock the local copy, choose the same shared folder, and sync once
+to pair it. Thereafter local-only changes upload and server-only changes download.
+A download locks the app; unlock using the credentials in the updated copy.
+Fallback-password and YubiKey changes travel with the vault. Old backups retain
+their old credentials. When both copies changed, sync stops without overwriting;
+keep both files and reconcile the entries manually. There is no force-overwrite
+button or automatic merge.
+
+Automatic sync backups default to **10 per working/shared copy**. Change the limit
+in Sync Settings (1–1000). Each successful transfer backs up the copy it replaces;
+uploads also back up the local working copy. Successful syncs prune only older
+files belonging to that copy inside `.wormwright-sync-backups`. Manual backups
+and import/restore/authentication safety backups are not pruned. Syncs with no
+changes create no new backups but apply the current limit.
+
+Local pairing/settings live beside the local vault in `<vault>.sync.json`; keep
+that file on its originating device. Do not copy it to pair another machine.
+A missing shared copy after pairing is treated as a conflict, not recreated.
+Mount the share before syncing. All devices must use Sync Now; other programs
+editing the shared database do not participate in the sync lock. A crashed sync
+may leave `.wormwright-sync-lock` in the share: verify no device is syncing
+before removing that empty lock directory. Server backups remain advisable;
+automatic retained versions are not forgotten-password recovery.
+
+## CSV import and export
+
+**Import Vault CSV** previews plain-text vault exports. No legacy
+encryption format, encryption key, or initialization vector is requested. **Export to CSV** exports every
+entry, including passwords and notes, regardless of the current search.
+Export requires an explicit plain-text warning confirmation, creates a new
+file with owner-only permissions, and never overwrites an existing file.
+Columns are `description,link,user_name,pw,notes`, matching the importer.
+CSV preserves field values exactly; use it for transfer rather than opening
+untrusted entries in spreadsheet software, which can interpret formulas.
+Use **Back Up Vault** when you want an encrypted backup.
+
+Every CSV export requires fresh authentication: the enrolled YubiKey with PIN
+and touch, or the current fallback/master password. Being unlocked alone is
+not sufficient. Cancelled or failed authentication creates no export file.
+
+Creating a new vault opens one dialog with New master password and Confirm
+master password fields. Both must match and contain at least 12 characters.
+Cancelling creates no vault; existing vault unlock uses its current password.
+
+Each main-table Show button opens a separate, resizable window with 32-point
+monospace password text. The table stays masked. Closing, switching entries,
+searching/refreshing, or locking clears and closes the password display.
+
+## Recent vault locations
+
+**Recent Vaults** remembers the last 20 successfully created or unlocked vaults
+on this device, newest first, with full paths. Open a selected vault or
+double-click its location, then authenticate normally. Unavailable locations
+stay listed so removable or network drives can be reconnected. **Forget selected**
+removes only the history entry, never the vault. Locations are stored in an
+owner-only file at `$XDG_DATA_HOME/vanwormai-vault/recent-vaults.json` (normally
+`~/.local/share/vanwormai-vault/recent-vaults.json`). Passwords and entries are
+not included. History is local to each device and is not synced.
+
+Sync inspects and builds encrypted SQLite snapshots locally. The shared folder is used only for file transfers, lock directories, and atomic replacement; SQLite does not open databases on the share. The share must support those filesystem operations.
+
+### Resolve sync differences
+
+When both copies changed or a new device is not paired, Sync Now opens an in-app comparison after requesting the shared vault’s master/fallback password. Select each row to compare description, link, username, notes, and masked passwords. Password differences are flagged; revealing is an explicit checkbox inside the app. Choose Local, Shared, or Omit for every differing entry, or use all entries from one copy. An absent-side choice removes that entry from the result. Entries with different IDs remain separate even if their descriptions match.
+
+Apply confirms the operation, checks that neither copy changed during review, and keeps encrypted `.conflict-*.sqlite` safety backups of both originals. These backups are not automatically pruned. The resolved result uses the shared vault’s encryption and password/YubiKey settings so a separately created desktop vault can join it. Both files receive the same result and the local vault locks. If a transfer fails midway, keep the safety backups and both copies; file replacement across two devices is not one atomic transaction. There is no three-way deletion inference: missing entries require explicit review. Cancelling leaves both vaults unchanged.

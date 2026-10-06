@@ -198,6 +198,19 @@ class Vault:
             self.db.execute("INSERT INTO metadata VALUES ('yubikey', ?) ON CONFLICT(name) DO UPDATE SET value=excluded.value", (json.dumps(settings).encode(),))
         return safety
 
+    def verify_yubikey(self, settings, response):
+        """Verify a fresh assertion against the currently unlocked vault."""
+        if not self.unlocked:
+            raise VaultError('Unlock the vault first.')
+        if self.yubikey_settings() != settings:
+            raise VaultError('YubiKey settings changed. Authenticate again.')
+        try:
+            key = secret.SecretBox(self._hardware_key(response)).decrypt(settings['wrapped_key'])
+            if not hmac.compare_digest(key, self.data_key):
+                raise VaultError('YubiKey authentication failed.')
+        except CryptoError as error:
+            raise VaultError('YubiKey authentication failed.') from error
+
     def unlock_yubikey(self, settings, response):
         self.lock()
         try:

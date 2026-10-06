@@ -28,8 +28,9 @@ Search applies SQL LIKE '%term%' to description, link, and notes. Standard
 SQLite LIKE behavior applies: ASCII case-insensitivity, % matches any number
 of characters, and _ matches one character. Usernames and passwords are not
 searched. Matching metadata is indexed only in memory, not written to disk.
-Add, edit, clone, delete, copy, and per-row Show/Hide are available. Searching
-or refreshing masks revealed passwords. Double-click an entry to edit it.
+Add, edit, clone, delete, copy, and per-row Show controls are available. Show opens a separate
+resizable window with large password text; the main table remains masked.
+Closing, searching, refreshing, or locking clears the display. Double-click an entry to edit it.
 Copy clears after 30 seconds if the clipboard still contains that password;
 clipboard history managers may retain copies. The vault locks five minutes
 after unlocking (fixed session timeout rather than inactivity timeout).
@@ -71,19 +72,11 @@ backups leave the current vault unchanged. Use the restored password or its
 enrolled key to unlock afterward. One running instance is enforced per vault
 path. Backup/restore is not multi-device synchronization.
 
-IMPORT ATLAS CSV
-Import preview supports the legacy laptop CSV and explicitly selected
-plain-text exports. Required headers: description, link, user_name, pw,
-notes. Extra columns are ignored. Legacy AES-128-CTR decoding needs the key
-and IV used by the source code; the migrated Atlas format is not supported.
-Preview masks passwords initially. Reveal them and verify correctness, then
-check the verification box before importing. Legacy CTR cannot reliably
-detect a wrong key; readable text is not proof of successful decoding.
-A decode failure stops the import. Exact duplicates are skipped; different
-entries are added separately, never overwriting existing entries. A safety
-backup precedes the single import transaction. No decrypted export is saved.
-The supplied 69-entry CSV has redacted passwords; decoding failures for it
-are expected. Test with a dummy export containing intact encrypted passwords.
+IMPORT VAULT CSV
+Import accepts plain-text CSV with description, link, user_name, pw, and notes
+headers. Extra columns are ignored. Preview masks passwords initially; reveal
+and verify them, then check the verification box before importing. No legacy
+encryption options, encryption keys, or initialization vectors are supported.
 
 LOCAL AI/VOICE HOOKS
 ./control.sh lookup Gmail
@@ -108,3 +101,14 @@ Continue dummy-data testing before putting real credentials into this app.
 Synchronization and forgotten-password recovery are not implemented. Delete
 is permanent except for copies retained in backups. Your uploaded source
 and CSV are not bundled or imported automatically.
+
+EXPORT TO CSV
+Export to CSV saves all entries, including passwords, as plain text after an
+explicit warning. Choose a new filename; existing files are never overwritten.
+The file uses owner-only permissions and can be imported with Import Vault CSV
+using its default plain-text format. Export includes entries outside the current
+search. Use Back Up Vault for encrypted backups.
+
+Every CSV export requires fresh authentication: the enrolled YubiKey with PIN
+and touch, or the current fallback/master password. Being unlocked alone is
+not sufficient. Cancelled or failed authentication creates no export file.
