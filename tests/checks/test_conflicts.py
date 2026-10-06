@@ -33,5 +33,16 @@ with tempfile.TemporaryDirectory() as name:
         assert 'changed while' in str(e)
     c.close()
     assert stale_before == (fingerprint(local.path), fingerprint(master.path))
+    # Resolve related copies with a changed password and an explicit omission.
+    mail = next(r for r in local.entries() if r['description'] == 'Shared mail')
+    local.save({**mail, 'password': 'new-local-password'})
+    c = Comparison(local); c.unlock_shared('shared-dummy-password'); rows = c.compare()
+    choices = ['local' if (ours or theirs)['description'] == 'Shared mail' else 'omit' for _, ours, theirs in rows]
+    c.apply(choices); c.close()
+    local.unlock('shared-dummy-password')
+    assert len(local.entries()) == 1 and local.entries()[0]['password'] == 'new-local-password'
+    assert synchronize(local).startswith('Already')
+    original = Vault(safety[0]); original.unlock('local-dummy-password')
+    assert original.entries()[0]['description'] == 'Local mail'; original.lock()
     local.lock()
 print('Conflict resolution, distinct keys, cancel, stale detection and backup checks passed.')
