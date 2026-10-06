@@ -8,11 +8,12 @@ from PySide6.QtCore import Qt, QTimer, QThread, QEventLoop
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QPushButton, QLineEdit, QTableWidget, QTableWidgetItem, QAbstractItemView,
     QHeaderView, QMessageBox, QDialog, QFormLayout, QTextEdit, QDialogButtonBox, QFileDialog,
-    QComboBox, QCheckBox, QProgressDialog, QInputDialog)
+    QComboBox, QCheckBox, QProgressDialog, QInputDialog, QSpinBox)
 from vault import Vault, VaultError
 from importer import read_export, decode_legacy
 from hooks import default_vault, send, LocalControl
 from search import matching_ids
+from sync import configure, read_settings, synchronize, DEFAULT_LIMIT
 
 
 class KeyTask(QThread):
@@ -176,7 +177,7 @@ class Window(QMainWindow):
         layout.addLayout(actions)
         backups = QHBoxLayout()
         backups.addStretch()
-        for text, method in [('Import Atlas CSV…', self.import_csv), ('Back Up Vault…', self.backup), ('Restore Backup…', self.restore)]:
+        for text, method in [('Import Atlas CSV…', self.import_csv), ('Back Up Vault…', self.backup), ('Restore Backup…', self.restore), ('Sync Settings…', self.sync_settings), ('Sync Now', self.sync_now)]:
             button = QPushButton(text)
             button.clicked.connect(method)
             backups.addWidget(button)
@@ -415,6 +416,50 @@ class Window(QMainWindow):
             self.lock()
             self.vault = Vault(filename)
             self.update_state()
+
+    def sync_settings(self):
+        dialog = QDialog(self)
+        dialog.setWindowTitle('Shared-folder sync')
+        form = QFormLayout(dialog)
+        settings = read_settings(self.vault)
+        folder = QLineEdit(settings.get('folder', ''))
+        browse = QPushButton('Choose shared folder…')
+        def choose_folder():
+            selected = QFileDialog.getExistingDirectory(dialog, 'Choose mounted shared folder', folder.text())
+            if selected:
+                folder.setText(selected)
+        browse.clicked.connect(choose_folder)
+        form.addRow('Mounted folder:', folder)
+        form.addRow(browse)
+        limit = QSpinBox()
+        limit.setRange(1, 1000)
+        limit.setValue(settings.get('limit', DEFAULT_LIMIT))
+        form.addRow('Maximum automatic sync backups per copy:', limit)
+        note = QLabel('Use a dedicated folder for this vault. Each device keeps a local copy.\nSync runs only when you click Sync Now. Conflicting edits are never overwritten.\nOnly automatic sync backups are pruned after successful sync; manual backups are kept.\nUse a mounted network share, not a folder mirrored by another sync program.')
+        note.setWordWrap(True)
+        form.addRow(note)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        form.addRow(buttons)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            try:
+                configure(self.vault, folder.text(), limit.value())
+            except Exception as error:
+                QMessageBox.warning(self, 'Sync settings', str(error))
+
+    def sync_now(self):
+        try:
+            result = synchronize(self.vault)
+            if not self.vault.unlocked:
+                self.lock()
+            self.update_state()
+            QMessageBox.information(self, 'Sync complete', result)
+        except Exception as error:
+            if not self.vault.unlocked:
+                self.lock()
+            self.update_state()
+            QMessageBox.warning(self, 'Sync stopped', str(error))
 
     def backup(self):
         from datetime import datetime
