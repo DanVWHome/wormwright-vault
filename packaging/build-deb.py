@@ -23,7 +23,7 @@ def main():
     os.environ['PYINSTALLER_CONFIG_DIR'] = str(work / 'pyinstaller-cache')
     subprocess.run([sys.executable, '-m', 'PyInstaller', '--noconfirm', '--clean',
                     '--name', 'vanwormai-vault', '--onedir', '--noupx',
-                    '--collect-submodules', 'fido2', '--collect-data', 'fido2', '--distpath', str(work / 'bundle'),
+                    '--add-data', str(ROOT / 'assets') + ':assets', '--collect-submodules', 'fido2', '--collect-data', 'fido2', '--distpath', str(work / 'bundle'),
                     '--workpath', str(work / 'freeze'), '--specpath', str(work),
                     str(ROOT / 'src/app.py')], check=True)
     subprocess.run([str(work / 'bundle/vanwormai-vault/vanwormai-vault'),
@@ -55,13 +55,17 @@ printf '%s\\n' 'Desktop launcher enabled for this login and future logins.'
 '''
         destination.write_text(text)
         destination.chmod(0o755)
+    for alias, original in [('wormwright-vault', 'vanwormai-vault'), ('wormwright-control', 'vanwormai-control'), ('wormwright-enable-desktop-launcher', 'vanwormai-enable-desktop-launcher')]:
+        target = stage / 'usr/bin' / alias
+        target.write_text('#!/bin/sh\nexec /usr/bin/' + original + ' "$@"\n')
+        target.chmod(0o755)
     shutil.copy2(ROOT / 'packaging/vanwormai-vault-agent.desktop', share / 'vanwormai-vault-agent.desktop')
     applications = stage / 'usr/share/applications'
     applications.mkdir(parents=True)
     shutil.copy2(ROOT / 'packaging/vanwormai-vault.desktop', applications)
-    icons = stage / 'usr/share/icons/hicolor/scalable/apps'
+    icons = stage / 'usr/share/pixmaps'
     icons.mkdir(parents=True)
-    shutil.copy2(ROOT / 'packaging/vanwormai-vault.svg', icons)
+    shutil.copy2(ROOT / 'assets/wormwright-vault.png', icons / 'vanwormai-vault.png')
     docs = stage / 'usr/share/doc/vanwormai-vault'
     docs.mkdir(parents=True)
     shutil.copy2(ROOT / 'README.md', docs / 'README.md')
@@ -82,17 +86,17 @@ printf '%s\\n' 'Desktop launcher enabled for this login and future logins.'
     metadata.mkdir()
     size = sum(path.stat().st_size for path in stage.rglob('*') if path.is_file()) // 1024
     (metadata / 'control').write_text(f'''Package: vanwormai-vault
-Version: 0.1.1
+Version: 0.1.2
 Section: utils
 Priority: optional
 Architecture: amd64
-Maintainer: VanWormAI Vault Project
+Maintainer: Wormwright AI Vault Project
 Installed-Size: {size}
 Depends: libc6 (>= {args.glibc_min}), python3, libxcb-cursor0, libxkbcommon-x11-0, libgl1, libegl1, libfontconfig1, libdbus-1-3, libu2f-udev
 Description: Offline encrypted password vault with optional YubiKey unlock
  Prototype desktop vault with local UI-only assistant hooks.
 ''')
-    result = output / 'vanwormai-vault_0.1.1_amd64.deb'
+    result = output / 'wormwright-vault_0.1.2_amd64.deb'
     subprocess.run(['dpkg-deb', '--root-owner-group', '-Zxz', '--build', str(stage), str(result)], check=True)
     print(result)
 

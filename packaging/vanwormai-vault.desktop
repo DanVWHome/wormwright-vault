@@ -1,8 +1,8 @@
 [Desktop Entry]
 Type=Application
-Name=VanWormAI Vault
+Name=Wormwright Vault
 Comment=Offline encrypted password vault
-Exec=vanwormai-vault
+Exec=wormwright-vault
 Icon=vanwormai-vault
 Terminal=false
 Categories=Utility;Security;
