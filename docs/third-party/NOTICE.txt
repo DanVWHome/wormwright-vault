@@ -1,0 +1,8 @@
+Bundled Qt 6.11.2 / PySide6 / Shiboken6 are used under LGPL v3.
+License texts are in Qt/. Corresponding source:
+https://code.qt.io/cgit/qt/qtbase.git/tag/?h=v6.11.2
+https://code.qt.io/cgit/pyside/pyside-setup.git/tag/?h=v6.11.2
+Qt shared libraries remain separate in the installed _internal directory,
+so compatible modified libraries can replace them. Reverse engineering
+for debugging such library modifications is permitted.
+Other bundled components retain their attached license notices.
