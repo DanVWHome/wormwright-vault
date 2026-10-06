@@ -3,6 +3,7 @@ from contextlib import closing
 import hashlib
 import json
 import os
+import shutil
 from pathlib import Path
 import sqlite3
 import tempfile
@@ -68,7 +69,12 @@ def backup(vault, target):
     directory.mkdir(mode=0o700, exist_ok=True)
     prefix = hashlib.sha256(target.name.encode()).hexdigest()[:16] + '-'
     path = directory / (prefix + str(time.time_ns()) + '-' + uuid.uuid4().hex + '.sqlite')
-    vault.backup(path)
+    with tempfile.TemporaryDirectory(prefix="wormwright-backup-") as temporary:
+        snapshot = Path(temporary) / "snapshot.sqlite"
+        vault.backup(snapshot)
+        fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+        os.close(fd)
+        shutil.copyfile(snapshot, path)
     return directory, prefix
 
 
@@ -95,6 +101,8 @@ def synchronize(vault):
         raise VaultError('Another sync is running, or an interrupted sync left a lock. No files were changed. Check the other devices before removing .wormwright-sync-lock.')
     staged = None
     other = None
+    temporary = tempfile.TemporaryDirectory(prefix="wormwright-sync-")
+    scratch = Path(temporary.name)
     try:
         if remote.is_symlink() or remote.resolve() == vault.path.resolve():
             raise VaultError('The shared vault must be a separate regular file.')
@@ -102,7 +110,10 @@ def synchronize(vault):
             if Path(str(remote) + suffix).exists():
                 raise VaultError('The shared vault is open or has unfinished database writes. Close it before syncing.')
         local_hash = fingerprint(vault.path)
-        remote_hash = fingerprint(remote) if remote.exists() else None
+        snapshot = scratch / "remote.sqlite"
+        if remote.exists():
+            shutil.copyfile(remote, snapshot)
+        remote_hash = fingerprint(snapshot) if snapshot.exists() else None
         baseline = config.get('baseline')
         if remote_hash == local_hash:
             action = 'Already up to date.'
@@ -116,8 +127,8 @@ def synchronize(vault):
             raise VaultError('Both copies changed, or these copies have not been paired. Nothing was overwritten. Keep both copies and resolve the differences before syncing.')
         if remote_hash and remote_hash != local_hash:
             # Validate that this is the same encrypted vault, not another vault.
-            other = Vault(remote)
-            other.db = sqlite3.connect(remote.resolve().as_uri() + '?mode=ro', uri=True)
+            other = Vault(snapshot)
+            other.db = sqlite3.connect(snapshot.resolve().as_uri() + '?mode=ro', uri=True)
             other.box = SecretBox(vault.data_key)
             records = other.entries()
             if not records:
@@ -134,7 +145,9 @@ def synchronize(vault):
             os.close(fd)
             staged = Path(name)
             staged.unlink()
-            vault.backup(staged)
+            upload = scratch / "upload.sqlite"
+            vault.backup(upload)
+            shutil.copyfile(upload, staged)
             if other:
                 other.lock()
             os.replace(staged, remote)
@@ -164,4 +177,5 @@ def synchronize(vault):
             other.lock()
         if staged:
             staged.unlink(missing_ok=True)
+        temporary.cleanup()
         lock.rmdir()
