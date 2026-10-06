@@ -86,7 +86,7 @@ printf '%s\\n' 'Desktop launcher enabled for this login and future logins.'
     metadata.mkdir()
     size = sum(path.stat().st_size for path in stage.rglob('*') if path.is_file()) // 1024
     (metadata / 'control').write_text(f'''Package: vanwormai-vault
-Version: 0.1.7
+Version: 0.1.8
 Section: utils
 Priority: optional
 Architecture: amd64
@@ -96,7 +96,7 @@ Depends: libc6 (>= {args.glibc_min}), python3, libxcb-cursor0, libxkbcommon-x11-
 Description: Offline encrypted password vault with optional YubiKey unlock
  Prototype desktop vault with local UI-only assistant hooks.
 ''')
-    result = output / 'wormwright-vault_0.1.7_amd64.deb'
+    result = output / 'wormwright-vault_0.1.8_amd64.deb'
     subprocess.run(['dpkg-deb', '--root-owner-group', '-Zxz', '--build', str(stage), str(result)], check=True)
     print(result)
 
