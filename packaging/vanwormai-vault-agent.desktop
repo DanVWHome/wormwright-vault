@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=VanWormAI Desktop Launcher
+Comment=Allow local voice requests to open the vault in your desktop session
+Exec=/usr/bin/python3 /usr/share/vanwormai-vault/desktop_agent.py
+Terminal=false
+X-GNOME-Autostart-enabled=true

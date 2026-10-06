@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=VanWormAI Vault
+Comment=Offline encrypted password vault
+Exec=vanwormai-vault
+Icon=vanwormai-vault
+Terminal=false
+Categories=Utility;Security;
+StartupNotify=true
