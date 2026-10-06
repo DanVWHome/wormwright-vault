@@ -113,3 +113,13 @@ search. Use Back Up Vault for encrypted backups.
 Every CSV export requires fresh authentication: the enrolled YubiKey with PIN
 and touch, or the current fallback/master password. Being unlocked alone is
 not sufficient. Cancelled or failed authentication creates no export file.
+
+AUTOMATIC SYNC
+Sync Settings enables startup, closing and background sync, including while locked.
+Default interval is 30 seconds; choose 5–86400 seconds. Saved entry changes upload
+immediately, and other devices poll for downloads. Locked transfers copy only
+encrypted data; unlocking still verifies and reveals entries. A missing NAS retries
+without recurring popups. Conflicts require Sync Now review after unlocking.
+Closing waits for a final attempt; an unavailable share or conflict keeps local
+changes saved. Forced exit/crash cannot guarantee a final sync. No-change polls
+do not create retained backups. Different devices keep their own interval settings.
