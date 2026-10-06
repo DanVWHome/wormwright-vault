@@ -1,0 +1,110 @@
+VANWORMAI VAULT — OFFLINE PROTOTYPE
+Dan Van Wormer + AI + a password vault.
+
+LINUX MINT 21+ (CINNAMON OR XFCE)
+If needed: sudo apt install python3-venv libxcb-cursor0 libxkbcommon-x11-0
+Run ./start.sh in this folder. First launch downloads Python dependencies;
+subsequent launches work offline. Python 3.10+ is required.
+
+Create a master password of at least 12 characters and confirm it. Three
+dummy entries are created. The demo password previously suggested was
+Atlas-Demo-2026!; it is public and intended only for dummy data.
+Change Fallback Password permits any non-empty length. You may choose your
+Linux login/sudo password, but it remains an independent vault password.
+VanWormAI never invokes sudo or authenticates against Linux. Linux password
+changes do not automatically change the vault password.
+
+EXISTING VAULTS
+The launcher keeps using ~/.local/share/atlas-portable/demo-vault.sqlite
+when it exists, so existing entries and YubiKey enrollment stay available.
+New installations use ~/.local/share/vanwormai-vault/demo-vault.sqlite.
+$XDG_DATA_HOME overrides ~/.local/share. Choose Vault opens another vault.
+./start.sh /absolute/path/new-vault.sqlite creates a vault at a custom path.
+The legacy FIDO relying-party ID and encryption context are deliberately
+retained internally so existing enrolled keys continue working.
+
+SEARCH AND ENTRY CONTROLS
+Search applies SQL LIKE '%term%' to description, link, and notes. Standard
+SQLite LIKE behavior applies: ASCII case-insensitivity, % matches any number
+of characters, and _ matches one character. Usernames and passwords are not
+searched. Matching metadata is indexed only in memory, not written to disk.
+Add, edit, clone, delete, copy, and per-row Show/Hide are available. Searching
+or refreshing masks revealed passwords. Double-click an entry to edit it.
+Copy clears after 30 seconds if the clipboard still contains that password;
+clipboard history managers may retain copies. The vault locks five minutes
+after unlocking (fixed session timeout rather than inactivity timeout).
+
+ENCRYPTION
+Argon2id with libsodium MODERATE settings (about 256 MiB memory) derives the
+password wrapping key. A random data key encrypts all entry fields using
+PyNaCl SecretBox authenticated encryption and fresh nonces. SQLite contains
+ciphertext, random IDs, metadata, and optional YubiKey wrapping information.
+Record counts and file sizes remain visible. Master passwords, PINs, and
+YubiKey-derived secrets are not stored. Files have owner-only permissions.
+Python cannot guarantee secure erasure of process memory. Whole-record
+rollback or deletion by someone modifying the file is not detected.
+
+YUBIKEY PIN + TOUCH
+Use a FIDO2 key with hmac-secret, such as your YubiKey 5 Nano (5.8).
+Unlock with the vault password and select Set Up YubiKey. Confirm the vault
+password, enter the existing FIDO2 PIN, and touch when the key flashes.
+Enrollment may require two touches. The app then locks; PIN + touch is the
+primary option, and Use Fallback Password reveals the password option.
+Enrollment does not reset the key, modify its PIN, enable OTP, or change
+existing Linux/site credentials. Only one key is enrolled per vault in this
+prototype; enrolling another replaces it after confirmation. A safety backup
+is saved before enrollment or password changes. Either the key OR the
+fallback password unlocks; this is not a requirement to supply both factors.
+A key reset invalidates its previous credential. Use the fallback to enroll
+a replacement. Do not run VanWormAI with sudo. Physical enrollment/unlock
+still needs verification on your laptop; software/protocol tests passed.
+
+BACKUP AND RESTORE
+Back Up Vault creates a consistent encrypted SQLite snapshot at a new path.
+It never overwrites an existing file. Store another copy on a separate drive
+or your home server. A backup retains its password and key enrollment from
+the time it was created. Old backups still work with their old passwords.
+Restore Backup replaces the whole current vault, not a merge. Supply the
+backup's password. The app validates it, creates an encrypted safety backup
+beside the current vault, replaces it, and locks. Wrong passwords or damaged
+backups leave the current vault unchanged. Use the restored password or its
+enrolled key to unlock afterward. One running instance is enforced per vault
+path. Backup/restore is not multi-device synchronization.
+
+IMPORT ATLAS CSV
+Import preview supports the legacy laptop CSV and explicitly selected
+plain-text exports. Required headers: description, link, user_name, pw,
+notes. Extra columns are ignored. Legacy AES-128-CTR decoding needs the key
+and IV used by the source code; the migrated Atlas format is not supported.
+Preview masks passwords initially. Reveal them and verify correctness, then
+check the verification box before importing. Legacy CTR cannot reliably
+detect a wrong key; readable text is not proof of successful decoding.
+A decode failure stops the import. Exact duplicates are skipped; different
+entries are added separately, never overwriting existing entries. A safety
+backup precedes the single import transaction. No decrypted export is saved.
+The supplied 69-entry CSV has redacted passwords; decoding failures for it
+are expected. Test with a dummy export containing intact encrypted passwords.
+
+LOCAL AI/VOICE HOOKS
+./control.sh lookup Gmail
+./control.sh open
+./control.sh lock
+./control.sh capabilities
+For a custom vault: ./control.sh lookup Gmail --vault /path/vault.sqlite
+
+Lookup brings the app forward, searches, and selects a matching row WITHOUT
+revealing the password. Multiple matches remain visible; an exact description
+match is selected preferentially, otherwise the first matching entry. If
+locked, the lookup is kept only in memory and applied after manual unlock.
+If the app is closed, the hook requests its launch at the unlock screen.
+No matches, record names, usernames, notes, passwords, keys, or PINs are
+returned through the hook. Its output is a generic acknowledgment.
+These are hooks for an assistant/voice tool to invoke; the app does not
+listen to the microphone or run an AI service itself. Future integrations
+use the versioned allowlist described in INTEGRATION.txt.
+
+PROTOTYPE SCOPE
+Continue dummy-data testing before putting real credentials into this app.
+Synchronization and forgotten-password recovery are not implemented. Delete
+is permanent except for copies retained in backups. Your uploaded source
+and CSV are not bundled or imported automatically.

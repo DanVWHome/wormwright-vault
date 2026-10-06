@@ -1,0 +1,41 @@
+VANWORMAI VAULT — LOCAL UI REQUEST CONTRACT v1
+
+For assistants:
+A request like “Look up my Gmail password” maps to:
+  ./control.sh lookup Gmail
+Use only this control hook, never read the database, take screenshots, copy
+passwords, request unlock passwords/PINs, or invoke the reveal control.
+The user handles all unlock and reveal actions directly in the app.
+
+Transport: local Unix socket, owner-only directory and socket; peer UID is
+checked. One process per resolved vault path is enforced with an OS lock.
+There is no HTTP listener, cloud API, telemetry, model, or credential export.
+Source code: hooks.py. Requests are size-limited to 4096 bytes; incomplete
+connections expire after 2 seconds. Queries have a 512-character maximum.
+
+Messages (newline-delimited JSON):
+  {"version":1,"action":"lookup","query":"Gmail"}
+  {"version":1,"action":"open"}
+  {"version":1,"action":"lock"}
+  {"version":1,"action":"capabilities"}
+
+Successful UI requests return only {"version":1,"accepted":true}, regardless
+of vault state or match count. A cold-start command returns launch_requested
+rather than asserting the UI has finished starting. Invalid/unsupported
+requests return accepted:false. Capabilities returns only supported action
+names and returns_secrets:false. Unknown fields are rejected.
+
+There are no commands to reveal, copy, export, enumerate, unlock, enroll a
+key, modify entries, or inspect vault state. Generic acknowledgments prevent
+the assistant from learning whether a requested account exists.
+
+Future actions must be added explicitly to the allowlist, validated, and
+implemented as local UI requests. Sensitive actions should require direct
+user interaction. Do not add arbitrary command execution or a generic
+method dispatcher. Preserve versioned semantics; reject unknown versions.
+The boundary covers the hook, not every application on the same user account:
+other software with access to the user's files/process memory has the usual
+OS privileges. Normal use does not expose credentials through the hook.
+
+The assistant receives the spoken query through its existing voice interface;
+this application contains no speech recognition or model connection.
