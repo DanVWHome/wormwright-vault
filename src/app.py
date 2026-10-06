@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
     QComboBox, QCheckBox, QProgressDialog, QInputDialog, QSpinBox)
 from vault import Vault, VaultError
 from importer import read_export, decode_legacy
+from exporter import export_csv
 from hooks import default_vault, send, LocalControl
 from search import matching_ids
 from sync import configure, read_settings, synchronize, DEFAULT_LIMIT
@@ -177,7 +178,7 @@ class Window(QMainWindow):
         layout.addLayout(actions)
         backups = QHBoxLayout()
         backups.addStretch()
-        for text, method in [('Import Atlas CSV…', self.import_csv), ('Back Up Vault…', self.backup), ('Restore Backup…', self.restore), ('Sync Settings…', self.sync_settings), ('Sync Now', self.sync_now)]:
+        for text, method in [('Import Vault CSV…', self.import_csv), ('Export to CSV…', self.export_csv), ('Back Up Vault…', self.backup), ('Restore Backup…', self.restore), ('Sync Settings…', self.sync_settings), ('Sync Now', self.sync_now)]:
             button = QPushButton(text)
             button.clicked.connect(method)
             backups.addWidget(button)
@@ -473,15 +474,66 @@ class Window(QMainWindow):
         except Exception as error:
             QMessageBox.warning(self, 'Backup not saved', str(error))
 
+    def authorize_export(self):
+        settings = self.vault.yubikey_settings()
+        method = 'Fallback password'
+        if settings is not None:
+            method, ok = QInputDialog.getItem(self, 'Authenticate CSV export',
+                'Authenticate again for this export:', ['YubiKey PIN + Touch', 'Fallback password'], 0, False)
+            if not ok:
+                return None
+        if method == 'YubiKey PIN + Touch':
+            pin, ok = QInputDialog.getText(self, 'Authorize CSV export', 'YubiKey FIDO2 PIN:', QLineEdit.EchoMode.Password)
+            if not ok:
+                return None
+            try:
+                if not pin:
+                    raise VaultError('Enter your YubiKey PIN.')
+                from yubikey_auth import unlock
+                response = self.key_request(lambda event: unlock(settings, pin, event))
+                return {'yubikey_settings': settings, 'yubikey_response': response}
+            finally:
+                pin = None
+        password, ok = QInputDialog.getText(self, 'Authorize CSV export', 'Current fallback/master password:', QLineEdit.EchoMode.Password)
+        return {'password': password} if ok else None
+
+    def export_csv(self):
+        answer = QMessageBox.question(self, 'Export readable passwords?',
+            'CSV exports contain all entries and their passwords in readable plain text.\n'
+            'Anyone who can read the file can see them. This is not an encrypted backup.\n\n'
+            'Export all entries, including those outside the current search?',
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No)
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        from datetime import datetime
+        suggested = self.vault.path.parent / ('wormwright-export-' + datetime.now().strftime('%Y%m%d-%H%M%S') + '.csv')
+        filename, _ = QFileDialog.getSaveFileName(self, 'Export Vault CSV (choose a new filename)', str(suggested), 'CSV export (*.csv)')
+        if not filename:
+            return
+        if not filename.lower().endswith('.csv'):
+            filename += '.csv'
+        try:
+            authorization = self.authorize_export()
+            if authorization is None:
+                return
+            try:
+                export_csv(self.vault, filename, **authorization)
+            finally:
+                authorization.clear()
+            QMessageBox.information(self, 'CSV exported', 'Plain-text CSV saved to:\n' + filename + '\n\nKeep this file private. Use Back Up Vault for encrypted backups.')
+        except Exception as error:
+            QMessageBox.warning(self, 'CSV not exported', str(error))
+
     def import_csv(self):
-        filename, _ = QFileDialog.getOpenFileName(self, 'Choose Atlas CSV export', str(self.vault.path.parent), 'CSV export (*.csv)')
+        filename, _ = QFileDialog.getOpenFileName(self, 'Choose Vault CSV export', str(self.vault.path.parent), 'CSV export (*.csv)')
         if not filename:
             return
         settings = QDialog(self)
-        settings.setWindowTitle('Atlas export format')
+        settings.setWindowTitle('Vault CSV format')
         form = QFormLayout(settings)
         mode = QComboBox()
-        mode.addItems(['Legacy laptop encryption (AES-128-CTR)', 'Passwords already exported as plain text'])
+        mode.addItems(['Passwords already exported as plain text', 'Legacy Atlas laptop encryption (AES-128-CTR)'])
         key = QLineEdit()
         key.setEchoMode(QLineEdit.EchoMode.Password)
         iv = QLineEdit('7200918362482138')
@@ -490,7 +542,9 @@ class Window(QMainWindow):
         form.addRow('Legacy initialization vector', iv)
         note = QLabel('Use the settings from the code that created the export.\nThe migrated Atlas format is not supported yet.\nLegacy encryption cannot reliably detect a wrong key; verify the preview.')
         form.addRow(note)
-        mode.currentIndexChanged.connect(lambda index: (key.setEnabled(index == 0), iv.setEnabled(index == 0)))
+        key.setEnabled(False)
+        iv.setEnabled(False)
+        mode.currentIndexChanged.connect(lambda index: (key.setEnabled(index == 1), iv.setEnabled(index == 1)))
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         buttons.accepted.connect(settings.accept)
         buttons.rejected.connect(settings.reject)
@@ -502,7 +556,7 @@ class Window(QMainWindow):
         records = []
         try:
             records = read_export(filename)
-            if mode.currentIndex() == 0:
+            if mode.currentIndex() == 1:
                 records = decode_legacy(records, key.text(), iv.text())
             key.clear()
             if not self.vault.unlocked:
