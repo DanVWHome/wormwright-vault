@@ -69,9 +69,6 @@ def finish_sync(vault, task):
     if task.result.startswith('Downloaded'):
         if changed:
             raise SyncConflict('Local entries changed while downloading. Both copies were kept. Click Sync Now to review.')
-        fd, name = tempfile.mkstemp(dir=vault.path.parent, prefix='.auto-download-', suffix='.sqlite')
-        os.close(fd)
-        staged = Path(name)
         session_key = vault.data_key
         if session_key is not None:
             candidate = Vault(task.snapshot)
@@ -79,6 +76,9 @@ def finish_sync(vault, task):
                 candidate.reopen_unlocked(session_key)
             finally:
                 candidate.lock()
+        fd, name = tempfile.mkstemp(dir=vault.path.parent, prefix='.auto-download-', suffix='.sqlite')
+        os.close(fd)
+        staged = Path(name)
         try:
             shutil.copyfile(task.snapshot, staged)
             vault.lock()

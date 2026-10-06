@@ -659,7 +659,8 @@ class Window(QMainWindow):
                         break
         except Exception as failure:
             error = str(failure)
-            self.sync_status.setText('Sync needs attention — click Sync Now: ' + error)
+            needs_review = task.conflict or isinstance(failure, SyncConflict)
+            self.sync_status.setText(('Sync needs review — click Sync Now: ' if needs_review else 'Sync will retry: ') + error)
         finally:
             task.cleanup()
             task.deleteLater()
