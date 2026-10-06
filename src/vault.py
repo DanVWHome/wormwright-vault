@@ -241,6 +241,18 @@ class Vault:
             self.db.executemany('UPDATE metadata SET value=? WHERE name=?', [(salt, 'salt'), (wrapped, 'wrapped_key')])
         return safety
 
+    def reopen_unlocked(self, data_key):
+        """Resume an already authenticated session after replacing its file."""
+        self.lock()
+        try:
+            self.db = sqlite3.connect(self.path)
+            self.data_key = data_key
+            self.box = secret.SecretBox(data_key)
+            self.entries()
+        except Exception:
+            self.lock()
+            raise
+
     def restore(self, source, password):
         """Validate a staged snapshot, save current state, then replace atomically."""
         if not self.unlocked:
@@ -257,6 +269,7 @@ class Vault:
                 with closing(sqlite3.connect(staged)) as target:
                     original.backup(target)
             candidate.unlock(password)
+            restored_key = candidate.data_key
             candidate.lock()
             with staged.open('rb') as snapshot:
                 os.fsync(snapshot.fileno())
@@ -264,6 +277,7 @@ class Vault:
             self.backup(safety)
             self.lock()
             os.replace(staged, self.path)
+            self.reopen_unlocked(restored_key)
             return safety
         finally:
             candidate.lock()

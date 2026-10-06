@@ -101,6 +101,7 @@ class Comparison:
             os.replace(transfer, self.remote)
             self.local.lock()
             os.replace(local_stage, self.local.path)
+            self.local.reopen_unlocked(self.shared.data_key)
             self.config['baseline'] = fingerprint(self.local.path)
             atomic_json(self.local.path.with_name(self.local.path.name + '.sync.json'), self.config)
             return safety_local, safety_shared

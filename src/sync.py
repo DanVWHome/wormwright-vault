@@ -126,7 +126,7 @@ def synchronize(vault):
         elif baseline and remote_hash == baseline:
             action = 'Uploaded local changes.'
         elif baseline and local_hash == baseline and remote_hash:
-            action = 'Downloaded shared changes. Unlock the updated vault to continue.'
+            action = 'Downloaded shared changes.'
         else:
             raise SyncConflict('Both copies changed, or these copies have not been paired. Nothing was overwritten. Keep both copies and resolve the differences before syncing.')
         if remote_hash and remote_hash != local_hash:
@@ -163,8 +163,10 @@ def synchronize(vault):
             staged = Path(name)
             staged.unlink()
             other.backup(staged)
+            session_key = vault.data_key
             vault.lock()
             os.replace(staged, vault.path)
+            vault.reopen_unlocked(session_key)
             new_hash = remote_hash
         else:
             new_hash = local_hash
