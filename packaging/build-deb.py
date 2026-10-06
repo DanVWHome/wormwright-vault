@@ -23,9 +23,11 @@ def main():
     os.environ['PYINSTALLER_CONFIG_DIR'] = str(work / 'pyinstaller-cache')
     subprocess.run([sys.executable, '-m', 'PyInstaller', '--noconfirm', '--clean',
                     '--name', 'vanwormai-vault', '--onedir', '--noupx',
-                    '--collect-submodules', 'fido2', '--distpath', str(work / 'bundle'),
+                    '--collect-submodules', 'fido2', '--collect-data', 'fido2', '--distpath', str(work / 'bundle'),
                     '--workpath', str(work / 'freeze'), '--specpath', str(work),
                     str(ROOT / 'src/app.py')], check=True)
+    subprocess.run([str(work / 'bundle/vanwormai-vault/vanwormai-vault'),
+                    '--check-yubikey-runtime'], check=True)
     stage = work / 'deb-root'
     if stage.exists():
         shutil.rmtree(stage)
@@ -80,7 +82,7 @@ printf '%s\\n' 'Desktop launcher enabled for this login and future logins.'
     metadata.mkdir()
     size = sum(path.stat().st_size for path in stage.rglob('*') if path.is_file()) // 1024
     (metadata / 'control').write_text(f'''Package: vanwormai-vault
-Version: 0.1.0
+Version: 0.1.1
 Section: utils
 Priority: optional
 Architecture: amd64
@@ -90,7 +92,7 @@ Depends: libc6 (>= {args.glibc_min}), python3, libxcb-cursor0, libxkbcommon-x11-
 Description: Offline encrypted password vault with optional YubiKey unlock
  Prototype desktop vault with local UI-only assistant hooks.
 ''')
-    result = output / 'vanwormai-vault_0.1.0_amd64.deb'
+    result = output / 'vanwormai-vault_0.1.1_amd64.deb'
     subprocess.run(['dpkg-deb', '--root-owner-group', '-Zxz', '--build', str(stage), str(result)], check=True)
     print(result)
 
