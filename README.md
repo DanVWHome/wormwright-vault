@@ -7,7 +7,7 @@ fallback unlock the vault.
 
 ## Install the prototype
 
-The supplied `wormwright-vault_0.1.2_amd64.deb` targets **Linux Mint 22.x on
+The supplied `wormwright-vault_0.1.3_amd64.deb` targets **Linux Mint 22.x on
 Intel/AMD 64-bit computers** (glibc 2.39 or newer). It bundles Python, Qt,
 and encryption libraries. It does not download Python packages at launch.
 APT may download the Linux display and FIDO-permission prerequisites during
@@ -15,7 +15,7 @@ installation. Mint 21 needs a build made on its older base; this particular
 binary is not claimed compatible with it.
 
 ```sh
-sudo apt install ./wormwright-vault_0.1.2_amd64.deb
+sudo apt install ./wormwright-vault_0.1.3_amd64.deb
 ```
 
 Open **Wormwright Vault** from the application menu. If the key is not detected
@@ -98,8 +98,8 @@ belong in Git. Vault databases, CSV exports, backups, keys, environments, build
 outputs and crash dumps are excluded. Installer artifacts are delivered
 separately. No uploaded Atlas files or personal export is part of this repository.
 
-This remains a prototype. Synchronization and forgotten-password recovery
-are not implemented. Physical YubiKey enrollment/unlock and installer behavior
+This remains a prototype. Forgotten-password recovery is not implemented. Shared-folder sync is manual
+and stops on conflicting edits; it does not merge records. Physical YubiKey enrollment/unlock and installer behavior
 must be checked on each target laptop/desktop before using real credentials.
 No application license has been selected; keep the repository private for now.
 Third-party component licenses remain applicable to bundled dependencies.
@@ -118,3 +118,36 @@ its original `vanwormai-vault` identity to upgrade existing installations.
 Old command names, data paths, local-control endpoint and FIDO relying-party
 identity are retained for compatibility. The `wormwright-*` commands are the
 preferred aliases. No vault or key reenrollment is required.
+
+## Shared-folder sync
+
+Keep a separate local working vault on each machine. Mount a dedicated home-server
+folder using your normal network-share tools (over any VPN that allows access).
+Unlock the vault, open **Sync Settings**, choose that mounted folder, then click
+**Sync Now**. The shared copy is named `wormwright-vault.sqlite`. Never open that
+shared copy directly for editing. Do not use a cloud-mirrored folder.
+
+The first device uploads its vault. Copy that shared vault to a local file on the
+next device, unlock the local copy, choose the same shared folder, and sync once
+to pair it. Thereafter local-only changes upload and server-only changes download.
+A download locks the app; unlock using the credentials in the updated copy.
+Fallback-password and YubiKey changes travel with the vault. Old backups retain
+their old credentials. When both copies changed, sync stops without overwriting;
+keep both files and reconcile the entries manually. There is no force-overwrite
+button or automatic merge.
+
+Automatic sync backups default to **10 per working/shared copy**. Change the limit
+in Sync Settings (1–1000). Each successful transfer backs up the copy it replaces;
+uploads also back up the local working copy. Successful syncs prune only older
+files belonging to that copy inside `.wormwright-sync-backups`. Manual backups
+and import/restore/authentication safety backups are not pruned. Syncs with no
+changes create no new backups but apply the current limit.
+
+Local pairing/settings live beside the local vault in `<vault>.sync.json`; keep
+that file on its originating device. Do not copy it to pair another machine.
+A missing shared copy after pairing is treated as a conflict, not recreated.
+Mount the share before syncing. All devices must use Sync Now; other programs
+editing the shared database do not participate in the sync lock. A crashed sync
+may leave `.wormwright-sync-lock` in the share: verify no device is syncing
+before removing that empty lock directory. Server backups remain advisable;
+automatic retained versions are not forgotten-password recovery.
