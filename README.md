@@ -7,7 +7,7 @@ fallback unlock the vault.
 
 ## Install the prototype
 
-The supplied `vanwormai-vault_0.1.0_amd64.deb` targets **Linux Mint 22.x on
+The supplied `vanwormai-vault_0.1.1_amd64.deb` targets **Linux Mint 22.x on
 Intel/AMD 64-bit computers** (glibc 2.39 or newer). It bundles Python, Qt,
 and encryption libraries. It does not download Python packages at launch.
 APT may download the Linux display and FIDO-permission prerequisites during
@@ -15,7 +15,7 @@ installation. Mint 21 needs a build made on its older base; this particular
 binary is not claimed compatible with it.
 
 ```sh
-sudo apt install ./vanwormai-vault_0.1.0_amd64.deb
+sudo apt install ./vanwormai-vault_0.1.1_amd64.deb
 ```
 
 Open **VanWormAI Vault** from the application menu. If the key is not detected
