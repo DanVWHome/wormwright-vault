@@ -7,7 +7,7 @@ fallback unlock the vault.
 
 ## Install the prototype
 
-The supplied `wormwright-vault_0.1.5_amd64.deb` targets **Linux Mint 22.x on
+The supplied `wormwright-vault_0.1.6_amd64.deb` targets **Linux Mint 22.x on
 Intel/AMD 64-bit computers** (glibc 2.39 or newer). It bundles Python, Qt,
 and encryption libraries. It does not download Python packages at launch.
 APT may download the Linux display and FIDO-permission prerequisites during
@@ -15,7 +15,7 @@ installation. Mint 21 needs a build made on its older base; this particular
 binary is not claimed compatible with it.
 
 ```sh
-sudo apt install ./wormwright-vault_0.1.5_amd64.deb
+sudo apt install ./wormwright-vault_0.1.6_amd64.deb
 ```
 
 Open **Wormwright Vault** from the application menu. If the key is not detected
@@ -154,8 +154,8 @@ automatic retained versions are not forgotten-password recovery.
 
 ## CSV import and export
 
-**Import Vault CSV** previews plain-text vault exports by default; the legacy
-Atlas encryption option remains available. **Export to CSV** exports every
+**Import Vault CSV** previews plain-text vault exports. No legacy
+encryption format, encryption key, or initialization vector is requested. **Export to CSV** exports every
 entry, including passwords and notes, regardless of the current search.
 Export requires an explicit plain-text warning confirmation, creates a new
 file with owner-only permissions, and never overwrites an existing file.
@@ -171,3 +171,7 @@ not sufficient. Cancelled or failed authentication creates no export file.
 Creating a new vault opens one dialog with New master password and Confirm
 master password fields. Both must match and contain at least 12 characters.
 Cancelling creates no vault; existing vault unlock uses its current password.
+
+Each main-table Show button opens a separate, resizable window with 32-point
+monospace password text. The table stays masked. Closing, switching entries,
+searching/refreshing, or locking clears and closes the password display.
