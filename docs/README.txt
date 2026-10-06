@@ -11,7 +11,7 @@ dummy entries are created. The demo password previously suggested was
 Atlas-Demo-2026!; it is public and intended only for dummy data.
 Change Fallback Password permits any non-empty length. You may choose your
 Linux login/sudo password, but it remains an independent vault password.
-VanWormAI never invokes sudo or authenticates against Linux. Linux password
+Wormwright AI never invokes sudo or authenticates against Linux. Linux password
 changes do not automatically change the vault password.
 
 EXISTING VAULTS
@@ -56,7 +56,7 @@ prototype; enrolling another replaces it after confirmation. A safety backup
 is saved before enrollment or password changes. Either the key OR the
 fallback password unlocks; this is not a requirement to supply both factors.
 A key reset invalidates its previous credential. Use the fallback to enroll
-a replacement. Do not run VanWormAI with sudo. Physical enrollment/unlock
+a replacement. Do not run Wormwright AI with sudo. Physical enrollment/unlock
 still needs verification on your laptop; software/protocol tests passed.
 
 BACKUP AND RESTORE
