@@ -12,6 +12,10 @@ import uuid
 from nacl.secret import SecretBox
 from vault import Vault, VaultError
 
+class SyncConflict(VaultError):
+    pass
+
+
 DEFAULT_LIMIT = 10
 
 
@@ -124,7 +128,7 @@ def synchronize(vault):
         elif baseline and local_hash == baseline and remote_hash:
             action = 'Downloaded shared changes. Unlock the updated vault to continue.'
         else:
-            raise VaultError('Both copies changed, or these copies have not been paired. Nothing was overwritten. Keep both copies and resolve the differences before syncing.')
+            raise SyncConflict('Both copies changed, or these copies have not been paired. Nothing was overwritten. Keep both copies and resolve the differences before syncing.')
         if remote_hash and remote_hash != local_hash:
             # Validate that this is the same encrypted vault, not another vault.
             other = Vault(snapshot)

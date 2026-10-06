@@ -15,7 +15,9 @@ from exporter import export_csv
 from hooks import default_vault, send, LocalControl
 from search import matching_ids
 from history import VaultHistory
-from sync import configure, read_settings, synchronize, DEFAULT_LIMIT
+from sync import configure, read_settings, synchronize, DEFAULT_LIMIT, SyncConflict
+from conflicts import Comparison
+from conflict_dialog import ConflictDialog
 
 
 class KeyTask(QThread):
@@ -273,7 +275,7 @@ class Window(QMainWindow):
         else:
             if self.dialog:
                 self.dialog.reject()
-                if isinstance(self.dialog, ImportPreview):
+                if hasattr(self.dialog, "clear_secrets"):
                     self.dialog.clear_secrets()
                 else:
                     for field in self.dialog.fields.values():
@@ -578,11 +580,50 @@ class Window(QMainWindow):
                 self.lock()
             self.update_state()
             QMessageBox.information(self, 'Sync complete', result)
+        except SyncConflict:
+            self.resolve_sync_conflict()
         except Exception as error:
             if not self.vault.unlocked:
                 self.lock()
             self.update_state()
             QMessageBox.warning(self, 'Sync stopped', str(error))
+
+    def resolve_sync_conflict(self):
+        comparison = None
+        try:
+            comparison = Comparison(self.vault)
+            password, ok = QInputDialog.getText(self, 'Unlock shared vault for comparison',
+                'Enter the shared vault’s master / fallback password:', QLineEdit.EchoMode.Password)
+            if not ok or not self.vault.unlocked:
+                return
+            comparison.unlock_shared(password)
+            password = ''
+            self.dialog = ConflictDialog(self, comparison)
+            if self.dialog.exec() != QDialog.DialogCode.Accepted or not self.vault.unlocked:
+                return
+            choices = self.dialog.choices()
+            answer = QMessageBox.question(self, 'Apply resolved entries?',
+                'Write your selected entries to both vault copies? Encrypted safety backups of both originals will be kept. '
+                'The local vault will then use the shared vault’s password and YubiKey settings.',
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
+            if answer != QMessageBox.StandardButton.Yes:
+                return
+            safety = comparison.apply(choices)
+            self.lock()
+            QMessageBox.information(self, 'Differences resolved',
+                'Both copies now contain your selected entries. Unlock using the shared vault’s credentials.\n\nSafety backups:\n' + '\n'.join(map(str, safety)))
+        except Exception as error:
+            QMessageBox.warning(self, 'Resolution stopped', str(error))
+        finally:
+            if self.dialog:
+                self.dialog.clear_secrets()
+                self.dialog.deleteLater()
+                self.dialog = None
+            if comparison:
+                comparison.close()
+            if not self.vault.unlocked:
+                self.lock()
+            self.update_state()
 
     def backup(self):
         from datetime import datetime
@@ -809,7 +850,7 @@ class Window(QMainWindow):
         self.clear_clipboard()
         if self.dialog:
             self.dialog.reject()
-            if isinstance(self.dialog, ImportPreview):
+            if hasattr(self.dialog, "clear_secrets"):
                 self.dialog.clear_secrets()
             else:
                 for field in self.dialog.fields.values():
