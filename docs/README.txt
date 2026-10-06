@@ -32,8 +32,9 @@ Add, edit, clone, delete, copy, and per-row Show controls are available. Show op
 resizable window with large password text; the main table remains masked.
 Closing, searching, refreshing, or locking clears the display. Double-click an entry to edit it.
 Copy clears after 30 seconds if the clipboard still contains that password;
-clipboard history managers may retain copies. The vault locks five minutes
-after unlocking (fixed session timeout rather than inactivity timeout).
+clipboard history managers may retain copies. Lock Settings controls automatic locking after inactivity, default five minutes.
+Choose 1–10080 minutes or Unlimited (0), with a warning and confirmation.
+Unlimited requires manual locking. Keyboard, clicks and scrolling reset the timer.
 
 ENCRYPTION
 Argon2id with libsodium MODERATE settings (about 256 MiB memory) derives the
@@ -49,7 +50,7 @@ YUBIKEY PIN + TOUCH
 Use a FIDO2 key with hmac-secret, such as your YubiKey 5 Nano (5.8).
 Unlock with the vault password and select Set Up YubiKey. Confirm the vault
 password, enter the existing FIDO2 PIN, and touch when the key flashes.
-Enrollment may require two touches. The app then locks; PIN + touch is the
+Enrollment may require two touches. The app remains open; PIN + touch is the
 primary option, and Use Fallback Password reveals the password option.
 Enrollment does not reset the key, modify its PIN, enable OTP, or change
 existing Linux/site credentials. Only one key is enrolled per vault in this
@@ -67,9 +68,9 @@ or your home server. A backup retains its password and key enrollment from
 the time it was created. Old backups still work with their old passwords.
 Restore Backup replaces the whole current vault, not a merge. Supply the
 backup's password. The app validates it, creates an encrypted safety backup
-beside the current vault, replaces it, and locks. Wrong passwords or damaged
+beside the current vault, replaces it, and stays open. Wrong passwords or damaged
 backups leave the current vault unchanged. Use the restored password or its
-enrolled key to unlock afterward. One running instance is enforced per vault
+enrolled key for future unlocks. One running instance is enforced per vault
 path. Backup/restore is not multi-device synchronization.
 
 IMPORT VAULT CSV
