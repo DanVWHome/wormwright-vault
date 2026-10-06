@@ -3,14 +3,14 @@ import sys
 import threading
 from collections import Counter
 from pathlib import Path
-from PySide6.QtGui import QIcon, QPixmap
+from PySide6.QtGui import QIcon, QPixmap, QFont
 from PySide6.QtCore import Qt, QTimer, QThread, QEventLoop
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QPushButton, QLineEdit, QTableWidget, QTableWidgetItem, QAbstractItemView,
     QHeaderView, QMessageBox, QDialog, QFormLayout, QTextEdit, QDialogButtonBox, QFileDialog,
-    QComboBox, QCheckBox, QProgressDialog, QInputDialog, QSpinBox)
+    QCheckBox, QProgressDialog, QInputDialog, QSpinBox)
 from vault import Vault, VaultError
-from importer import read_export, decode_legacy
+from importer import read_export
 from exporter import export_csv
 from hooks import default_vault, send, LocalControl
 from search import matching_ids
@@ -38,7 +38,7 @@ class ImportPreview(QDialog):
     def __init__(self, parent, records):
         super().__init__(parent)
         self.records = records
-        self.setWindowTitle('Preview Atlas Import')
+        self.setWindowTitle('Preview Vault Import')
         self.resize(900, 500)
         layout = QVBoxLayout(self)
         layout.addWidget(QLabel(f'{len(records)} entries • Exact duplicates will be skipped • A safety backup is saved before import'))
@@ -113,12 +113,40 @@ class EntryDialog(QDialog):
         return {**self.record, **{key: field.text() for key, field in self.fields.items()}, 'notes': self.notes.toPlainText()}
 
 
+class PasswordDisplay(QDialog):
+    """Non-modal, large plain-text display cleared when closed or locked."""
+    def __init__(self, parent, record):
+        super().__init__(parent)
+        self.setWindowTitle('Password — ' + record['description'])
+        self.resize(800, 260)
+        layout = QVBoxLayout(self)
+        self.password_text = QTextEdit()
+        self.password_text.setReadOnly(True)
+        font = QFont('monospace', 32)
+        font.setStyleHint(QFont.StyleHint.Monospace)
+        self.password_text.setFont(font)
+        self.password_text.setPlainText(record['password'])
+        layout.addWidget(self.password_text)
+        close = QPushButton('Close')
+        close.clicked.connect(self.reject)
+        layout.addWidget(close)
+
+    def done(self, result):
+        self.password_text.clear()
+        super().done(result)
+
+    def closeEvent(self, event):
+        self.password_text.clear()
+        super().closeEvent(event)
+
+
 class Window(QMainWindow):
     def __init__(self, path):
         super().__init__()
         self.vault = Vault(path)
         self.records = []
         self.dialog = None
+        self.password_display = None
         self.clipboard_value = None
         self.password_fallback = False
         self.key_task = None
@@ -559,38 +587,11 @@ class Window(QMainWindow):
         filename, _ = QFileDialog.getOpenFileName(self, 'Choose Vault CSV export', str(self.vault.path.parent), 'CSV export (*.csv)')
         if not filename:
             return
-        settings = QDialog(self)
-        settings.setWindowTitle('Vault CSV format')
-        form = QFormLayout(settings)
-        mode = QComboBox()
-        mode.addItems(['Passwords already exported as plain text', 'Legacy Atlas laptop encryption (AES-128-CTR)'])
-        key = QLineEdit()
-        key.setEchoMode(QLineEdit.EchoMode.Password)
-        iv = QLineEdit('7200918362482138')
-        form.addRow('Password format', mode)
-        form.addRow('Legacy encryption key', key)
-        form.addRow('Legacy initialization vector', iv)
-        note = QLabel('Use the settings from the code that created the export.\nThe migrated Atlas format is not supported yet.\nLegacy encryption cannot reliably detect a wrong key; verify the preview.')
-        form.addRow(note)
-        key.setEnabled(False)
-        iv.setEnabled(False)
-        mode.currentIndexChanged.connect(lambda index: (key.setEnabled(index == 1), iv.setEnabled(index == 1)))
-        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
-        buttons.accepted.connect(settings.accept)
-        buttons.rejected.connect(settings.reject)
-        form.addRow(buttons)
-        if settings.exec() != QDialog.DialogCode.Accepted:
-            key.clear()
-            settings.deleteLater()
-            return
         records = []
         try:
             records = read_export(filename)
-            if mode.currentIndex() == 1:
-                records = decode_legacy(records, key.text(), iv.text())
-            key.clear()
             if not self.vault.unlocked:
-                raise VaultError('The vault locked while choosing import settings. Unlock it and try again.')
+                raise VaultError('The vault locked while choosing the CSV. Unlock it and try again.')
             self.dialog = ImportPreview(self, records)
             if self.dialog.exec() == QDialog.DialogCode.Accepted and self.vault.unlocked:
                 imported, skipped, safety = self.vault.import_records(records)
@@ -602,8 +603,6 @@ class Window(QMainWindow):
         except Exception as error:
             QMessageBox.warning(self, 'Import not completed', str(error))
         finally:
-            key.clear()
-            settings.deleteLater()
             if self.dialog:
                 self.dialog.clear_secrets()
                 self.dialog.deleteLater()
@@ -631,6 +630,7 @@ class Window(QMainWindow):
             QMessageBox.warning(self, 'Restore not completed', str(error))
 
     def refresh(self):
+        self.close_password_display()
         if not self.vault.unlocked:
             return
         try:
@@ -659,22 +659,27 @@ class Window(QMainWindow):
             password_label.setStyleSheet('color: #202020; background: transparent; border: none;')
             password_layout.addWidget(password_label, 1)
             reveal = QPushButton('Show')
-            reveal.setCheckable(True)
             reveal.setFixedWidth(54)
-            reveal.toggled.connect(
-                lambda checked, entry_id=record['id'], label=password_label, button=reveal:
-                self.reveal_password(entry_id, checked, label, button)
-            )
+            reveal.clicked.connect(lambda checked=False, entry_id=record['id']: self.show_password(entry_id))
             password_layout.addWidget(reveal)
             self.table.setCellWidget(row, 4, password_cell)
         self.table.resizeRowsToContents()
 
-    def reveal_password(self, entry_id, checked, label, button):
+    def close_password_display(self):
+        if self.password_display is not None:
+            self.password_display.reject()
+            self.password_display.deleteLater()
+            self.password_display = None
+
+    def show_password(self, entry_id):
+        self.close_password_display()
         record = next((record for record in self.records if record['id'] == entry_id), None)
-        visible = checked and self.vault.unlocked and record is not None
-        label.setText(record['password'] if visible else '••••••••')
-        label.setCursorPosition(0)
-        button.setText('Hide' if visible else 'Show')
+        if not self.vault.unlocked or record is None:
+            return
+        self.password_display = PasswordDisplay(self, record)
+        self.password_display.show()
+        self.password_display.raise_()
+        self.password_display.activateWindow()
 
     def selected(self):
         row = self.table.currentRow()
@@ -731,6 +736,7 @@ class Window(QMainWindow):
             self.refresh()
 
     def lock(self):
+        self.close_password_display()
         self.lock_timer.stop()
         self.pending_lookup = None
         self.password_fallback = False
