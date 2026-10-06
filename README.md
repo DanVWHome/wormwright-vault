@@ -7,7 +7,7 @@ fallback unlock the vault.
 
 ## Install the prototype
 
-The supplied `wormwright-vault_0.1.9_amd64.deb` targets **Linux Mint 22.x on
+The supplied `wormwright-vault_0.1.10_amd64.deb` targets **Linux Mint 22.x on
 Intel/AMD 64-bit computers** (glibc 2.39 or newer). It bundles Python, Qt,
 and encryption libraries. It does not download Python packages at launch.
 APT may download the Linux display and FIDO-permission prerequisites during
@@ -15,7 +15,7 @@ installation. Mint 21 needs a build made on its older base; this particular
 binary is not claimed compatible with it.
 
 ```sh
-sudo apt install ./wormwright-vault_0.1.9_amd64.deb
+sudo apt install ./wormwright-vault_0.1.10_amd64.deb
 ```
 
 Open **Wormwright Vault** from the application menu. If the key is not detected
@@ -130,7 +130,7 @@ shared copy directly for editing. Do not use a cloud-mirrored folder.
 The first device uploads its vault. Copy that shared vault to a local file on the
 next device, unlock the local copy, choose the same shared folder, and sync once
 to pair it. Thereafter local-only changes upload and server-only changes download.
-A download locks the app; unlock using the credentials in the updated copy.
+Downloads refresh the authenticated session without locking. Future unlocks use the credentials in the updated copy.
 Fallback-password and YubiKey changes travel with the vault. Old backups retain
 their old credentials. When both copies changed, sync stops without overwriting;
 keep both files and reconcile the entries manually. There is no force-overwrite
@@ -193,4 +193,8 @@ Sync inspects and builds encrypted SQLite snapshots locally. The shared folder i
 
 When both copies changed or a new device is not paired, Sync Now opens an in-app comparison after requesting the shared vault’s master/fallback password. Select each row to compare description, link, username, notes, and masked passwords. Password differences are flagged; revealing is an explicit checkbox inside the app. Choose Local, Shared, or Omit for every differing entry, or use all entries from one copy. An absent-side choice removes that entry from the result. Entries with different IDs remain separate even if their descriptions match.
 
-Apply confirms the operation, checks that neither copy changed during review, and keeps encrypted `.conflict-*.sqlite` safety backups of both originals. These backups are not automatically pruned. The resolved result uses the shared vault’s encryption and password/YubiKey settings so a separately created desktop vault can join it. Both files receive the same result and the local vault locks. If a transfer fails midway, keep the safety backups and both copies; file replacement across two devices is not one atomic transaction. There is no three-way deletion inference: missing entries require explicit review. Cancelling leaves both vaults unchanged.
+Apply confirms the operation, checks that neither copy changed during review, and keeps encrypted `.conflict-*.sqlite` safety backups of both originals. These backups are not automatically pruned. The resolved result uses the shared vault’s encryption and password/YubiKey settings so a separately created desktop vault can join it. Both files receive the same result and the authenticated local session stays open. If a transfer fails midway, keep the safety backups and both copies; file replacement across two devices is not one atomic transaction. There is no three-way deletion inference: missing entries require explicit review. Cancelling leaves both vaults unchanged.
+
+### Lock settings
+
+Lock Settings sets a per-device inactivity timeout from 1 to 10080 minutes, with a five-minute default. Zero is Unlimited and requires acknowledging a warning. Unlimited disables automatic locking; manual Lock and closing the app still clear the session. Keyboard, mouse clicks and scrolling restart the inactivity timer. Preferences contain no passwords and are not synced. Sync, conflict resolution, shared-folder selection, password/key changes and authenticated restore keep the session open. Selecting the already-open vault also leaves it open; switching to a different local vault requires authentication. Failed validation still locks the session when needed.
