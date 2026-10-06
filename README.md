@@ -7,7 +7,7 @@ fallback unlock the vault.
 
 ## Install the prototype
 
-The supplied `wormwright-vault_0.1.4_amd64.deb` targets **Linux Mint 22.x on
+The supplied `wormwright-vault_0.1.5_amd64.deb` targets **Linux Mint 22.x on
 Intel/AMD 64-bit computers** (glibc 2.39 or newer). It bundles Python, Qt,
 and encryption libraries. It does not download Python packages at launch.
 APT may download the Linux display and FIDO-permission prerequisites during
@@ -15,7 +15,7 @@ installation. Mint 21 needs a build made on its older base; this particular
 binary is not claimed compatible with it.
 
 ```sh
-sudo apt install ./wormwright-vault_0.1.4_amd64.deb
+sudo apt install ./wormwright-vault_0.1.5_amd64.deb
 ```
 
 Open **Wormwright Vault** from the application menu. If the key is not detected
@@ -167,3 +167,7 @@ Use **Back Up Vault** when you want an encrypted backup.
 Every CSV export requires fresh authentication: the enrolled YubiKey with PIN
 and touch, or the current fallback/master password. Being unlocked alone is
 not sufficient. Cancelled or failed authentication creates no export file.
+
+Creating a new vault opens one dialog with New master password and Confirm
+master password fields. Both must match and contain at least 12 characters.
+Cancelling creates no vault; existing vault unlock uses its current password.
