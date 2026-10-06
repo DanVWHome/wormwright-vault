@@ -71,7 +71,7 @@ backups leave the current vault unchanged. Use the restored password or its
 enrolled key to unlock afterward. One running instance is enforced per vault
 path. Backup/restore is not multi-device synchronization.
 
-IMPORT ATLAS CSV
+IMPORT VAULT CSV
 Import preview supports the legacy laptop CSV and explicitly selected
 plain-text exports. Required headers: description, link, user_name, pw,
 notes. Extra columns are ignored. Legacy AES-128-CTR decoding needs the key
@@ -108,3 +108,14 @@ Continue dummy-data testing before putting real credentials into this app.
 Synchronization and forgotten-password recovery are not implemented. Delete
 is permanent except for copies retained in backups. Your uploaded source
 and CSV are not bundled or imported automatically.
+
+EXPORT TO CSV
+Export to CSV saves all entries, including passwords, as plain text after an
+explicit warning. Choose a new filename; existing files are never overwritten.
+The file uses owner-only permissions and can be imported with Import Vault CSV
+using its default plain-text format. Export includes entries outside the current
+search. Use Back Up Vault for encrypted backups.
+
+Every CSV export requires fresh authentication: the enrolled YubiKey with PIN
+and touch, or the current fallback/master password. Being unlocked alone is
+not sufficient. Cancelled or failed authentication creates no export file.
