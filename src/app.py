@@ -623,7 +623,13 @@ def main():
     parser = argparse.ArgumentParser(description='VanWormAI Vault')
     parser.add_argument('vault', nargs='?', type=Path, default=default_vault())
     parser.add_argument('--lookup')
+    parser.add_argument('--check-yubikey-runtime', action='store_true', help=argparse.SUPPRESS)
     args = parser.parse_args()
+    if args.check_yubikey_runtime:
+        from yubikey_auth import RP_ID, ORIGIN, DefaultClientDataCollector
+        DefaultClientDataCollector(ORIGIN).verify_rp_id(RP_ID, ORIGIN)
+        print('YubiKey runtime data loaded successfully.')
+        return
     path = args.vault
     request = {'version': 1, 'action': 'lookup', 'query': args.lookup} if args.lookup is not None else {'version': 1, 'action': 'open'}
     try:
