@@ -7,7 +7,7 @@ fallback unlock the vault.
 
 ## Install the prototype
 
-The supplied `wormwright-vault_0.1.10_amd64.deb` targets **Linux Mint 22.x on
+The supplied `wormwright-vault_0.1.11_amd64.deb` targets **Linux Mint 22.x on
 Intel/AMD 64-bit computers** (glibc 2.39 or newer). It bundles Python, Qt,
 and encryption libraries. It does not download Python packages at launch.
 APT may download the Linux display and FIDO-permission prerequisites during
@@ -15,7 +15,7 @@ installation. Mint 21 needs a build made on its older base; this particular
 binary is not claimed compatible with it.
 
 ```sh
-sudo apt install ./wormwright-vault_0.1.10_amd64.deb
+sudo apt install ./wormwright-vault_0.1.11_amd64.deb
 ```
 
 Open **Wormwright Vault** from the application menu. If the key is not detected
@@ -198,3 +198,11 @@ Apply confirms the operation, checks that neither copy changed during review, an
 ### Lock settings
 
 Lock Settings sets a per-device inactivity timeout from 1 to 10080 minutes, with a five-minute default. Zero is Unlimited and requires acknowledging a warning. Unlimited disables automatic locking; manual Lock and closing the app still clear the session. Keyboard, mouse clicks and scrolling restart the inactivity timer. Preferences contain no passwords and are not synced. Sync, conflict resolution, shared-folder selection, password/key changes and authenticated restore keep the session open. Selecting the already-open vault also leaves it open; switching to a different local vault requires authentication. Failed validation still locks the session when needed.
+
+### Automatic sync
+
+Sync Settings enables background sync by default for configured vaults, with an interval of 30 seconds (select 5–86400 seconds). Sync runs at startup, on the interval, after entry edits, and before normal closing, including while locked. It never unlocks a vault by itself. Locked transfers use encrypted files without a data key; SQLite envelopes are checked and authenticated contents are verified when you unlock. Downloads preserve the locked state. When already unlocked, incoming entries are authenticated before replacement. Disabling automatic sync also disables its startup and closing runs; Sync Now remains available. NAS mounting and VPN connection are handled by the user.
+
+Network operations run on encrypted local snapshots in a worker thread. Edits during uploads trigger another upload; edits during downloads stop replacement and preserve both copies for review. Results wait until open dialogs close. Shared-folder changes, local-vault switching and manual Sync Now wait for the current worker. Conflicts and unavailable shares appear in the sync status without recurring popups. Click Sync Now for conflict review. Close waits for its final sync attempt; errors warn that the local copy is saved. A crash, forced exit, unavailable NAS can leave changes unsynced.
+
+Remote changes normally arrive within the receiving device’s polling interval when both apps are running and connected; edits are uploaded immediately after saving. Devices editing simultaneously can still require explicit conflict resolution. Background success does not reset the inactivity-lock timer. No-change polls create no retained backups. Automatic backup limits still apply.
