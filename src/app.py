@@ -390,11 +390,9 @@ class Window(QMainWindow):
             if self.vault.path.exists():
                 self.vault.unlock(password)
             else:
-                confirm, ok = self.password_confirmation()
+                password, ok = self.password_creation()
                 if not ok:
                     return
-                if confirm != password:
-                    raise VaultError('Master passwords do not match.')
                 self.vault.create(password)
                 for description, link, username, secret in [('Demo Mail', 'https://mail.example.com', 'demo@example.com', 'Demo-only-password!'), ('Demo Router', 'https://router.example.com', 'admin', 'Another-demo-password!'), ('Demo Account', 'https://account.example.com', 'demo', 'Demo-only-password!')]:
                     self.vault.save({'description': description, 'link': link, 'user_name': username, 'password': secret, 'notes': 'Dummy entry. No real credentials.'})
@@ -407,9 +405,41 @@ class Window(QMainWindow):
             self.update_state()
             QMessageBox.warning(self, 'Cannot unlock vault', str(error))
 
-    def password_confirmation(self):
-        from PySide6.QtWidgets import QInputDialog
-        return QInputDialog.getText(self, 'Create encrypted vault', 'Confirm your new master password (12+ characters):', QLineEdit.EchoMode.Password)
+    def password_creation(self):
+        dialog = QDialog(self)
+        dialog.setWindowTitle('Create encrypted vault')
+        form = QFormLayout(dialog)
+        password = QLineEdit()
+        password.setObjectName('new_master_password')
+        password.setEchoMode(QLineEdit.EchoMode.Password)
+        confirmation = QLineEdit()
+        confirmation.setObjectName('confirm_master_password')
+        confirmation.setEchoMode(QLineEdit.EchoMode.Password)
+        form.addRow('New master password (12+ characters):', password)
+        form.addRow('Confirm master password:', confirmation)
+        error = QLabel()
+        error.setWordWrap(True)
+        form.addRow(error)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        def accept():
+            if len(password.text()) < 12:
+                error.setText('Use a master password of at least 12 characters.')
+            elif password.text() != confirmation.text():
+                error.setText('Master passwords do not match. Enter the same password in both fields.')
+            else:
+                dialog.accept()
+        buttons.accepted.connect(accept)
+        buttons.rejected.connect(dialog.reject)
+        form.addRow(buttons)
+        password.setFocus()
+        try:
+            if dialog.exec() != QDialog.DialogCode.Accepted:
+                return '', False
+            return password.text(), True
+        finally:
+            password.clear()
+            confirmation.clear()
+            dialog.deleteLater()
 
     def choose(self):
         filename, _ = QFileDialog.getOpenFileName(self, 'Open Wormwright AI vault', str(self.vault.path.parent), 'SQLite vault (*.sqlite);;All files (*)')
