@@ -7,7 +7,7 @@ fallback unlock the vault.
 
 ## Install the prototype
 
-The supplied `wormwright-vault_0.1.7_amd64.deb` targets **Linux Mint 22.x on
+The supplied `wormwright-vault_0.1.8_amd64.deb` targets **Linux Mint 22.x on
 Intel/AMD 64-bit computers** (glibc 2.39 or newer). It bundles Python, Qt,
 and encryption libraries. It does not download Python packages at launch.
 APT may download the Linux display and FIDO-permission prerequisites during
@@ -15,7 +15,7 @@ installation. Mint 21 needs a build made on its older base; this particular
 binary is not claimed compatible with it.
 
 ```sh
-sudo apt install ./wormwright-vault_0.1.7_amd64.deb
+sudo apt install ./wormwright-vault_0.1.8_amd64.deb
 ```
 
 Open **Wormwright Vault** from the application menu. If the key is not detected
@@ -186,3 +186,5 @@ removes only the history entry, never the vault. Locations are stored in an
 owner-only file at `$XDG_DATA_HOME/vanwormai-vault/recent-vaults.json` (normally
 `~/.local/share/vanwormai-vault/recent-vaults.json`). Passwords and entries are
 not included. History is local to each device and is not synced.
+
+Sync inspects and builds encrypted SQLite snapshots locally. The shared folder is used only for file transfers, lock directories, and atomic replacement; SQLite does not open databases on the share. The share must support those filesystem operations.
