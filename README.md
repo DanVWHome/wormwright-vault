@@ -63,6 +63,7 @@ Python 3.10+ is required. On Mint, install `python3-venv`, `libxcb-cursor0`,
 and `libxkbcommon-x11-0` if needed, then run:
 
 ```sh
+chmod +x start.sh control.sh
 ./start.sh
 ```
 
