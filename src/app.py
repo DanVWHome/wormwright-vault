@@ -3,6 +3,7 @@ import sys
 import threading
 from collections import Counter
 from pathlib import Path
+from PySide6.QtGui import QIcon, QPixmap
 from PySide6.QtCore import Qt, QTimer, QThread, QEventLoop
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QPushButton, QLineEdit, QTableWidget, QTableWidgetItem, QAbstractItemView,
@@ -120,15 +121,26 @@ class Window(QMainWindow):
         self.password_fallback = False
         self.key_task = None
         self.pending_lookup = None
-        self.setWindowTitle('VanWormAI Vault — Offline Prototype')
+        self.setWindowTitle('Wormwright Vault — Offline Prototype')
+        asset = Path(__file__).resolve().parent.parent / 'assets/wormwright-vault.png'
+        if getattr(sys, 'frozen', False):
+            asset = Path(sys._MEIPASS) / 'assets/wormwright-vault.png'
+        self.setWindowIcon(QIcon(str(asset)))
         self.resize(1100, 640)
         root = QWidget()
         self.setCentralWidget(root)
         layout = QVBoxLayout(root)
-        title = QLabel('VanWormAI Vault')
+        title = QLabel('Wormwright Vault')
         title.setStyleSheet('font-size: 26px; font-weight: bold;')
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(title)
+        brand = QHBoxLayout()
+        brand.addStretch()
+        mascot = QLabel()
+        mascot.setPixmap(QPixmap(str(asset)).scaled(72, 72, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+        brand.addWidget(mascot)
+        brand.addWidget(title)
+        brand.addStretch()
+        layout.addLayout(brand)
         self.status = QLabel()
         layout.addWidget(self.status)
         unlock = QHBoxLayout()
@@ -349,7 +361,7 @@ class Window(QMainWindow):
             field.setEchoMode(QLineEdit.EchoMode.Password)
             layout.addRow(label, field)
             fields.append(field)
-        layout.addRow(QLabel('You may choose the same password as Linux login/sudo.\nVanWormAI does not authenticate against Linux or update that password.\nA changed password may be any non-empty length. Old backups retain their old password.'))
+        layout.addRow(QLabel('You may choose the same password as Linux login/sudo.\nWormwright AI does not authenticate against Linux or update that password.\nA changed password may be any non-empty length. Old backups retain their old password.'))
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
         buttons.accepted.connect(form.accept)
         buttons.rejected.connect(form.reject)
@@ -398,7 +410,7 @@ class Window(QMainWindow):
         return QInputDialog.getText(self, 'Create encrypted vault', 'Confirm your new master password (12+ characters):', QLineEdit.EchoMode.Password)
 
     def choose(self):
-        filename, _ = QFileDialog.getOpenFileName(self, 'Open VanWormAI vault', str(self.vault.path.parent), 'SQLite vault (*.sqlite);;All files (*)')
+        filename, _ = QFileDialog.getOpenFileName(self, 'Open Wormwright AI vault', str(self.vault.path.parent), 'SQLite vault (*.sqlite);;All files (*)')
         if filename:
             self.lock()
             self.vault = Vault(filename)
@@ -620,7 +632,7 @@ class Window(QMainWindow):
 def main():
     import argparse
     os.umask(0o077)
-    parser = argparse.ArgumentParser(description='VanWormAI Vault')
+    parser = argparse.ArgumentParser(description='Wormwright Vault')
     parser.add_argument('vault', nargs='?', type=Path, default=default_vault())
     parser.add_argument('--lookup')
     parser.add_argument('--check-yubikey-runtime', action='store_true', help=argparse.SUPPRESS)

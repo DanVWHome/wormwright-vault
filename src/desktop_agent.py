@@ -9,7 +9,7 @@ from hooks import LocalControl, default_vault, send, agent_vault, launch_command
 
 
 def main():
-    parser = argparse.ArgumentParser(description='VanWormAI desktop-session launcher')
+    parser = argparse.ArgumentParser(description='Wormwright AI desktop-session launcher')
     parser.add_argument('--vault', type=Path, default=default_vault())
     args = parser.parse_args()
     os.umask(0o077)

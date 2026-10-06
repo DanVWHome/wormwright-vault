@@ -167,7 +167,7 @@ def route(vault, request):
 
 
 def main():
-    parser = argparse.ArgumentParser(description='VanWormAI Vault UI control; no secret access')
+    parser = argparse.ArgumentParser(description='Wormwright Vault UI control; no secret access')
     parser.add_argument('action', choices=ACTIONS)
     parser.add_argument('query', nargs='?')
     parser.add_argument('--vault', type=Path, default=default_vault())
