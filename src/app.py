@@ -20,6 +20,7 @@ from conflicts import Comparison
 from conflict_dialog import ConflictDialog
 from preferences import read_timeout, save_timeout
 from auto_sync import AutoSyncTask, finish_sync
+from version import VERSION
 
 
 class KeyTask(QThread):
@@ -161,7 +162,7 @@ class Window(QMainWindow):
         self.sync_task = None
         self.closing_after_sync = False
         self.close_ready = False
-        self.setWindowTitle('Wormwright Vault — Offline Prototype')
+        self.setWindowTitle(f'Wormwright Vault {VERSION} — Offline Prototype')
         asset = Path(__file__).resolve().parent.parent / 'assets/wormwright-vault.png'
         if getattr(sys, 'frozen', False):
             asset = Path(sys._MEIPASS) / 'assets/wormwright-vault.png'
@@ -181,6 +182,9 @@ class Window(QMainWindow):
         brand.addWidget(title)
         brand.addStretch()
         layout.addLayout(brand)
+        version_label = QLabel(f'Version {VERSION} • Offline prototype')
+        version_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(version_label)
         self.status = QLabel()
         layout.addWidget(self.status)
         unlock = QHBoxLayout()
