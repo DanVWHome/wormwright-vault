@@ -19,6 +19,7 @@ from sync import configure, read_settings, synchronize, DEFAULT_LIMIT, SyncConfl
 from conflicts import Comparison
 from conflict_dialog import ConflictDialog
 from preferences import read_timeout, save_timeout
+from auto_sync import AutoSyncTask, finish_sync
 
 
 class KeyTask(QThread):
@@ -157,6 +158,9 @@ class Window(QMainWindow):
         self.password_fallback = False
         self.key_task = None
         self.pending_lookup = None
+        self.sync_task = None
+        self.closing_after_sync = False
+        self.close_ready = False
         self.setWindowTitle('Wormwright Vault — Offline Prototype')
         asset = Path(__file__).resolve().parent.parent / 'assets/wormwright-vault.png'
         if getattr(sys, 'frozen', False):
@@ -245,6 +249,12 @@ class Window(QMainWindow):
         layout.addWidget(timeout_button)
         self.lock_status = QLabel()
         layout.addWidget(self.lock_status)
+        self.sync_status = QLabel('Automatic sync: configure the shared folder to start')
+        layout.addWidget(self.sync_status)
+        self.auto_timer = QTimer(self)
+        self.auto_timer.timeout.connect(self.auto_sync)
+        self.auto_timer.start(30000)
+        QTimer.singleShot(0, self.auto_sync)
         self.lock_timer = QTimer(self)
         self.lock_timer.setSingleShot(True)
         self.lock_timer.timeout.connect(self.lock)
@@ -405,6 +415,7 @@ class Window(QMainWindow):
             self.update_state()
             self.refresh()
             self.complete_pending_lookup()
+            QTimer.singleShot(0, self.auto_sync)
         except Exception as error:
             self.lock()
             QMessageBox.warning(self, 'YubiKey unlock failed', str(error))
@@ -488,6 +499,7 @@ class Window(QMainWindow):
             self.update_state()
             self.refresh()
             self.complete_pending_lookup()
+            QTimer.singleShot(0, self.auto_sync)
         except Exception as error:
             self.vault.lock()
             self.update_state()
@@ -536,6 +548,8 @@ class Window(QMainWindow):
             QMessageBox.warning(self, 'History not saved', 'The vault is unlocked, but its location could not be added to recent history.')
 
     def recent_vaults(self):
+        if self.sync_busy():
+            return
         dialog = QDialog(self)
         dialog.setWindowTitle('Recent Vaults')
         dialog.resize(760, 340)
@@ -590,13 +604,80 @@ class Window(QMainWindow):
             dialog.deleteLater()
 
     def choose(self):
+        if self.sync_busy():
+            return
         filename, _ = QFileDialog.getOpenFileName(self, 'Open Wormwright AI vault', str(self.vault.path.parent), 'SQLite vault (*.sqlite);;All files (*)')
         if filename and Path(filename).resolve() != self.vault.path.resolve():
             self.lock()
             self.vault = Vault(filename)
             self.update_state()
 
+    def sync_busy(self):
+        if self.sync_task is not None:
+            QMessageBox.information(self, 'Sync in progress', 'Background sync is finishing. Try this operation again shortly.')
+            return True
+        return False
+
+    def auto_sync(self, force=False):
+        if self.sync_task is not None or not self.vault.path.is_file():
+            return False
+        if QApplication.activeModalWidget() is not None or self.dialog is not None:
+            return False
+        try:
+            settings = read_settings(self.vault)
+            self.auto_timer.setInterval(settings.get('interval', 30) * 1000)
+            if not settings.get('folder') or not settings.get('automatic', True):
+                return False
+            self.sync_task = AutoSyncTask(self.vault, settings, self)
+            self.sync_task.finished.connect(self.auto_sync_finished)
+            self.sync_status.setText('Syncing in the background…')
+            self.sync_task.start()
+            return True
+        except Exception as error:
+            self.sync_status.setText('Automatic sync paused: ' + str(error))
+            return False
+
+    def auto_sync_finished(self):
+        task = self.sync_task
+        if task is None:
+            return
+        if QApplication.activeModalWidget() is not None or self.dialog is not None:
+            QTimer.singleShot(250, self.auto_sync_finished)
+            return
+        changed = False
+        error = None
+        try:
+            selected_id = self.table.item(self.table.currentRow(), 0).data(Qt.ItemDataRole.UserRole) if self.table.currentRow() >= 0 else None
+            changed = finish_sync(self.vault, task)
+            self.sync_status.setText(task.result)
+            if task.result.startswith('Downloaded'):
+                self.update_state()
+                self.refresh()
+                for row in range(self.table.rowCount()):
+                    if self.table.item(row, 0).data(Qt.ItemDataRole.UserRole) == selected_id:
+                        self.table.selectRow(row)
+                        break
+        except Exception as failure:
+            error = str(failure)
+            self.sync_status.setText('Sync needs attention — click Sync Now: ' + error)
+        finally:
+            task.cleanup()
+            task.deleteLater()
+            self.sync_task = None
+        if self.closing_after_sync:
+            if changed and error is None and self.auto_sync():
+                return
+            if error:
+                QMessageBox.warning(self, 'Closing with local changes saved',
+                    'The final sync did not complete. Your local vault is saved. Retry Sync Now when you reopen.\n\n' + error)
+            self.close_ready = True
+            self.close()
+        elif changed and error is None:
+            QTimer.singleShot(0, self.auto_sync)
+
     def sync_settings(self):
+        if self.sync_busy():
+            return
         dialog = QDialog(self)
         dialog.setWindowTitle('Shared-folder sync')
         form = QFormLayout(dialog)
@@ -614,7 +695,14 @@ class Window(QMainWindow):
         limit.setRange(1, 1000)
         limit.setValue(settings.get('limit', DEFAULT_LIMIT))
         form.addRow('Maximum automatic sync backups per copy:', limit)
-        note = QLabel('Use a dedicated folder for this vault. Each device keeps a local copy.\nSync runs only when you click Sync Now. Conflicting edits are never overwritten.\nOnly automatic sync backups are pruned after successful sync; manual backups are kept.\nUse a mounted network share, not a folder mirrored by another sync program.')
+        automatic = QCheckBox('Automatically sync at startup, before closing, and on the interval (including while locked)')
+        automatic.setChecked(settings.get('automatic', True))
+        form.addRow(automatic)
+        interval = QSpinBox()
+        interval.setRange(5, 86400)
+        interval.setValue(settings.get('interval', 30))
+        form.addRow('Background sync interval (seconds):', interval)
+        note = QLabel('Use a dedicated folder for this vault. Each device keeps a local copy.\nBackground sync needs the NAS connection; locked sync transfers encrypted files only. Conflicts require Sync Now review. Conflicting edits are never overwritten.\nOnly automatic sync backups are pruned after successful sync; manual backups are kept.\nUse a mounted network share, not a folder mirrored by another sync program.')
         note.setWordWrap(True)
         form.addRow(note)
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
@@ -623,11 +711,15 @@ class Window(QMainWindow):
         form.addRow(buttons)
         if dialog.exec() == QDialog.DialogCode.Accepted:
             try:
-                configure(self.vault, folder.text(), limit.value())
+                configure(self.vault, folder.text(), limit.value(), automatic.isChecked(), interval.value())
+                self.auto_timer.setInterval(interval.value() * 1000)
+                QTimer.singleShot(0, self.auto_sync)
             except Exception as error:
                 QMessageBox.warning(self, 'Sync settings', str(error))
 
     def sync_now(self):
+        if self.sync_busy():
+            return
         try:
             result = synchronize(self.vault)
             if not self.vault.unlocked:
@@ -771,6 +863,8 @@ class Window(QMainWindow):
             records.clear()
 
     def restore(self):
+        if self.sync_busy():
+            return
         from PySide6.QtWidgets import QInputDialog
         filename, _ = QFileDialog.getOpenFileName(self, 'Choose encrypted backup to restore', str(self.vault.path.parent), 'SQLite vault (*.sqlite);;All files (*)')
         if not filename:
@@ -857,6 +951,7 @@ class Window(QMainWindow):
             if self.dialog.exec() == QDialog.DialogCode.Accepted and self.vault.unlocked:
                 self.vault.save(self.dialog.value())
                 self.refresh()
+                QTimer.singleShot(0, self.auto_sync)
         except Exception as error:
             QMessageBox.warning(self, 'Cannot save', str(error))
         finally:
@@ -896,6 +991,7 @@ class Window(QMainWindow):
         if record and QMessageBox.question(self, 'Delete password', f"Delete {record['description']}?", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No) == QMessageBox.StandardButton.Yes and self.vault.unlocked:
             self.vault.delete(record['id'])
             self.refresh()
+            QTimer.singleShot(0, self.auto_sync)
 
     def lock(self):
         self.close_password_display()
@@ -922,6 +1018,14 @@ class Window(QMainWindow):
         self.update_state()
 
     def closeEvent(self, event):
+        if not self.close_ready:
+            self.closing_after_sync = True
+            if self.sync_task is not None or self.auto_sync():
+                self.centralWidget().setEnabled(False)
+                self.sync_status.setText('Finishing sync before closing…')
+                event.ignore()
+                return
+        self.auto_timer.stop()
         self.lock()
         event.accept()
 
