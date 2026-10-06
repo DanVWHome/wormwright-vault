@@ -8,12 +8,13 @@ from PySide6.QtCore import Qt, QTimer, QThread, QEventLoop
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QPushButton, QLineEdit, QTableWidget, QTableWidgetItem, QAbstractItemView,
     QHeaderView, QMessageBox, QDialog, QFormLayout, QTextEdit, QDialogButtonBox, QFileDialog,
-    QCheckBox, QProgressDialog, QInputDialog, QSpinBox)
+    QListWidget, QListWidgetItem, QCheckBox, QProgressDialog, QInputDialog, QSpinBox)
 from vault import Vault, VaultError
 from importer import read_export
 from exporter import export_csv
 from hooks import default_vault, send, LocalControl
 from search import matching_ids
+from history import VaultHistory
 from sync import configure, read_settings, synchronize, DEFAULT_LIMIT
 
 
@@ -144,6 +145,7 @@ class Window(QMainWindow):
     def __init__(self, path):
         super().__init__()
         self.vault = Vault(path)
+        self.vault_history = VaultHistory()
         self.records = []
         self.dialog = None
         self.password_display = None
@@ -191,6 +193,9 @@ class Window(QMainWindow):
         choose = QPushButton('Choose Vault…')
         choose.clicked.connect(self.choose)
         unlock.addWidget(choose)
+        recent = QPushButton('Recent Vaults…')
+        recent.clicked.connect(self.recent_vaults)
+        unlock.addWidget(recent)
         layout.addLayout(unlock)
         actions = QHBoxLayout()
         self.search = QLineEdit()
@@ -342,6 +347,7 @@ class Window(QMainWindow):
             response = self.key_request(lambda event: unlock(settings, pin, event))
             self.vault.unlock_yubikey(settings, response)
             response = None
+            self.remember_vault()
             self.lock_timer.start(5 * 60 * 1000)
             self.update_state()
             self.refresh()
@@ -424,6 +430,7 @@ class Window(QMainWindow):
                 self.vault.create(password)
                 for description, link, username, secret in [('Demo Mail', 'https://mail.example.com', 'demo@example.com', 'Demo-only-password!'), ('Demo Router', 'https://router.example.com', 'admin', 'Another-demo-password!'), ('Demo Account', 'https://account.example.com', 'demo', 'Demo-only-password!')]:
                     self.vault.save({'description': description, 'link': link, 'user_name': username, 'password': secret, 'notes': 'Dummy entry. No real credentials.'})
+            self.remember_vault()
             self.lock_timer.start(5 * 60 * 1000)
             self.update_state()
             self.refresh()
@@ -467,6 +474,63 @@ class Window(QMainWindow):
         finally:
             password.clear()
             confirmation.clear()
+            dialog.deleteLater()
+
+    def remember_vault(self):
+        try:
+            self.vault_history.remember(self.vault.path)
+        except OSError:
+            QMessageBox.warning(self, 'History not saved', 'The vault is unlocked, but its location could not be added to recent history.')
+
+    def recent_vaults(self):
+        dialog = QDialog(self)
+        dialog.setWindowTitle('Recent Vaults')
+        dialog.resize(760, 340)
+        layout = QVBoxLayout(dialog)
+        layout.addWidget(QLabel('Remembered locations on this device. Removing a location does not delete its vault.'))
+        locations = QListWidget()
+        def populate():
+            locations.clear()
+            for path in self.vault_history.read():
+                item = QListWidgetItem(path + ('' if Path(path).is_file() else ' — unavailable'))
+                item.setData(Qt.ItemDataRole.UserRole, path)
+                locations.addItem(item)
+        populate()
+        layout.addWidget(locations)
+        buttons = QHBoxLayout()
+        open_button = QPushButton('Open selected')
+        forget_button = QPushButton('Forget selected')
+        close_button = QPushButton('Close')
+        for button in (open_button, forget_button, close_button):
+            buttons.addWidget(button)
+        layout.addLayout(buttons)
+        def open_selected():
+            item = locations.currentItem()
+            if item is None:
+                return
+            path = item.data(Qt.ItemDataRole.UserRole)
+            if not Path(path).is_file():
+                QMessageBox.warning(dialog, 'Vault unavailable', 'This vault is missing or its drive is not mounted. Its location stays in history.\n\n' + path)
+                return
+            self.lock()
+            self.vault = Vault(path)
+            self.update_state()
+            dialog.accept()
+        def forget_selected():
+            item = locations.currentItem()
+            if item is not None:
+                try:
+                    self.vault_history.forget(item.data(Qt.ItemDataRole.UserRole))
+                    populate()
+                except OSError as error:
+                    QMessageBox.warning(dialog, 'History not updated', str(error))
+        open_button.clicked.connect(open_selected)
+        locations.itemDoubleClicked.connect(lambda *_: open_selected())
+        forget_button.clicked.connect(forget_selected)
+        close_button.clicked.connect(dialog.reject)
+        try:
+            dialog.exec()
+        finally:
             dialog.deleteLater()
 
     def choose(self):
