@@ -7,7 +7,7 @@ fallback unlock the vault.
 
 ## Install the prototype
 
-The supplied `wormwright-vault_0.1.8_amd64.deb` targets **Linux Mint 22.x on
+The supplied `wormwright-vault_0.1.9_amd64.deb` targets **Linux Mint 22.x on
 Intel/AMD 64-bit computers** (glibc 2.39 or newer). It bundles Python, Qt,
 and encryption libraries. It does not download Python packages at launch.
 APT may download the Linux display and FIDO-permission prerequisites during
@@ -15,7 +15,7 @@ installation. Mint 21 needs a build made on its older base; this particular
 binary is not claimed compatible with it.
 
 ```sh
-sudo apt install ./wormwright-vault_0.1.8_amd64.deb
+sudo apt install ./wormwright-vault_0.1.9_amd64.deb
 ```
 
 Open **Wormwright Vault** from the application menu. If the key is not detected
@@ -188,3 +188,9 @@ owner-only file at `$XDG_DATA_HOME/vanwormai-vault/recent-vaults.json` (normally
 not included. History is local to each device and is not synced.
 
 Sync inspects and builds encrypted SQLite snapshots locally. The shared folder is used only for file transfers, lock directories, and atomic replacement; SQLite does not open databases on the share. The share must support those filesystem operations.
+
+### Resolve sync differences
+
+When both copies changed or a new device is not paired, Sync Now opens an in-app comparison after requesting the shared vault’s master/fallback password. Select each row to compare description, link, username, notes, and masked passwords. Password differences are flagged; revealing is an explicit checkbox inside the app. Choose Local, Shared, or Omit for every differing entry, or use all entries from one copy. An absent-side choice removes that entry from the result. Entries with different IDs remain separate even if their descriptions match.
+
+Apply confirms the operation, checks that neither copy changed during review, and keeps encrypted `.conflict-*.sqlite` safety backups of both originals. These backups are not automatically pruned. The resolved result uses the shared vault’s encryption and password/YubiKey settings so a separately created desktop vault can join it. Both files receive the same result and the local vault locks. If a transfer fails midway, keep the safety backups and both copies; file replacement across two devices is not one atomic transaction. There is no three-way deletion inference: missing entries require explicit review. Cancelling leaves both vaults unchanged.
