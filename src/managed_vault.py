@@ -502,6 +502,23 @@ class ManagedVault:
         data['identity']['disabled'] = bool(disabled)
         self._management_change(lambda: self.db.execute('UPDATE users SET recovery=? WHERE id=?', (self._encode(data), uid)))
 
+    def emergency_lockdown(self):
+        """Disable ordinary accounts and rotate entry keys in one transaction."""
+        admin=self.administration()
+        manager=self.meta['manager'].decode()
+        users={uid:data for uid,data in admin['users'].items() if uid!=manager}
+        def operation():
+            for uid,data in users.items():
+                data['identity']['disabled']=True
+                self.db.execute('UPDATE users SET recovery=? WHERE id=?',(self._encode(data),uid))
+        self._management_change(operation)
+        return len(users)
+
+    def export_database(self,destination):
+        """Manager-only encrypted provision/recovery copy, without device settings."""
+        self._admin_box()
+        self.backup(destination)
+
     def reset_password(self, uid, password):
         admin = self.administration()
         if uid not in admin['users'] or not password:

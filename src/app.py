@@ -175,6 +175,10 @@ class PasswordDisplay(QDialog):
 class Window(QMainWindow):
     def __init__(self, path):
         super().__init__()
+        from help_window import show_help
+        help_menu=self.menuBar().addMenu('Help');help_menu.addAction('Searchable Help…',lambda:show_help(self))
+        from about_window import show_about
+        help_menu.addSeparator();help_menu.addAction('About Wormwright Vault…',lambda:show_about(self))
         self.vault = Vault(path)
         self.vault_history = VaultHistory()
         self.lock_minutes = read_timeout()

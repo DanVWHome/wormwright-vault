@@ -5,7 +5,7 @@ import tempfile
 import shutil
 from collections import Counter
 from PySide6.QtCore import Qt,QTimer,QThread,QEvent
-from PySide6.QtGui import QIcon,QPixmap
+from PySide6.QtGui import QIcon,QPixmap,QColor
 from PySide6.QtWidgets import (QApplication,QMainWindow,QWidget,QVBoxLayout,QHBoxLayout,
     QLabel,QLineEdit,QPushButton,QTableWidget,QTableWidgetItem,QHeaderView,QAbstractItemView,
     QDialog,QDialogButtonBox,QFormLayout,QTextEdit,QMessageBox,QFileDialog,QCheckBox,QListWidget,
@@ -55,6 +55,7 @@ class ManagedWindow(QMainWindow):
         self.vault=ManagedVault(path);self.manager_app=manager_app;self.records=[];self.pending_lookup=None
         self.dialog=None;self.key_task=None;self.password_display=None;self.clipboard_value=None;self.task=None
         self.again=False;self.closing=False;self.conflicted=False;self.manual=False;self.companion=None
+        self.lockdown_pending=False
         self.history=VaultHistory();self.lock_minutes=read_timeout();self.password_fallback=False
         self.setWindowTitle(f'Wormwright Vault{" Manager" if manager_app else ""} {VERSION} — Managed test build')
         self.resize(1160,700)
@@ -78,29 +79,33 @@ class ManagedWindow(QMainWindow):
         heading=QLabel('Welcome — choose how to get started');heading.setStyleSheet('font-size:20px;font-weight:bold');welcome_layout.addWidget(heading)
         help_text=QLabel('Create a new vault to start from scratch. Open a local copy of an existing new-format vault, or convert an older personal vault into a separate copy. Your original vault is preserved. Local vaults can be saved anywhere on this computer; a separate folder is optional.');help_text.setWordWrap(True);welcome_layout.addWidget(help_text)
         welcome_row=QHBoxLayout()
-        for text,callback in [('Create New Vault…',self.new_vault),('Open Existing Vault…',self.open_existing),('Convert Personal Vault…',self.convert)]:
+        for text,callback in [('Create New Vault…',self.new_vault),('Open Existing Vault…',self.open_existing),('Convert Personal Vault…',self.convert),('Load Demo Vault…',self.load_demo)]:
             b=QPushButton(text);b.clicked.connect(callback);welcome_row.addWidget(b)
         welcome_layout.addLayout(welcome_row);layout.addWidget(self.welcome)
         row=QHBoxLayout();self.search=QLineEdit();self.search.setPlaceholderText('Search description, link or notes');self.search.textChanged.connect(self.refresh);row.addWidget(self.search)
         self.controls=[]
         for text,callback in [('Add',self.add),('Edit',self.edit),('Clone',self.clone),('Delete',self.delete),('Lock',self.lock)]:
             button=QPushButton(text);button.clicked.connect(callback);row.addWidget(button);self.controls.append(button)
+            if text=='Delete':self.delete_button=button
         copy=QPushButton('Copy Field');menu=QMenu(copy)
         for field,label in [('description','Description'),('link','Link'),('user_name','User Name'),('password','Password'),('notes','Notes')]:
             menu.addAction(label,lambda checked=False,f=field:self.copy_field(f))
         copy.setMenu(menu);row.addWidget(copy);self.controls.append(copy);layout.addLayout(row)
         self.manager_row=QWidget();row=QHBoxLayout(self.manager_row);row.setContentsMargins(0,0,0,0)
-        self.show_deleted=QCheckBox('Show deleted entries');self.show_deleted.setObjectName('show_deleted');self.show_deleted.toggled.connect(self.refresh);row.addWidget(self.show_deleted);row.addStretch();layout.addWidget(self.manager_row)
+        self.show_deleted=QCheckBox('Show deleted entries');self.show_deleted.setObjectName('show_deleted');self.show_deleted.toggled.connect(self.refresh);row.addWidget(self.show_deleted)
+        self.only_deleted=QCheckBox('Only deleted entries');self.only_deleted.setObjectName('only_deleted');self.only_deleted.toggled.connect(self.refresh);row.addWidget(self.only_deleted);row.addStretch();layout.addWidget(self.manager_row)
         vault_menu=self.menuBar().addMenu('Vault')
         self.location_actions=[]
         for text,callback in [('Open Existing Vault…',self.open_existing),('Create New Vault…',self.new_vault),('Recent Vaults…',self.recent),('Convert Personal Vault…',self.convert),('Choose Folder for New Vaults…',self.choose_folder)]:
             action=vault_menu.addAction(text);action.triggered.connect(callback);self.location_actions.append(action)
+        vault_menu.addAction('Load Demo Vault…',self.load_demo)
         vault_menu.addSeparator();vault_menu.addAction('Vault Locations Explained…',self.location_help)
         data_menu=self.menuBar().addMenu('Import / Export / Backup')
         for text,callback in [('Import Vault CSV…',self.import_entries),('Export to CSV…',self.export),('Back Up Vault…',self.backup),('Restore Backup…',self.restore_backup)]:
             action=data_menu.addAction(text);action.triggered.connect(callback);self.controls.append(action)
+        self.database_export_action=data_menu.addAction('Export Database…',self.export_database)
         self.management_menu=self.menuBar().addMenu('Manage');self.management_actions=[]
-        for text,callback in [('Users & Groups…',self.manage),('Individual Exclusions…',self.exclusions),('Restore Selected Entry',self.restore_entry),('Permanently Delete Selected Entry…',self.purge)]:
+        for text,callback in [('Users & Groups…',self.manage),('Individual Exclusions…',self.exclusions),('Restore Selected Entry',self.restore_entry),('Permanently Delete Selected Entry…',self.purge),('Emergency Lockdown…',self.emergency_lockdown)]:
             action=self.management_menu.addAction(text);action.triggered.connect(callback);self.management_actions.append(action)
         view_menu=self.menuBar().addMenu('View');view_menu.addAction('Open Vault View',lambda:self.open_view(False));view_menu.addAction('Open Manager View',lambda:self.open_view(True))
         settings_menu=self.menuBar().addMenu('Settings');self.settings_actions=[]
@@ -109,11 +114,12 @@ class ManagedWindow(QMainWindow):
         settings_menu.addSeparator()
         for text,callback in [('Set Up YubiKey…',self.enroll),('Change Account Password…',self.change_password)]:
             action=settings_menu.addAction(text);action.triggered.connect(callback);self.controls.append(action)
-        self.table=QTableWidget(0,7);self.table.setHorizontalHeaderLabels(['Description','Link','User Name','Password','Groups','Status','Duplicate Password'])
+        help_menu=self.menuBar().addMenu('Help');help_menu.addAction('Searchable Help…',self.show_help);help_menu.addSeparator();help_menu.addAction('About Wormwright Vault…',self.show_about)
+        self.table=QTableWidget(0,6);self.table.setHorizontalHeaderLabels(['Description','Link','User Name','Password','Groups','Duplicate Password'])
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows);self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers);self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.table.horizontalHeader().setSectionResizeMode(3,QHeaderView.ResizeMode.Fixed);self.table.setColumnWidth(3,240)
-        self.table.cellDoubleClicked.connect(self.edit);layout.addWidget(self.table)
+        self.table.cellDoubleClicked.connect(self.edit);self.table.currentCellChanged.connect(self.selection_changed);layout.addWidget(self.table)
         self.sync_status=QLabel('Sync not configured.');layout.addWidget(self.sync_status)
         layout.addWidget(QLabel('Clipboard clears after 30 seconds • Deleted entries are visible only to the Manager'))
         self.clipboard_timer=QTimer(self);self.clipboard_timer.setSingleShot(True);self.clipboard_timer.timeout.connect(self.clear_clipboard)
@@ -121,6 +127,29 @@ class ManagedWindow(QMainWindow):
         self.auto_timer=QTimer(self);self.auto_timer.timeout.connect(self.auto_sync);self.auto_timer.start(self.interval())
         QApplication.instance().installEventFilter(self)
         self.update_state();QTimer.singleShot(0,self.auto_sync)
+
+    def show_about(self):
+        from about_window import show_about
+        show_about(self)
+
+    def show_help(self):
+        from help_window import show_help
+        show_help(self)
+
+    def load_demo(self):
+        if self.task:return
+        source=Path(getattr(sys,'_MEIPASS',Path(__file__).parent.parent))/'assets/demo/wormwright-demo.sqlite'
+        path,_=QFileDialog.getSaveFileName(self,'Save a local demo copy',str(managed_locations.local_folder()/'wormwright-demo.sqlite'),'SQLite vault (*.sqlite)',options=QFileDialog.Option.DontConfirmOverwrite)
+        if not path:return
+        target=Path(path)
+        try:
+            # Exclusive creation: never overwrite a real vault or a previous demo.
+            with source.open('rb') as incoming,target.open('xb') as outgoing:
+                target.chmod(0o600);shutil.copyfileobj(incoming,outgoing)
+            self.open_path(target);self.username.setText('DemoManager')
+            QMessageBox.information(self,'Demo vault ready','This is disposable test data.\nUsername: DemoManager\nPassword: DemoVault123!\n\nSee Help → Searchable Help → Learn with the demo vault for other accounts. The vault remains locked until you sign in.')
+        except FileExistsError:self.warning('That file already exists. Choose a new filename to keep it safe.')
+        except Exception as error:self.warning(error)
 
     def warning(self,error):QMessageBox.warning(self,'Wormwright Vault',str(error))
 
@@ -150,7 +179,10 @@ class ManagedWindow(QMainWindow):
         self.management_menu.menuAction().setVisible(self.vault.manager)
         for action in self.management_actions:action.setEnabled(unlocked and not self.task)
         for action in self.location_actions+self.settings_actions:action.setEnabled(not self.task)
+        self.database_export_action.setEnabled(self.vault.manager and not self.task)
         self.show_deleted.setEnabled(unlocked and not self.task)
+        self.only_deleted.setEnabled(self.vault.manager and not self.task)
+        self.selection_changed()
         if self.companion:self.companion.refresh()
 
     def show_fallback(self):self.password_fallback=True;self.update_state()
@@ -222,17 +254,24 @@ class ManagedWindow(QMainWindow):
         self.close_display();self.records=[];self.table.setRowCount(0)
         if not self.vault.unlocked:return
         try:
-            records=self.vault.entries(include_deleted=self.vault.manager and self.show_deleted.isChecked())
+            records=self.vault.entries(include_deleted=self.vault.manager and (self.show_deleted.isChecked() or self.only_deleted.isChecked()))
+            if self.vault.manager and self.only_deleted.isChecked():records=[r for r in records if r.get('deleted')]
             ids=set(matching_ids(records,self.search.text())) if self.search.text() else {r['id'] for r in records}
             self.records=[r for r in records if r['id'] in ids]
             counts=Counter(r['password'] for r in records if r.get('password'))
             self.table.setRowCount(len(self.records))
             for i,record in enumerate(self.records):
-                values=[record['description'],record.get('link',''),record.get('user_name',''),'••••••••',
+                values=[record['description']+(' [Deleted]' if record.get('deleted') else ''),record.get('link',''),record.get('user_name',''),'••••••••',
                     ', '.join(self.vault.available_groups().get(g,'Shared group') for g in record['groups']),
-                    'Deleted' if record.get('deleted') else '',f'Used in {counts[record["password"]]} entries' if counts[record.get('password','')]>1 else '']
-                for j,value in enumerate(values):self.table.setItem(i,j,QTableWidgetItem(value))
-                widget=QWidget();row=QHBoxLayout(widget);row.setContentsMargins(2,0,2,0);row.addWidget(QLabel('••••••••'))
+                    f'Used in {counts[record["password"]]} entries' if counts[record.get('password','')]>1 else '']
+                for j,value in enumerate(values):
+                    item=QTableWidgetItem(value)
+                    if record.get('deleted'):
+                        item.setBackground(QColor('#ffe0e0'));item.setForeground(QColor('#7c1515'));item.setToolTip('Deleted entry — select to restore')
+                    self.table.setItem(i,j,item)
+                widget=QWidget()
+                if record.get('deleted'):widget.setStyleSheet('QWidget { background-color: #ffe0e0; color: #7c1515; }')
+                row=QHBoxLayout(widget);row.setContentsMargins(2,0,2,0);row.addWidget(QLabel('••••••••'))
                 for text,callback in [('Show',lambda checked=False,r=record:self.reveal(r)),('Copy',lambda checked=False,r=record:self.copy_text(r['password']))]:
                     button=QPushButton(text);button.clicked.connect(callback);row.addWidget(button)
                 self.table.setCellWidget(i,3,widget)
@@ -267,13 +306,24 @@ class ManagedWindow(QMainWindow):
         if self.selected():
             record={k:v for k,v in self.selected().items() if k in ('description','link','user_name','password','notes')}
             self.edit_record(record)
+    def selection_changed(self,*args):
+        record=self.selected()
+        restoring=bool(record and record.get('deleted') and self.vault.manager)
+        self.delete_button.setText('Restore' if restoring else 'Delete')
+        self.delete_button.setEnabled(bool(record) and self.vault.unlocked and not self.task and not self.dialog)
+        if self.companion:
+            self.companion.delete_button.setText(self.delete_button.text())
+
     def delete(self):
         record=self.selected()
+        if record and record.get('deleted') and self.vault.manager:
+            if not self.task:self.restore_entry()
+            return
         if record and not self.task and QMessageBox.question(self,'Hide entry','Mark this entry as deleted? The Manager can restore it.',QMessageBox.StandardButton.Yes|QMessageBox.StandardButton.No,QMessageBox.StandardButton.No)==QMessageBox.StandardButton.Yes:
             try:self.vault.delete(record['id']);self.refresh();self.auto_sync()
             except Exception as error:self.warning(error)
     def restore_entry(self):
-        if self.selected() and self.vault.manager:
+        if self.selected() and self.vault.manager and not self.task:
             try:self.vault.restore_entry(self.selected()['id']);self.refresh();self.auto_sync()
             except Exception as error:self.warning(error)
     def purge(self):
@@ -377,7 +427,7 @@ class ManagedWindow(QMainWindow):
         if path.resolve()==self.vault.path.resolve():return
         if path.exists() and not is_managed(path):
             QMessageBox.information(self,'Personal vault','This is a legacy personal vault. Use Convert Personal Vault to create a new-format copy; the original stays usable.');return
-        self.lock();self.vault=ManagedVault(path);self.username.clear();self.search.clear();self.password_fallback=False;self.update_state()
+        self.lock();self.lockdown_pending=False;self.vault=ManagedVault(path);self.username.clear();self.search.clear();self.password_fallback=False;self.update_state()
     def recent(self):
         dialog=QDialog(self);dialog.setWindowTitle('Recent Vaults');layout=QVBoxLayout(dialog);items=QListWidget();items.addItems(self.history.read());layout.addWidget(items)
         buttons=QDialogButtonBox(QDialogButtonBox.StandardButton.Open|QDialogButtonBox.StandardButton.Cancel);layout.addWidget(buttons);buttons.accepted.connect(dialog.accept);buttons.rejected.connect(dialog.reject)
@@ -518,12 +568,19 @@ class ManagedWindow(QMainWindow):
             if uid!=self.vault.uid:users.addItem(data['identity']['name'],uid)
         if not users.count():self.warning('Create an ordinary user first.');dialog.deleteLater();return
         layout.addWidget(QLabel('Checked entries are excluded, even through group membership or creation.'));layout.addWidget(users)
-        records=self.vault.entries(True);items=QListWidget();layout.addWidget(items)
+        search=QLineEdit();search.setObjectName('exclusion_search');search.setPlaceholderText('Search description, link or notes…');layout.addWidget(search)
+        records=self.vault.entries(True);items=QListWidget();items.setObjectName('exclusion_entries');layout.addWidget(items)
+        def filter_entries():
+            ids=set(matching_ids(records,search.text())) if search.text() else {r['id'] for r in records}
+            for i in range(items.count()):
+                item=items.item(i);item.setHidden(item.data(Qt.ItemDataRole.UserRole) not in ids)
+        search.textChanged.connect(filter_entries)
         def fill():
             items.clear();uid=users.currentData()
             for record in records:
                 item=QListWidgetItem(record['description']+(' [Deleted]' if record.get('deleted') else ''));item.setData(Qt.ItemDataRole.UserRole,record['id']);item.setFlags(item.flags()|Qt.ItemFlag.ItemIsUserCheckable)
                 item.setCheckState(Qt.CheckState.Checked if any(r['entry']==record['id'] and r['user']==uid for r in admin['exclusions']) else Qt.CheckState.Unchecked);items.addItem(item)
+            filter_entries()
         users.currentIndexChanged.connect(fill);fill()
         buttons=QDialogButtonBox(QDialogButtonBox.StandardButton.Save|QDialogButtonBox.StandardButton.Cancel);layout.addWidget(buttons);buttons.accepted.connect(dialog.accept);buttons.rejected.connect(dialog.reject)
         self.dialog=dialog
@@ -537,6 +594,32 @@ class ManagedWindow(QMainWindow):
                 self.refresh()
         except Exception as error:self.warning(error)
         finally:self.dialog=None;dialog.deleteLater();self.update_state();self.auto_sync()
+
+    def export_database(self):
+        if not self.vault.manager or self.task:return
+        password,ok=self.password_prompt()
+        if not ok:return
+        try:
+            self.vault.verify_password(password)
+            path,_=QFileDialog.getSaveFileName(self,'Export encrypted database for another device',str(managed_locations.local_folder()/'vault-for-device.sqlite'),'SQLite vault (*.sqlite)',options=QFileDialog.Option.DontConfirmOverwrite)
+            if not path:return
+            self.vault.export_database(path)
+            QMessageBox.information(self,'Encrypted database exported','This copy contains the whole encrypted vault. Each account can unlock only its permitted entries.\n\nOn the other computer choose Open Existing Vault, sign in, and configure the same shared sync folder. Sync this Manager copy before distributing it so it matches the shared master. Device settings and sync history are not included.')
+        except Exception as error:self.warning(error)
+
+    def emergency_lockdown(self):
+        if not self.vault.manager or self.task:return
+        if QMessageBox.warning(self,'Emergency Lockdown','Disable every ordinary account, including YubiKey access, while preserving the Manager? Connected devices are affected only after successfully downloading the update. Offline copies and previously copied passwords remain accessible. Re-enable users individually to recover.',QMessageBox.StandardButton.Yes|QMessageBox.StandardButton.No,QMessageBox.StandardButton.No)!=QMessageBox.StandardButton.Yes:return
+        password,ok=self.password_prompt()
+        if not ok:return
+        try:
+            self.vault.verify_password(password);count=self.vault.emergency_lockdown()
+            self.lockdown_pending=True;self.refresh();self.update_state()
+            self.sync_status.setText(f'Lockdown saved locally: {count} ordinary accounts disabled. Shared publication pending.')
+            if read_settings(self.vault).get('folder'):
+                self.conflicted=False;self.start_sync(True)
+            else:self.warning('Lockdown is saved locally. No shared folder is configured, so other devices have not received it. Configure NAS Sync Settings and sync to publish it.')
+        except Exception as error:self.warning(error)
 
     def backup(self):
         path,_=QFileDialog.getSaveFileName(self,'Back up encrypted vault','','SQLite vault (*.sqlite)')
@@ -648,12 +731,17 @@ class ManagedWindow(QMainWindow):
     def sync_finished(self):
         task=self.task;self.task=None
         self.conflicted=task.conflict
-        if task.error:self.sync_status.setText('Sync stopped: '+task.error)
+        if task.error:self.sync_status.setText(('Lockdown saved locally; shared publication pending. ' if self.lockdown_pending else '')+'Sync stopped: '+task.error)
         else:
             try:
                 session=self.vault.session()
                 if session:self.vault.resume(session)
                 self.refresh();self.sync_status.setText(task.result);self.complete_lookup()
+                if self.lockdown_pending:
+                    admin=self.vault.administration()
+                    if all(data['identity']['disabled'] for uid,data in admin['users'].items() if uid!=self.vault.uid):
+                        self.lockdown_pending=False;self.sync_status.setText('Lockdown synced to the shared master. Other devices are affected when they download it.')
+                    else:self.sync_status.setText('Lockdown was not retained during reconciliation. Review user accounts immediately.')
             except Exception as error:self.lock();self.sync_status.setText(str(error))
         task.deleteLater();self.update_state()
         if self.manual and task.error:

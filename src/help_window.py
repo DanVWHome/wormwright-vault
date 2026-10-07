@@ -1,0 +1,100 @@
+"""Offline, searchable help. Contains no live vault information or secrets."""
+from html import escape
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QDialog,QVBoxLayout,QLineEdit,QSplitter,QTreeWidget,QTreeWidgetItem,QTextBrowser,QLabel
+
+TOPICS = [
+('Getting started','Which app do I need?', '''Use Wormwright Vault for one person, even when you use several computers. Each computer keeps a local working copy and syncs with the same shared master file. Multiple devices do not require multiple user accounts or the Manager app.
+Use Wormwright Vault Manager when different people share one vault and need different access. The vault creator is the Manager. Ordinary users can use the basic Vault app. Launching Manager does not grant Manager permissions: your signed-in account controls access.
+These are managed test builds. Test with disposable data before adopting a new build for your personal vault.'''),
+('Getting started','Create, open and convert', '''On first launch with no vault, choose Create New Vault, Open Existing Vault, Convert Personal Vault, or Load Demo Vault. The demo is optional and is never selected automatically.
+Create asks where to save the file, your Manager username and a password entered twice. The initial master password needs at least 12 characters. Later password changes accept a nonempty password; a shorter password is less resistant to guessing.
+A new single-user vault hides the username field. Adding another user makes it managed and usernames appear at unlock. Convert creates a separate new-format copy of an older personal vault and preserves the original. Recent Vaults remembers locations, not passwords.'''),
+('Getting started','Learn with the demo vault', '''Load Demo Vault copies the bundled example into a local file you choose. It never edits the packaged original or overwrites another file. Extract a fresh copy whenever you want to start over.
+Sign in as DemoManager with DemoVault123! . There are 14 accounts, 10 groups and 224 entries, including 20 deleted entries. All accounts and passwords are fictional. Alice uses AliceDemo123!; Bob uses BobDemo123!; other names are Casey, Dana, Eli, Fran, Gale, Harper, Indigo, Jules, Kai and Lee, each using their name followed by Demo123! . DisabledDemo is deliberately disabled.
+Alice belongs to Family, Finance and Home but cannot see Family — Demo Account 01. Gale belongs to Guests but cannot see Guests — Demo Account 04. The demo kit reference includes all memberships and expected counts. Use a separate dedicated shared folder if syncing the demo.'''),
+('Step-by-step guides','Add a new user', """1. Manager: open the vault and sign in with your Manager account. Sync first to get the current shared copy.
+2. Open Manage → Users & Groups. Create any groups you need, then choose Add User.
+3. Enter a unique username, password and confirmation. Select the groups whose entries the person should receive. Review the access preview/full list before creating the account.
+4. Use Individual Exclusions if any specific entries must be hidden. Search the list to find them.
+5. Sync Now and check the status says the update succeeded. Resolve any account-policy conflict as Manager before distributing a copy.
+6. Choose Import / Export / Backup → Export Database, reauthenticate and save a new encrypted copy. Transfer that file to the user through a suitable private channel. Give them their username and password separately.
+7. User: install the Vault app, choose Open Existing Vault, select the transferred local file and sign in. The Manager app is optional and does not grant you Manager rights.
+8. Configure the same dedicated shared folder in NAS Sync Settings. Sync Now; verify success. If unpaired copies differ, ask the Manager to resolve them. Test that an expected shared entry is visible and a restricted entry is absent.
+9. Change the initial account password and optionally enroll your own YubiKey, then sync. No forced first-login password change is currently implemented."""),
+('Step-by-step guides','Replace a user’s lost local database', """1. User: preserve any remaining backups; do not create a new independent vault as a replacement.
+2. Manager: open the correct vault and successfully sync it with the shared master. If local and shared copies conflict, resolve them first.
+3. Check that the existing user is enabled and their group/exclusion assignments are correct. Reset their password if needed, then sync the update.
+4. Choose Export Database, reauthenticate and save a new encrypted file. Transfer it to the user. This keeps the existing vault identity and user account.
+5. User: save the file locally, choose Open Existing Vault, and sign in with your current credentials. A reset password leaves existing YubiKey enrollment intact.
+6. Configure the same mounted shared folder in NAS Sync Settings; enable automatic sync if desired, then Sync Now and check the result.
+7. Confirm entries and permissions. Changes that existed only in the deleted local file are not recovered by this export; a surviving backup may contain them. Ask the Manager before restoring an old whole-vault backup because it can restore old access settings."""),
+('Step-by-step guides','Set up the shared sync master', """1. On the first computer, create or open your local working vault. One person using multiple computers needs only the basic Vault app.
+2. Mount the network share in your operating system. Confirm you can create files there. Create a dedicated folder for this one vault; do not reuse another vault’s folder or mirror it with another sync program.
+3. Open Settings → NAS Sync Settings and choose that mounted folder. Choose automatic sync, interval and maximum automatic backups, then save.
+4. Choose Sync Now. With an empty shared folder, the app publishes the first master named wormwright-vault.sqlite. Keep using your local file rather than opening this shared master directly.
+5. Make a current encrypted database copy for each other computer. For a managed vault, the Manager uses Export Database. Do not create independent vaults on each computer and expect filenames to pair them.
+6. On each computer, open its local copy and configure the same dedicated shared folder. Its mount path can differ between computers. Choose Sync Now and verify success. Resolve unpaired differences as Manager if prompted.
+7. Add a disposable entry on one device and wait for successful sync. Confirm it appears on the second device after its next successful sync. Edit it there, then confirm the change returns to the first. Remove the test entry afterward.
+8. Keep the app running for background sync, including while locked. Offline devices catch up when the mounted share becomes available. Startup, unlock, edits and closing also trigger configured automatic syncing. Read the status if changes do not appear; do not assume publication succeeded.
+9. Use separate dedicated folders for the demo and your real vault. Automatic backup retention defaults to 10 per copy; manual backups are kept."""),
+('Vault locations and sync','Local folder versus shared folder', '''Your local working vault can be stored in any writable local folder, including your home folder (/home/dan). A dedicated local folder is optional. Linux paths are case-sensitive: /home/Dan and /home/dan can be different locations. A file chooser may label your home directory simply Home; this does not mean /home.
+Choose Folder for New Vaults changes the suggested location for future files. It does not move an existing vault. The save dialog lets you select another location.
+The NAS sync folder has a different requirement: use a dedicated folder for each shared vault. Keep your working file local and select the mounted shared folder in NAS Sync Settings. Do not use another sync program to mirror that folder.'''),
+('Vault locations and sync','Pair devices and automatic sync', '''Copy the same starting vault to each computer, then configure the same dedicated shared folder on each. Different independently created vaults are not automatically paired just because they have the same filename. Renaming a file does not convert or repair it.
+The app transfers encrypted snapshots through the mounted share; it does not operate a live SQLite database on the NAS. SMB or FTP access depends on the operating system mount supporting the necessary file operations and write permissions. Check that the share is mounted and writable on that device.
+Automatic sync is configurable, defaults to 30 seconds, and also runs at startup/unlock, after entry changes and before closing. It can transfer while locked, but the app must be running. An offline computer cannot receive changes immediately. A locked vault cannot perform every merge that requires decryption; unlock or review conflicts when prompted. Look at the sync status and use Sync Now to check progress.'''),
+('Vault locations and sync','Conflicts and backup retention', '''Independent entry changes can combine automatically. Competing changes to the same entry require review. Select a row to compare it, then choose which version to keep; selecting a row alone is not a resolution and does not enable Apply. Bulk choices are available when appropriate. Review every unresolved choice before applying.
+User/group/access-policy changes can require Manager reconciliation. Nothing should be silently overwritten to resolve an unresolved conflict.
+The automatic sync backup limit defaults to 10 per copy and can be changed in Sync Settings. Automatic backups are pruned after successful sync; manual backups are kept. A backup is not a substitute for checking that your devices have synced. Keep copies before major migrations or management changes.'''),
+('Entries and daily use','Search, edit, copy and show', '''Search filters description, link and notes using text matching. Clear it to see all accessible entries. Hidden or excluded entries are not made visible by searching.
+Add creates an entry; Edit changes the selected entry; Clone starts a copy. Add/Edit includes a random password generator using CSV-safe characters. You can still choose your own password.
+Show opens the password in a separate, large window for easy reading. Copy Password copies it without displaying it. Copy Field lets you copy description, link, username, password or notes. The app clears its clipboard value after 30 seconds; locking also clears it. Other clipboard history software can retain copied text.
+Duplicate Password indicates reuse among entries visible in the current session. It does not reveal passwords from inaccessible groups.'''),
+('Entries and daily use','CSV import, export and backups', '''Import Vault CSV loads ordinary CSV entries. Review the preview/mapping and confirm the import. CSV is a plain-text interchange format.
+Export to CSV requires reauthentication and exports accessible entries. The exported file is not encrypted: store it carefully and remove it when no longer needed. Backup preserves the encrypted vault instead. Restore Backup replaces data through the app’s restore workflow; make a backup before restoring.
+An ordinary account does not gain access to hidden entries through import/export or the Manager launcher.'''),
+('Users, groups and permissions','Groups and the Manager', '''Every new-format vault has encrypted users, groups and exclusions, even in single-user mode. Generic is the default group. Users and entries can belong to multiple groups. Sharing any group grants access unless an individual exclusion blocks it.
+The Manager can have a custom username, automatically belongs to all groups and cannot be unassigned. The Manager can manage users, group memberships, passwords, disabling and exclusions. Groups available in Add/Edit come from this vault, not a fixed list.
+The Users & Groups split window shows counts to avoid long lists. View Accessible Entries, View User Groups and View Members open searchable detail lists. When adding a user, review the sharing preview and full list before confirming.'''),
+('Users, groups and permissions','Editing, exclusions and deleted entries', '''Ordinary users can create entries in their groups and edit or soft-delete entries they can access through group membership or ownership. Only the Manager can change an existing entry’s group assignments. An individual exclusion blocks access even when a group or ownership would otherwise grant it. In Individual Exclusions, search description, link or notes to find entries. Filtering preserves checkbox choices for the selected user; Save applies those choices even for entries hidden by the search. Clear the search to see the full list.
+Delete marks an entry deleted. It disappears for ordinary users. Deleted rows have a red tint and a [Deleted] label beside the description, instead of a Status column. The Manager can check Show deleted entries to include them, or Only deleted entries to hide active entries; the search works within that filtered list. Select a marked record. The Delete button changes to Restore for that selection; click it to restore the entry. Manage → Restore Selected Entry is also available. Selecting an active entry changes the button back to Delete. Permanently Delete is Manager-only and removes the record from the working database. Older backups may still contain it.
+Disabling an account prevents current access. Removing access cannot erase passwords already seen, copied, exported or retained in an old offline vault or backup. Sync every device after access changes.'''),
+('Users, groups and permissions','Password resets, export and emergency lockdown', """A Manager password reset takes effect on another device after the Manager publishes it to the shared master and that device successfully downloads it. Its next password unlock requires the new password. An already-unlocked session stays unlocked, and an offline old copy still accepts the old password. A password reset does not remove YubiKey enrollment. Competing local edits can require Manager reconciliation.
+Export Database is a Manager-only, reauthenticated export of the entire encrypted database. Create a user and assign access, sync the Manager copy, then export and transfer the file. The recipient chooses Open Existing Vault, signs in and configures the same dedicated shared sync folder. This also replaces a lost local file. It preserves vault identity and credentials but excludes device settings and sync history. Only permitted entries can be decrypted by each account. Unsynced changes from a lost file require a backup.
+Emergency Lockdown disables all ordinary accounts in one operation, preserves the Manager and attempts immediate shared sync even when automatic syncing is disabled. Confirm and reauthenticate first. Check the status: saved locally is not the same as published to the master. A failed sync or conflict requires attention; no force-overwrite bypass is used. After devices download the update, ordinary sessions lock and password/YubiKey access is denied. Offline databases and old backups remain unaffected until updated. Already copied passwords cannot be recalled; change exposed account passwords separately. The Manager recovers access by re-enabling users individually after reviewing credentials and permissions. Lock Vault simply locks the current session and is not Emergency Lockdown."""),
+('Authentication and privacy','Passwords, YubiKey and lock settings', '''Saved account passwords must be recoverable, so vault contents are encrypted rather than hashed. Your unlock credentials protect encryption keys. Each managed user has separate credentials and optional YubiKey enrollment; the Manager has recovery/management capability.
+Set Up YubiKey enrolls the account using a compatible FIDO2 key, PIN and touch. Keep a working fallback password. On Linux the device needs user-level access and appropriate device permissions. Do not run the vault with sudo to bypass a device error.
+Lock Settings lets you change inactivity timeout or select unlimited with a warning. Unlimited keeps secrets available until you lock or close. The two views lock together. Changing a sync folder or managing the shared master should not itself lock the session.'''),
+('App views and integration','One app or both apps together', '''Either launcher can open a vault on its own. Account permissions are the same in both. The Manager view offers administration to a signed-in Manager; the Vault view is intended for daily entries.
+View → Open Vault View or Open Manager View opens the other window. Launching the second test app also opens the companion view. Both share one controller, vault session, search and edits; they are not separate concurrent database writers and cannot sign in as two different users in that session.
+Locking either locks both. Closing the extra view leaves the main window running. Closing the main window closes the shared session and stops background sync. To compare users, lock and sign in as another account, or test on different computers with separate local copies.'''),
+('App views and integration','AI lookup and current requirements', '''AI lookup hooks can start or focus the app and select search results with passwords masked. A locked vault presents authentication first. The hooks do not return passwords to AI. You decide when to show or copy a password in the app.
+The current installer targets 64-bit Linux Mint/Ubuntu. Windows, macOS and Fedora packaging are future goals, not verified support in this test build. YubiKey use requires compatible hardware and device access; network sync requires a mounted, writable share. Offline use works with a local vault.
+Help is available offline and does not read your entries or send them anywhere. For troubleshooting, record the app version, sync status and exact error without exposing passwords. Check the selected local file, account name, share mount and write permissions first.'''),
+]
+
+class HelpWindow(QDialog):
+    def __init__(self,parent=None):
+        super().__init__(parent);self.setWindowTitle('Wormwright Vault — Help');self.resize(1000,680)
+        layout=QVBoxLayout(self);self.search=QLineEdit();self.search.setPlaceholderText('Search all help topics…');layout.addWidget(self.search)
+        split=QSplitter();self.tree=QTreeWidget();self.tree.setHeaderHidden(True);self.text=QTextBrowser();split.addWidget(self.tree);split.addWidget(self.text);split.setSizes([300,700]);layout.addWidget(split)
+        self.empty=QLabel('No matching topics. Try a different search.');layout.addWidget(self.empty)
+        self.search.textChanged.connect(self.filter);self.tree.currentItemChanged.connect(self.selected);self.filter('')
+    def filter(self,query):
+        self.tree.clear();parents={};terms=query.casefold().split()
+        for group,title,body in TOPICS:
+            if not all(t in (group+' '+title+' '+body).casefold() for t in terms):continue
+            if group not in parents:parents[group]=QTreeWidgetItem(self.tree,[group])
+            item=QTreeWidgetItem(parents[group],[title]);item.setData(0,Qt.ItemDataRole.UserRole,(title,body))
+        self.tree.expandAll();self.empty.setVisible(not parents);self.text.clear()
+        if parents:self.tree.setCurrentItem(next(iter(parents.values())).child(0))
+    def selected(self,item,previous=None):
+        data=item.data(0,Qt.ItemDataRole.UserRole) if item else None
+        if data:
+            title,body=data;self.text.setHtml('<h2>'+escape(title)+'</h2>'+''.join('<p>'+escape(p).replace('The exported file is not encrypted: store it carefully and remove it when no longer needed.', '<strong>The exported file is not encrypted: store it carefully and remove it when no longer needed.</strong>')+'</p>' for p in body.split('\n')))
+
+def show_help(owner):
+    window=getattr(owner,'help_window',None)
+    if window is None:window=HelpWindow(owner);owner.help_window=window
+    window.show();window.raise_();window.activateWindow()
