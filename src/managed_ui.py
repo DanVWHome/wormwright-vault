@@ -257,7 +257,7 @@ class ManagedWindow(QMainWindow):
         except Exception as error:self.warning(error)
         finally:
             for field in dialog.fields.values():field.clear()
-            dialog.notes.clear();dialog.record.clear();self.dialog=None;dialog.deleteLater()
+            dialog.notes.clear();dialog.record.clear();self.dialog=None;dialog.deleteLater();self.update_state()
             if self.again:QTimer.singleShot(0,self.auto_sync)
 
     def add(self):self.edit_record()
@@ -508,7 +508,7 @@ class ManagedWindow(QMainWindow):
         rename=QPushButton('Rename Manager…');rename.clicked.connect(lambda:action(rename_manager));user_layout.addWidget(rename)
         add=QPushButton('Add Group…');add.clicked.connect(lambda:action(add_group));group_layout.addWidget(add)
         close=QPushButton('Close');close.clicked.connect(dialog.accept);layout.addWidget(close)
-        populate();self.dialog=dialog;dialog.exec();self.dialog=None;dialog.deleteLater();self.auto_sync()
+        populate();self.dialog=dialog;dialog.exec();self.dialog=None;dialog.deleteLater();self.update_state();self.auto_sync()
 
     def exclusions(self):
         if not self.vault.manager or self.task:return
@@ -536,7 +536,7 @@ class ManagedWindow(QMainWindow):
                     if excluded!=old:self.vault.set_excluded(eid,uid,excluded)
                 self.refresh()
         except Exception as error:self.warning(error)
-        finally:self.dialog=None;dialog.deleteLater();self.auto_sync()
+        finally:self.dialog=None;dialog.deleteLater();self.update_state();self.auto_sync()
 
     def backup(self):
         path,_=QFileDialog.getSaveFileName(self,'Back up encrypted vault','','SQLite vault (*.sqlite)')
@@ -630,7 +630,7 @@ class ManagedWindow(QMainWindow):
             if dialog.exec()==QDialog.DialogCode.Accepted:
                 configure(self.vault,folder.text(),limit.value(),automatic.isChecked(),interval.value());self.auto_timer.start(self.interval());self.conflicted=False
         except Exception as error:self.warning(error)
-        finally:self.dialog=None;dialog.deleteLater();self.auto_sync()
+        finally:self.dialog=None;dialog.deleteLater();self.update_state();self.auto_sync()
     def auto_sync(self):
         config=read_settings(self.vault)
         if not config.get('folder') or not config.get('automatic',True) or not self.vault.path.exists() or self.conflicted:return False
@@ -694,7 +694,7 @@ class ManagedWindow(QMainWindow):
                 choices=dict(defaults)
                 for eid,selector in zip(unresolved,selectors):choices[eid]='local' if selector.currentIndex()==1 else 'shared'
                 self.conflicted=False;self.start_sync(True,choices,[ours,theirs])
-            self.dialog=None;dialog.deleteLater()
+            self.dialog=None;dialog.deleteLater();self.update_state()
         except Exception as error:self.warning(error)
         finally:other.lock();temporary.cleanup()
     def resolve_management(self,other,ours,theirs):
@@ -735,7 +735,7 @@ class ManagedWindow(QMainWindow):
             self.vault.verify_password(password)
             message=reconcile(self.vault.path,self.vault.session(),'local' if authority.currentIndex()==1 else 'shared',choices,[ours,theirs],assignments)
             self.vault.resume(self.vault.session());self.conflicted=False;self.refresh();self.sync_status.setText(message)
-        finally:self.dialog=None;dialog.deleteLater()
+        finally:self.dialog=None;dialog.deleteLater();self.update_state()
 
     def closeEvent(self,event):
         if not getattr(self,'close_ready',False):
