@@ -8,7 +8,7 @@ from PySide6.QtCore import Qt, QTimer, QThread, QEventLoop, QEvent
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QPushButton, QLineEdit, QTableWidget, QTableWidgetItem, QAbstractItemView,
     QHeaderView, QMessageBox, QDialog, QFormLayout, QTextEdit, QDialogButtonBox, QFileDialog,
-    QListWidget, QListWidgetItem, QCheckBox, QProgressDialog, QInputDialog, QSpinBox)
+    QListWidget, QListWidgetItem, QCheckBox, QProgressDialog, QInputDialog, QSpinBox, QMenu)
 from vault import Vault, VaultError
 from importer import read_export
 from exporter import export_csv
@@ -21,6 +21,9 @@ from conflict_dialog import ConflictDialog
 from preferences import read_timeout, save_timeout
 from auto_sync import AutoSyncTask, finish_sync
 from version import VERSION
+
+COPY_FIELDS = [('description', 'Description'), ('link', 'Link'),
+               ('user_name', 'User Name'), ('password', 'Password'), ('notes', 'Notes')]
 
 
 class KeyTask(QThread):
@@ -90,19 +93,29 @@ class EntryDialog(QDialog):
         for key, label in [('description', 'Description'), ('link', 'Link'), ('user_name', 'User Name'), ('password', 'Password')]:
             field = QLineEdit(self.record.get(key, ''))
             self.fields[key] = field
+            row = QHBoxLayout()
+            row.addWidget(field)
             if key == 'password':
                 field.setEchoMode(QLineEdit.EchoMode.Password)
-                row = QHBoxLayout()
-                row.addWidget(field)
                 show = QPushButton('Show')
                 show.setCheckable(True)
                 show.toggled.connect(lambda checked: (field.setEchoMode(QLineEdit.EchoMode.Normal if checked else QLineEdit.EchoMode.Password), show.setText('Hide' if checked else 'Show')))
                 row.addWidget(show)
-                form.addRow(label, row)
-            else:
-                form.addRow(label, field)
+            copy_button = QPushButton('Copy')
+            copy_button.setObjectName('copy_' + key)
+            copy_button.setToolTip('Copy ' + label.lower() + '; clipboard clears after 30 seconds')
+            copy_button.clicked.connect(lambda checked=False, f=field: parent.copy_text(f.text()))
+            row.addWidget(copy_button)
+            form.addRow(label, row)
         self.notes = QTextEdit(self.record.get('notes', ''))
-        form.addRow('Notes', self.notes)
+        notes_row = QHBoxLayout()
+        notes_row.addWidget(self.notes)
+        copy_notes = QPushButton('Copy')
+        copy_notes.setObjectName('copy_notes')
+        copy_notes.setToolTip('Copy notes; clipboard clears after 30 seconds')
+        copy_notes.clicked.connect(lambda: parent.copy_text(self.notes.toPlainText()))
+        notes_row.addWidget(copy_notes)
+        form.addRow('Notes', notes_row)
         layout.addLayout(form)
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
         buttons.accepted.connect(self.validate)
@@ -215,9 +228,17 @@ class Window(QMainWindow):
         self.search.textChanged.connect(self.refresh)
         actions.addWidget(self.search)
         self.controls = []
-        for text, method in [('Add Password', self.add), ('Edit', self.edit), ('Clone', self.clone), ('Copy Password', self.copy), ('Delete', self.delete), ('Lock', self.lock)]:
+        for text, method in [('Add Password', self.add), ('Edit', self.edit), ('Clone', self.clone), ('Copy Field', self.copy), ('Delete', self.delete), ('Lock', self.lock)]:
             button = QPushButton(text)
-            button.clicked.connect(method)
+            if text == 'Copy Field':
+                self.copy_menu = QMenu(button)
+                for field, label in COPY_FIELDS:
+                    action = self.copy_menu.addAction(label)
+                    action.triggered.connect(lambda checked=False, key=field: self.copy_field(key))
+                button.setMenu(self.copy_menu)
+                button.setToolTip('Select an entry, then copy a field without revealing its password')
+            else:
+                button.clicked.connect(method)
             actions.addWidget(button)
             self.controls.append(button)
         layout.addLayout(actions)
@@ -923,6 +944,11 @@ class Window(QMainWindow):
             reveal.setFixedWidth(54)
             reveal.clicked.connect(lambda checked=False, entry_id=record['id']: self.show_password(entry_id))
             password_layout.addWidget(reveal)
+            copy_password = QPushButton('Copy')
+            copy_password.setFixedWidth(54)
+            copy_password.setToolTip('Copy password without showing it; clipboard clears after 30 seconds')
+            copy_password.clicked.connect(lambda checked=False, entry_id=record['id']: self.copy_field('password', entry_id))
+            password_layout.addWidget(copy_password)
             self.table.setCellWidget(row, 4, password_cell)
         self.table.resizeRowsToContents()
 
@@ -980,11 +1006,21 @@ class Window(QMainWindow):
             self.save_dialog(record)
 
     def copy(self):
-        record = self.selected()
+        self.copy_field('password')
+
+    def copy_field(self, field, entry_id=None):
+        if not self.vault.unlocked or field not in dict(COPY_FIELDS):
+            return
+        record = self.selected() if entry_id is None else next((r for r in self.records if r['id'] == entry_id), None)
         if record:
-            self.clipboard_value = record['password']
-            QApplication.clipboard().setText(self.clipboard_value)
-            self.clipboard_timer.start(30000)
+            self.copy_text(record.get(field, ''))
+
+    def copy_text(self, value):
+        if not self.vault.unlocked:
+            return
+        self.clipboard_value = value
+        QApplication.clipboard().setText(value)
+        self.clipboard_timer.start(30000)
 
     def clear_clipboard(self):
         if self.clipboard_value is not None and QApplication.clipboard().text() == self.clipboard_value:
