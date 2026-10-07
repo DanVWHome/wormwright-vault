@@ -17,6 +17,7 @@ def main():
     parser.add_argument('--work-dir', type=Path, default=ROOT / 'build')
     parser.add_argument('--output-dir', type=Path, default=ROOT / 'dist')
     parser.add_argument('--glibc-min', default='2.39')
+    parser.add_argument('--stage-only', action='store_true', help='Prepare package files without compression')
     args = parser.parse_args()
     work = args.work_dir.resolve()
     output = args.output_dir.resolve()
@@ -98,6 +99,8 @@ Depends: libc6 (>= {args.glibc_min}), python3, libxcb-cursor0, libxkbcommon-x11-
 Description: Offline encrypted password vault with optional YubiKey unlock
  Prototype desktop vault with local UI-only assistant hooks.
 ''')
+    if args.stage_only:
+        return
     result = output / f'wormwright-vault_{VERSION}_amd64.deb'
     subprocess.run(['dpkg-deb', '--root-owner-group', '-Zxz', '--build', str(stage), str(result)], check=True)
     print(result)
