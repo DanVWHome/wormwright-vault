@@ -176,6 +176,9 @@ class ManagedVault:
                 raise VaultError('Account identity check failed.')
             users[uid] = data
         groups = {gid: self._decode(payload) for gid, payload in self.db.execute('SELECT id,payload FROM groups')}
+        manager_id = self.meta['manager'].decode()
+        for group in groups.values():
+            group['members'] = list(dict.fromkeys(group['members'] + [manager_id]))
         exclusions = [self._decode(payload) for _, payload in self.db.execute('SELECT id,payload FROM exclusions')]
         return {'users': users, 'groups': groups, 'exclusions': exclusions}
 
@@ -198,6 +201,8 @@ class ManagedVault:
 
     def _publish(self):
         admin = self.administration()
+        for gid, group in admin['groups'].items():
+            self.db.execute('UPDATE groups SET payload=? WHERE id=?', (self._encode(group), gid))
         graph = {uid: {k: data['identity'][k] for k in ('id', 'box', 'sign', 'disabled')}
                  for uid, data in admin['users'].items()}
         groups = {gid: group['members'] for gid, group in admin['groups'].items()}
@@ -444,7 +449,7 @@ class ManagedVault:
             raise VaultError('Enter a unique group name.')
         gid = identifier()
         def operation():
-            self.db.execute('INSERT INTO groups VALUES (?,?)', (gid, self._encode({'id': gid, 'name': name.strip(), 'members': []})))
+            self.db.execute('INSERT INTO groups VALUES (?,?)', (gid, self._encode({'id': gid, 'name': name.strip(), 'members': [self.meta['manager'].decode()]})))
         self._management_change(operation)
         return gid
 
@@ -452,11 +457,28 @@ class ManagedVault:
         admin = self.administration()
         if uid not in admin['users'] or any(g not in admin['groups'] for g in groups):
             raise VaultError('Choose an existing user and valid groups.')
+        if uid == self.meta['manager'].decode() and set(groups) != set(admin['groups']):
+            raise VaultError('The Manager always belongs to every group and cannot be unassigned.')
         def operation():
             for gid, group in admin['groups'].items():
                 group = dict(group)
                 group['members'] = [u for u in group['members'] if u != uid] + ([uid] if gid in groups else [])
                 self.db.execute('UPDATE groups SET payload=? WHERE id=?', (self._encode(group), gid))
+        self._management_change(operation)
+
+    def rename_manager(self, name):
+        admin = self.administration()
+        name = name.strip()
+        if not name:
+            raise VaultError('Enter a Manager username.')
+        if any(uid != self.uid and data['identity']['name'].casefold() == name.casefold()
+               for uid, data in admin['users'].items()):
+            raise VaultError('That username already exists.')
+        data = admin['users'][self.uid]
+        data['identity']['name'] = name
+        def operation():
+            self.db.execute('UPDATE users SET login=?,recovery=? WHERE id=?',
+                            (self._login(name), self._encode(data), self.uid))
         self._management_change(operation)
 
     def set_excluded(self, eid, uid, excluded):
