@@ -110,3 +110,45 @@ Both views share edits/search, unlock state, clipboard clearing and one sync
 worker. Lock clears both. Unlock in the main window. Closing the extra view
 keeps the main window open; closing the main window closes the session.
 Only an authenticated Manager can use management controls.
+
+## 0.2.6: offline Help and optional demo
+
+Both primary launchers and the companion view have Help → Searchable Help.
+Topics are grouped and full-text searchable; they explain first launch, local
+versus shared folders, single-user devices, multi-user permissions, both views,
+sync/conflicts/backup retention, clipboard/CSV, YubiKey, and current limitations.
+
+First launch still shows the introduction. Load Demo Vault is an explicit option
+there and in the Vault menu. It copies the bundled disposable fixture to a new
+local filename, refuses overwrites, and leaves the copy locked. Sign in as
+DemoManager / DemoVault123!; see the demo Help topic and assets/demo/README.md
+for other credentials and expected access counts. Never use the demo’s shared
+folder for a real personal vault. The packaged source copy is never edited.
+
+## 0.2.7: selection-sensitive Restore button
+
+As Manager, enable Show deleted entries and select a deleted record. The main
+Delete button becomes Restore, in both shared views. Clicking restores the
+record; selecting an active record changes the button back to Delete. The Manage
+menu restore action remains available. Help documents this behavior, describes
+Show as a large window for easy reading, removes the obsolete Atlas import
+reference, and emphasizes that exported CSV files are unencrypted.
+
+## 0.2.8: provisioning and emergency lockdown
+
+Manager-only Import / Export / Backup → Export Database requires reauthentication
+and writes a consistent encrypted copy without overwriting existing files. Sync
+before exporting, distribute the copy, then use Open Existing Vault and configure
+the same shared folder on the recipient device. Export retains identity and all
+encrypted accounts/entries, but not device settings or sync history. It supports
+new users and recovery from a lost local file, not recovery of unsynced edits.
+
+Manage → Emergency Lockdown requires confirmation and password authentication.
+All ordinary accounts are disabled atomically, entry keys rotate, and the Manager
+retains access. Immediate sync is attempted when a shared folder is configured,
+even with automatic sync disabled. Status distinguishes local lockdown, failed
+publication and successful shared sync. Conflicts still require Manager review.
+Ordinary sessions lock after downloading the policy; password and hardware
+unlock are denied. Offline old copies and already obtained secrets cannot be
+recalled. Re-enable users individually to recover. Help covers these limits and
+password reset propagation (next password unlock after sync; YubiKey retained).
