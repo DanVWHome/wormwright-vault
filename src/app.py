@@ -1105,7 +1105,8 @@ def main():
         DefaultClientDataCollector(ORIGIN).verify_rp_id(RP_ID, ORIGIN)
         print('YubiKey runtime data loaded successfully.')
         return
-    path = args.vault or (Path(os.environ.get('XDG_DATA_HOME',str(Path.home()/'.local/share'))) / 'wormwright-vault-beta/vault.sqlite' if args.beta else default_vault())
+    from managed_locations import startup_vault
+    path = args.vault or (startup_vault() if args.beta else default_vault())
     request = {'version': 1, 'action': 'lookup', 'query': args.lookup} if args.lookup is not None else {'version': 1, 'action': 'open'}
     try:
         send(path, request)

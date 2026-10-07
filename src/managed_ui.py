@@ -20,6 +20,7 @@ from search import matching_ids
 from exporter import export_csv
 from importer import read_export
 from version import VERSION
+import managed_locations
 
 
 class SyncTask(QThread):
@@ -65,6 +66,9 @@ class ManagedWindow(QMainWindow):
         logo.addWidget(title);logo.addStretch();layout.addLayout(logo)
         layout.addWidget(QLabel(f'Version {VERSION} • Managed test build'))
         self.status=QLabel();layout.addWidget(self.status)
+        folder_row=QHBoxLayout();self.folder_label=QLabel();self.folder_label.setWordWrap(True);folder_row.addWidget(self.folder_label,1)
+        self.folder_button=QPushButton('Choose Folder…');self.folder_button.clicked.connect(self.choose_folder);folder_row.addWidget(self.folder_button);layout.addLayout(folder_row)
+        location_help=QLabel('This device keeps its working vault locally. Vaults can be stored outside the default folder. The optional shared NAS folder is configured separately in Sync Settings.');location_help.setWordWrap(True);layout.addWidget(location_help)
         login=QHBoxLayout();self.username=QLineEdit();self.username.setPlaceholderText('Username');self.username.setObjectName('vault_username')
         self.master=QLineEdit();self.master.setEchoMode(QLineEdit.EchoMode.Password);self.master.setPlaceholderText('Account password')
         login.addWidget(self.username);login.addWidget(self.master)
@@ -77,11 +81,11 @@ class ManagedWindow(QMainWindow):
         heading=QLabel('Welcome — choose how to get started');heading.setStyleSheet('font-size:20px;font-weight:bold');welcome_layout.addWidget(heading)
         help_text=QLabel('Create a new vault to start from scratch. Open a local copy of an existing new-format vault, or convert an older personal vault into a separate copy. Your original vault is preserved.');help_text.setWordWrap(True);welcome_layout.addWidget(help_text)
         welcome_row=QHBoxLayout()
-        for text,callback in [('Create New Vault…',self.unlock),('Open Existing Vault…',self.open_existing),('Convert Personal Vault…',self.convert)]:
+        for text,callback in [('Create New Vault…',self.new_vault),('Open Existing Vault…',self.open_existing),('Convert Personal Vault…',self.convert)]:
             b=QPushButton(text);b.clicked.connect(callback);welcome_row.addWidget(b)
         welcome_layout.addLayout(welcome_row);layout.addWidget(self.welcome)
         self.location_row=QWidget();row=QHBoxLayout(self.location_row);row.setContentsMargins(0,0,0,0)
-        for text,callback in [('Choose Vault…',self.choose),('Recent Vaults…',self.recent),('Convert Personal Vault…',self.convert)]:
+        for text,callback in [('Open Existing Vault…',self.open_existing),('Create New Vault…',self.new_vault),('Recent Vaults…',self.recent),('Convert Personal Vault…',self.convert)]:
             button=QPushButton(text);button.clicked.connect(callback);row.addWidget(button)
         layout.addWidget(self.location_row)
         row=QHBoxLayout();self.search=QLineEdit();self.search.setPlaceholderText('Search description, link or notes');self.search.textChanged.connect(self.refresh);row.addWidget(self.search)
@@ -130,6 +134,7 @@ class ManagedWindow(QMainWindow):
 
     def update_state(self):
         unlocked=self.vault.unlocked
+        self.folder_label.setText('Local folder for new vaults: '+str(managed_locations.local_folder()));self.folder_button.setEnabled(not self.task)
         missing=not self.vault.path.exists();self.welcome.setVisible(missing);self.location_row.setVisible(not missing)
         self.status.setText(f'{"Unlocked" if unlocked else "Locked"} • {self.vault.path}')
         try:personal=self.vault.personal;has_key=self.vault.yubikey_settings(self.username.text()) is not None
@@ -166,14 +171,15 @@ class ManagedWindow(QMainWindow):
         try:return password.text() if dialog.exec()==QDialog.DialogCode.Accepted else None
         finally:password.clear();confirmation.clear();self.dialog=previous_dialog;dialog.deleteLater()
 
-    def create_account(self):
+    def create_account(self,path=None):
+        path=Path(path) if path is not None else self.vault.path
         dialog=QDialog(self);dialog.setWindowTitle('Create New Vault');dialog.resize(640,300);dialog.setMinimumWidth(580);form=QFormLayout(dialog)
         explanation=QLabel('Choose your own Manager name and an initial master password. This account can access every group. You can add other users later in Users & Groups.');explanation.setWordWrap(True);form.addRow(explanation)
         name=QLineEdit();name.setPlaceholderText('Your name, for example Dan')
         password=QLineEdit();password.setEchoMode(QLineEdit.EchoMode.Password)
         confirm=QLineEdit();confirm.setEchoMode(QLineEdit.EchoMode.Password)
         form.addRow('Manager username:',name);form.addRow('Master password (12+ characters):',password);form.addRow('Confirm master password:',confirm)
-        form.addRow(QLabel('Local vault: '+str(self.vault.path)))
+        location=QLabel('Save local vault to: '+str(path));location.setWordWrap(True);form.addRow(location)
         error=QLabel();form.addRow(error)
         buttons=QDialogButtonBox(QDialogButtonBox.StandardButton.Save|QDialogButtonBox.StandardButton.Cancel);form.addRow(buttons)
         def accept():
@@ -185,16 +191,18 @@ class ManagedWindow(QMainWindow):
         previous=self.dialog;self.dialog=dialog
         try:
             if dialog.exec()!=QDialog.DialogCode.Accepted:return False
-            self.vault.create(password.text(),name.text().strip());self.username.setText(name.text().strip());return True
+            manager_name=name.text().strip();candidate=ManagedVault(path);candidate.create(password.text(),manager_name)
+            self.dialog=previous;self.lock();self.vault=candidate;self.username.setText(manager_name);self.search.clear();self.password_fallback=False
+            managed_locations.remember(folder=path.parent,vault=path);return True
         finally:password.clear();confirm.clear();self.dialog=previous;dialog.deleteLater()
 
     def unlock(self):
         if self.task:return
         try:
             if not self.vault.path.exists():
-                if not self.create_account():return
-            else:self.vault.unlock(self.master.text(),self.username.text())
-            self.master.clear();self.history.remember(self.vault.path);self.touch();self.update_state();self.refresh()
+                self.new_vault();return
+            self.vault.unlock(self.master.text(),self.username.text())
+            self.master.clear();self.history.remember(self.vault.path);managed_locations.remember(vault=self.vault.path);self.touch();self.update_state();self.refresh()
             self.complete_lookup();self.auto_sync()
             # Keep the main vault visible after unlock; management is an explicit action.
         except Exception as error:self.warning(error);self.update_state()
@@ -300,9 +308,27 @@ class ManagedWindow(QMainWindow):
         if self.vault.unlocked and self.pending_lookup is not None:
             query=self.pending_lookup;self.pending_lookup=None;self.search.setText(query);self.refresh()
 
+    def choose_folder(self):
+        if self.task:return
+        folder=QFileDialog.getExistingDirectory(self,'Choose local folder for new vaults',str(managed_locations.local_folder()))
+        if folder:
+            managed_locations.remember(folder=folder);self.update_state()
+
+    def new_vault(self):
+        if self.task:return
+        path,_=QFileDialog.getSaveFileName(self,'Save new local vault',str(managed_locations.local_folder()/'vault.sqlite'),'SQLite vault (*.sqlite)',options=QFileDialog.Option.DontConfirmOverwrite)
+        if not path:return
+        destination=Path(path)
+        if not destination.suffix:destination=destination.with_suffix('.sqlite')
+        if destination.exists():self.warning('That file already exists. Open it using Open Existing Vault, or choose a new filename.');return
+        try:
+            if not self.create_account(destination):return
+            self.master.clear();self.history.remember(self.vault.path);self.touch();self.update_state();self.refresh();self.complete_lookup();self.auto_sync()
+        except Exception as error:self.warning(error);self.update_state()
+
     def open_existing(self):
         if self.task:return
-        path,_=QFileDialog.getOpenFileName(self,'Open existing local vault',str(self.vault.path.parent),'SQLite vault (*.sqlite)')
+        path,_=QFileDialog.getOpenFileName(self,'Open existing local vault',str(managed_locations.local_folder()),'SQLite vault (*.sqlite)')
         if path:self.open_path(Path(path))
 
     def choose(self):
