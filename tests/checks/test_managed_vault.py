@@ -48,6 +48,13 @@ with tempfile.TemporaryDirectory() as root:
     b.lock();refused(lambda:b.unlock('bob-dummy-password','Bob'));b.unlock('new-password','Bob')
     manager.delete(made);manager.purge(made)
     assert manager.db.execute('SELECT 1 FROM entries WHERE id=?',(made,)).fetchone() is None
+    # Manager group membership is permanent; renaming retains credentials and role.
+    assert all(manager.uid in g['members'] for g in manager.administration()['groups'].values())
+    refused(lambda:manager.set_memberships(manager.uid,[]))
+    manager.rename_manager('Dan')
+    refused(lambda:manager.rename_manager('Bob'))
+    manager.lock();manager.unlock('manager-dummy-password','Dan')
+    assert manager.manager
     # Altering encrypted policy is rejected, even before ordinary-user unlock.
     with manager.db:
         manager.db.execute('UPDATE groups SET payload=? WHERE id=?',(b'forged',family))
