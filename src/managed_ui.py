@@ -506,8 +506,10 @@ class ManagedWindow(QMainWindow):
     def resolve(self):
         config=read_settings(self.vault)
         if not config.get('folder') or not self.vault.unlocked:return
-        other=ManagedVault(Path(config['folder'])/'wormwright-vault.sqlite')
+        temporary=tempfile.TemporaryDirectory(prefix='wormwright-managed-compare-')
+        other=ManagedVault(Path(temporary.name)/'shared.sqlite')
         try:
+            shutil.copyfile(Path(config['folder'])/'wormwright-vault.sqlite',other.path)
             other.resume(self.vault.session());ours=state(self.vault.path);theirs=state(other.path)
             defaults=combined(config.get('managed_baseline'),ours,theirs)
             if defaults is None:
@@ -534,7 +536,7 @@ class ManagedWindow(QMainWindow):
                 self.conflicted=False;self.start_sync(True,choices,[ours,theirs])
             self.dialog=None;dialog.deleteLater()
         except Exception as error:self.warning(error)
-        finally:other.lock()
+        finally:other.lock();temporary.cleanup()
     def resolve_management(self,other,ours,theirs):
         if not self.vault.manager or not other.manager:
             raise VaultError('Only the Manager can resolve account/group conflicts. Both copies are retained.')
