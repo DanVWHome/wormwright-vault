@@ -220,3 +220,24 @@ Select an entry and use Copy Field to copy Description, Link, User Name, Passwor
 ### Generate passwords
 
 Add/Edit has a Generate button that fills the password field with a new 24-character password from the operating system’s cryptographic random source. It excludes commas, quotes, whitespace and line breaks. Generation does not save the entry or copy the password; use Save or Copy when ready.
+
+
+## Managed multi-user test build (0.2.0)
+
+The separate `wormwright-vault-managed-beta_0.2.0_amd64.deb` installs alongside
+0.1.15. Open **Wormwright Vault — Managed Test** or **Wormwright Vault Manager —
+Test**. It defaults to a separate empty test vault and never automatically
+converts or shares personal data. New-format personal vaults include users,
+groups and exclusions from creation; username is hidden until multi-user mode.
+
+Users have separate passwords and optional YubiKey enrollment. Group members
+can add/edit/soft-delete accessible entries; individual exclusions override
+membership and creation. Manager-only controls manage sharing, view/edit deleted
+entries, restore them and permanently delete records with confirmation and
+reauthentication. Passwords remain independently encrypted with per-user key
+envelopes. Administrative sync conflicts require explicit Manager reconciliation.
+
+Follow [the dummy-data test checklist](docs/MANAGED-TESTING.md) before converting
+personal data. Old-format vaults remain usable in the original interface.
+[Design and limits](docs/MULTIUSER-DESIGN.md) explain offline revocation and
+backup behavior. This is a test release, not a production security certification.
