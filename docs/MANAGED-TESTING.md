@@ -1,4 +1,4 @@
-# Wormwright Vault / Vault Manager managed test build (0.2.3)
+# Wormwright Vault / Vault Manager managed test build (0.2.4)
 
 This is a separate test package, not the daily-use 0.1.15 upgrade. It installs
 `wormwright-vault-beta` and `wormwright-vault-manager-beta` side by side with
@@ -76,10 +76,23 @@ Use a new dedicated shared test folder rather than your daily-use master.
 
 ## Local locations
 
-The startup screen shows the local folder for new vaults, with Choose Folder.
+The Vault menu contains Choose Folder for New Vaults and Vault Locations Explained.
 Create New Vault asks for its folder and filename before account credentials.
 Existing files are never overwritten. Open Existing Vault browses to a vault
 wherever it is stored. The app remembers the last successfully opened or created
 vault on this device. Choosing a different folder affects future creation only;
 it does not move or lock the current vault. The shared NAS sync folder is a
 separate setting and holds exchange copies, not the live working database.
+
+## Main screen menus (both launchers)
+
+Search, Add, Edit, Clone, Delete, Lock and Copy Field stay on the main screen.
+Vault holds Open, Create, Recent, Convert and local-folder preferences.
+Import / Export / Backup holds file transfer and backup commands.
+Manage contains Users & Groups, Individual Exclusions, Restore and Permanent
+Delete and appears only for the authenticated Manager. Show deleted entries
+remains a visible Manager checkbox. Settings contains NAS sync, Sync Now,
+locking, YubiKey enrollment and account password changes.
+
+Local vaults can be saved anywhere on the computer; a dedicated local folder
+is optional. Only the shared NAS sync folder must be dedicated to one vault.
