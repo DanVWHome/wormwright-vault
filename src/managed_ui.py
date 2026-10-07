@@ -66,9 +66,6 @@ class ManagedWindow(QMainWindow):
         logo.addWidget(title);logo.addStretch();layout.addLayout(logo)
         layout.addWidget(QLabel(f'Version {VERSION} • Managed test build'))
         self.status=QLabel();layout.addWidget(self.status)
-        folder_row=QHBoxLayout();self.folder_label=QLabel();self.folder_label.setWordWrap(True);folder_row.addWidget(self.folder_label,1)
-        self.folder_button=QPushButton('Choose Folder…');self.folder_button.clicked.connect(self.choose_folder);folder_row.addWidget(self.folder_button);layout.addLayout(folder_row)
-        location_help=QLabel('This device keeps its working vault locally. Vaults can be stored outside the default folder. The optional shared NAS folder is configured separately in Sync Settings.');location_help.setWordWrap(True);layout.addWidget(location_help)
         login=QHBoxLayout();self.username=QLineEdit();self.username.setPlaceholderText('Username');self.username.setObjectName('vault_username')
         self.master=QLineEdit();self.master.setEchoMode(QLineEdit.EchoMode.Password);self.master.setPlaceholderText('Account password')
         login.addWidget(self.username);login.addWidget(self.master)
@@ -79,15 +76,11 @@ class ManagedWindow(QMainWindow):
         layout.addLayout(login)
         self.welcome=QWidget();welcome_layout=QVBoxLayout(self.welcome)
         heading=QLabel('Welcome — choose how to get started');heading.setStyleSheet('font-size:20px;font-weight:bold');welcome_layout.addWidget(heading)
-        help_text=QLabel('Create a new vault to start from scratch. Open a local copy of an existing new-format vault, or convert an older personal vault into a separate copy. Your original vault is preserved.');help_text.setWordWrap(True);welcome_layout.addWidget(help_text)
+        help_text=QLabel('Create a new vault to start from scratch. Open a local copy of an existing new-format vault, or convert an older personal vault into a separate copy. Your original vault is preserved. Local vaults can be saved anywhere on this computer; a separate folder is optional.');help_text.setWordWrap(True);welcome_layout.addWidget(help_text)
         welcome_row=QHBoxLayout()
         for text,callback in [('Create New Vault…',self.new_vault),('Open Existing Vault…',self.open_existing),('Convert Personal Vault…',self.convert)]:
             b=QPushButton(text);b.clicked.connect(callback);welcome_row.addWidget(b)
         welcome_layout.addLayout(welcome_row);layout.addWidget(self.welcome)
-        self.location_row=QWidget();row=QHBoxLayout(self.location_row);row.setContentsMargins(0,0,0,0)
-        for text,callback in [('Open Existing Vault…',self.open_existing),('Create New Vault…',self.new_vault),('Recent Vaults…',self.recent),('Convert Personal Vault…',self.convert)]:
-            button=QPushButton(text);button.clicked.connect(callback);row.addWidget(button)
-        layout.addWidget(self.location_row)
         row=QHBoxLayout();self.search=QLineEdit();self.search.setPlaceholderText('Search description, link or notes');self.search.textChanged.connect(self.refresh);row.addWidget(self.search)
         self.controls=[]
         for text,callback in [('Add',self.add),('Edit',self.edit),('Clone',self.clone),('Delete',self.delete),('Lock',self.lock)]:
@@ -96,16 +89,25 @@ class ManagedWindow(QMainWindow):
         for field,label in [('description','Description'),('link','Link'),('user_name','User Name'),('password','Password'),('notes','Notes')]:
             menu.addAction(label,lambda checked=False,f=field:self.copy_field(f))
         copy.setMenu(menu);row.addWidget(copy);self.controls.append(copy);layout.addLayout(row)
-        row=QHBoxLayout()
-        for text,callback in [('Import Vault CSV…',self.import_entries),('Export to CSV…',self.export),('Back Up Vault…',self.backup),('Restore Backup…',self.restore_backup),('Sync Settings…',self.sync_settings),('Sync Now',self.sync_now),('Lock Settings…',self.lock_settings),('Set Up YubiKey…',self.enroll),('Change Password…',self.change_password)]:
-            button=QPushButton(text);button.clicked.connect(callback);row.addWidget(button)
-            if text not in ('Sync Now','Sync Settings…','Lock Settings…'):self.controls.append(button)
-        layout.addLayout(row)
         self.manager_row=QWidget();row=QHBoxLayout(self.manager_row);row.setContentsMargins(0,0,0,0)
-        self.show_deleted=QCheckBox('Show deleted entries');self.show_deleted.setObjectName('show_deleted');self.show_deleted.toggled.connect(self.refresh);row.addWidget(self.show_deleted)
-        for text,callback in [('Users & Groups…',self.manage),('Individual Exclusions…',self.exclusions),('Restore Entry',self.restore_entry),('Permanently Delete…',self.purge)]:
-            button=QPushButton(text);button.clicked.connect(callback);row.addWidget(button)
-        layout.addWidget(self.manager_row)
+        self.show_deleted=QCheckBox('Show deleted entries');self.show_deleted.setObjectName('show_deleted');self.show_deleted.toggled.connect(self.refresh);row.addWidget(self.show_deleted);row.addStretch();layout.addWidget(self.manager_row)
+        vault_menu=self.menuBar().addMenu('Vault')
+        self.location_actions=[]
+        for text,callback in [('Open Existing Vault…',self.open_existing),('Create New Vault…',self.new_vault),('Recent Vaults…',self.recent),('Convert Personal Vault…',self.convert),('Choose Folder for New Vaults…',self.choose_folder)]:
+            action=vault_menu.addAction(text);action.triggered.connect(callback);self.location_actions.append(action)
+        vault_menu.addSeparator();vault_menu.addAction('Vault Locations Explained…',self.location_help)
+        data_menu=self.menuBar().addMenu('Import / Export / Backup')
+        for text,callback in [('Import Vault CSV…',self.import_entries),('Export to CSV…',self.export),('Back Up Vault…',self.backup),('Restore Backup…',self.restore_backup)]:
+            action=data_menu.addAction(text);action.triggered.connect(callback);self.controls.append(action)
+        self.management_menu=self.menuBar().addMenu('Manage');self.management_actions=[]
+        for text,callback in [('Users & Groups…',self.manage),('Individual Exclusions…',self.exclusions),('Restore Selected Entry',self.restore_entry),('Permanently Delete Selected Entry…',self.purge)]:
+            action=self.management_menu.addAction(text);action.triggered.connect(callback);self.management_actions.append(action)
+        settings_menu=self.menuBar().addMenu('Settings');self.settings_actions=[]
+        for text,callback in [('NAS Sync Settings…',self.sync_settings),('Sync Now',self.sync_now),('Lock Settings…',self.lock_settings)]:
+            action=settings_menu.addAction(text);action.triggered.connect(callback);self.settings_actions.append(action)
+        settings_menu.addSeparator()
+        for text,callback in [('Set Up YubiKey…',self.enroll),('Change Account Password…',self.change_password)]:
+            action=settings_menu.addAction(text);action.triggered.connect(callback);self.controls.append(action)
         self.table=QTableWidget(0,7);self.table.setHorizontalHeaderLabels(['Description','Link','User Name','Password','Groups','Status','Duplicate Password'])
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows);self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers);self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
@@ -134,9 +136,8 @@ class ManagedWindow(QMainWindow):
 
     def update_state(self):
         unlocked=self.vault.unlocked
-        self.folder_label.setText('Local folder for new vaults: '+str(managed_locations.local_folder()));self.folder_button.setEnabled(not self.task)
-        missing=not self.vault.path.exists();self.welcome.setVisible(missing);self.location_row.setVisible(not missing)
-        self.status.setText(f'{"Unlocked" if unlocked else "Locked"} • {self.vault.path}')
+        missing=not self.vault.path.exists();self.welcome.setVisible(missing)
+        self.status.setText(f'{"Unlocked" if unlocked else "Locked"} • Local vault: {self.vault.path}');self.status.setWordWrap(True)
         try:personal=self.vault.personal;has_key=self.vault.yubikey_settings(self.username.text()) is not None
         except Exception:personal=True;has_key=False
         self.username.setVisible(not unlocked and not personal)
@@ -145,6 +146,10 @@ class ManagedWindow(QMainWindow):
         self.key_button.setVisible(not unlocked and has_key);self.fallback.setVisible(not unlocked and has_key and not self.password_fallback)
         self.manager_row.setVisible(self.vault.manager);self.search.setEnabled(unlocked)
         for button in self.controls:button.setEnabled(unlocked and not self.task)
+        self.management_menu.menuAction().setVisible(self.vault.manager)
+        for action in self.management_actions:action.setEnabled(unlocked and not self.task)
+        for action in self.location_actions+self.settings_actions:action.setEnabled(not self.task)
+        self.show_deleted.setEnabled(unlocked and not self.task)
 
     def show_fallback(self):self.password_fallback=True;self.update_state()
 
@@ -308,15 +313,22 @@ class ManagedWindow(QMainWindow):
         if self.vault.unlocked and self.pending_lookup is not None:
             query=self.pending_lookup;self.pending_lookup=None;self.search.setText(query);self.refresh()
 
+    def location_help(self):
+        QMessageBox.information(self,'Vault Locations',
+            'Local vault: Save anywhere on this computer. A separate folder is optional.\n\n'
+            'Folder for new vaults: '+str(managed_locations.local_folder())+'\n\n'
+            'NAS sync: Choose a dedicated shared folder for this vault in Settings → NAS Sync Settings. '
+            'Each computer keeps its own local working copy. Choosing a new local folder does not move the current vault.')
+
     def choose_folder(self):
         if self.task:return
-        folder=QFileDialog.getExistingDirectory(self,'Choose local folder for new vaults',str(managed_locations.local_folder()))
+        folder=QFileDialog.getExistingDirectory(self,'Choose local folder (dedicated folder optional)',str(managed_locations.local_folder()))
         if folder:
             managed_locations.remember(folder=folder);self.update_state()
 
     def new_vault(self):
         if self.task:return
-        path,_=QFileDialog.getSaveFileName(self,'Save new local vault',str(managed_locations.local_folder()/'vault.sqlite'),'SQLite vault (*.sqlite)',options=QFileDialog.Option.DontConfirmOverwrite)
+        path,_=QFileDialog.getSaveFileName(self,'Save new local vault — any local folder',str(managed_locations.local_folder()/'vault.sqlite'),'SQLite vault (*.sqlite)',options=QFileDialog.Option.DontConfirmOverwrite)
         if not path:return
         destination=Path(path)
         if not destination.suffix:destination=destination.with_suffix('.sqlite')
@@ -559,12 +571,13 @@ class ManagedWindow(QMainWindow):
             save_timeout(minutes);self.lock_minutes=minutes;self.lock_timer.stop();self.touch()
     def sync_settings(self):
         if self.task:return
-        config=read_settings(self.vault);dialog=QDialog(self);dialog.setWindowTitle('Shared-folder Sync');form=QFormLayout(dialog)
+        config=read_settings(self.vault);dialog=QDialog(self);dialog.setWindowTitle('NAS Sync Settings');dialog.resize(600,380);form=QFormLayout(dialog)
+        help_text=QLabel('Choose a dedicated shared NAS folder for this vault. This requirement applies only to the shared sync folder. Your local working vault can be saved in any local folder. Each computer keeps its own local copy.');help_text.setWordWrap(True);form.addRow(help_text)
         folder=QLineEdit(config.get('folder',''));choose=QPushButton('Choose shared folder…')
         def select_folder():
             path=QFileDialog.getExistingDirectory(dialog,'Shared folder',folder.text())
             if path:folder.setText(path)
-        choose.clicked.connect(select_folder);form.addRow('Folder:',folder);form.addRow(choose)
+        choose.clicked.connect(select_folder);form.addRow('Dedicated shared folder:',folder);form.addRow(choose)
         limit=QSpinBox();limit.setRange(1,1000);limit.setValue(config.get('limit',10));form.addRow('Maximum automatic backups:',limit)
         automatic=QCheckBox('Automatic sync, including while locked');automatic.setChecked(config.get('automatic',True));form.addRow(automatic)
         interval=QSpinBox();interval.setRange(5,86400);interval.setValue(config.get('interval',30));form.addRow('Interval (seconds):',interval)
