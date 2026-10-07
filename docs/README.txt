@@ -31,7 +31,7 @@ searched. Matching metadata is indexed only in memory, not written to disk.
 Add, edit, clone, delete, copy, and per-row Show controls are available. Show opens a separate
 resizable window with large password text; the main table remains masked.
 Closing, searching, refreshing, or locking clears the display. Double-click an entry to edit it.
-Copy clears after 30 seconds if the clipboard still contains that password;
+App copy buttons clear after 30 seconds if the clipboard still contains the copied value;
 clipboard history managers may retain copies. Lock Settings controls automatic locking after inactivity, default five minutes.
 Choose 1–10080 minutes or Unlimited (0), with a warning and confirmation.
 Unlimited requires manual locking. Keyboard, clicks and scrolling reset the timer.
@@ -126,3 +126,6 @@ do not create retained backups. Different devices keep their own interval settin
 
 ENTRY-LEVEL MERGING (0.1.13)
 A successful sync establishes encrypted-entry fingerprints on this device. Independent entry edits, additions and deletions merge automatically. Competing edits or delete-versus-edit require Sync Now review. Independent choices are preselected. No plaintext history is saved. Upgrade every device; establish one successful sync before testing offline independent edits. Missing history or different authentication settings still require review.
+
+COPY FIELDS (0.1.14)
+Select an entry and choose Copy Field: Description, Link, User Name, Password or Notes. The password row has a direct Copy button without showing the secret. Add/Edit windows have Copy beside every field, including Notes, and copy the current unsaved text. Copies clear after 30 seconds and when locked; later unrelated clipboard content is preserved.
