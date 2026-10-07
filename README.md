@@ -222,9 +222,9 @@ Select an entry and use Copy Field to copy Description, Link, User Name, Passwor
 Add/Edit has a Generate button that fills the password field with a new 24-character password from the operating system’s cryptographic random source. It excludes commas, quotes, whitespace and line breaks. Generation does not save the entry or copy the password; use Save or Copy when ready.
 
 
-## Managed multi-user test build (0.2.0)
+## Managed multi-user test build (0.2.11)
 
-The separate `wormwright-vault-managed-beta_0.2.0_amd64.deb` installs alongside
+The separate `wormwright-vault-managed-beta_0.2.11_amd64.deb` installs alongside
 0.1.15. Open **Wormwright Vault — Managed Test** or **Wormwright Vault Manager —
 Test**. It defaults to a separate empty test vault and never automatically
 converts or shares personal data. New-format personal vaults include users,
@@ -241,3 +241,16 @@ Follow [the dummy-data test checklist](docs/MANAGED-TESTING.md) before convertin
 personal data. Old-format vaults remain usable in the original interface.
 [Design and limits](docs/MULTIUSER-DESIGN.md) explain offline revocation and
 backup behavior. This is a test release, not a production security certification.
+
+### Latest managed test release: 0.2.11
+
+Includes searchable offline Help and setup walkthroughs, a separate About window,
+optional disposable demo vault, shared-session Vault/Manager views, compact
+searchable management lists, red deleted-entry markers and deleted-only filtering,
+selection-sensitive Restore, Manager-authenticated encrypted database export,
+and Emergency Lockdown with immediate shared publication attempts.
+
+Download the installer from [v0.2.11-beta.1](https://github.com/DanVWHome/wormwright-vault/releases/tag/v0.2.11-beta.1).
+This managed test package installs alongside the personal 0.1.15 package.
+Only the explicitly synthetic `assets/demo/wormwright-demo.sqlite` fixture belongs
+in source control; all personal vaults, exports and backups remain excluded.
