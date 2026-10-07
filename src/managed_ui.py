@@ -54,7 +54,7 @@ class ManagedWindow(QMainWindow):
         super().__init__()
         self.vault=ManagedVault(path);self.manager_app=manager_app;self.records=[];self.pending_lookup=None
         self.dialog=None;self.key_task=None;self.password_display=None;self.clipboard_value=None;self.task=None
-        self.again=False;self.closing=False;self.conflicted=False;self.manual=False
+        self.again=False;self.closing=False;self.conflicted=False;self.manual=False;self.companion=None
         self.history=VaultHistory();self.lock_minutes=read_timeout();self.password_fallback=False
         self.setWindowTitle(f'Wormwright Vault{" Manager" if manager_app else ""} {VERSION} — Managed test build')
         self.resize(1160,700)
@@ -102,6 +102,7 @@ class ManagedWindow(QMainWindow):
         self.management_menu=self.menuBar().addMenu('Manage');self.management_actions=[]
         for text,callback in [('Users & Groups…',self.manage),('Individual Exclusions…',self.exclusions),('Restore Selected Entry',self.restore_entry),('Permanently Delete Selected Entry…',self.purge)]:
             action=self.management_menu.addAction(text);action.triggered.connect(callback);self.management_actions.append(action)
+        view_menu=self.menuBar().addMenu('View');view_menu.addAction('Open Vault View',lambda:self.open_view(False));view_menu.addAction('Open Manager View',lambda:self.open_view(True))
         settings_menu=self.menuBar().addMenu('Settings');self.settings_actions=[]
         for text,callback in [('NAS Sync Settings…',self.sync_settings),('Sync Now',self.sync_now),('Lock Settings…',self.lock_settings)]:
             action=settings_menu.addAction(text);action.triggered.connect(callback);self.settings_actions.append(action)
@@ -150,6 +151,7 @@ class ManagedWindow(QMainWindow):
         for action in self.management_actions:action.setEnabled(unlocked and not self.task)
         for action in self.location_actions+self.settings_actions:action.setEnabled(not self.task)
         self.show_deleted.setEnabled(unlocked and not self.task)
+        if self.companion:self.companion.refresh()
 
     def show_fallback(self):self.password_fallback=True;self.update_state()
 
@@ -235,6 +237,7 @@ class ManagedWindow(QMainWindow):
                     button=QPushButton(text);button.clicked.connect(callback);row.addWidget(button)
                 self.table.setCellWidget(i,3,widget)
             if self.records:self.table.selectRow(0)
+            if self.companion:self.companion.refresh()
         except Exception as error:self.lock();self.warning(error)
 
     def edit_record(self,record=None):
@@ -305,6 +308,8 @@ class ManagedWindow(QMainWindow):
             for field in dialog.findChildren(QTextEdit):field.clear()
         self.vault.lock();self.update_state()
     def handle_control(self,request):
+        if request['action'] in ('open_vault_view','open_manager_view'):
+            self.open_view(request['action']=='open_manager_view');return
         if request['action']=='lock':self.lock()
         else:
             if request['action']=='lookup':self.pending_lookup=request['query']
@@ -312,6 +317,27 @@ class ManagedWindow(QMainWindow):
     def complete_lookup(self):
         if self.vault.unlocked and self.pending_lookup is not None:
             query=self.pending_lookup;self.pending_lookup=None;self.search.setText(query);self.refresh()
+
+    def open_view(self,manager):
+        if manager==self.manager_app:
+            self.showNormal();self.raise_();self.activateWindow();return
+        if manager and self.vault.unlocked and not self.vault.manager:
+            self.warning('Only the Manager can open the management view.');return
+        if self.companion is None:
+            from companion_view import CompanionView
+            self.companion=CompanionView(self,manager)
+        self.companion.refresh();self.companion.showNormal();self.companion.raise_();self.companion.activateWindow()
+
+    def review_list(self,title,headers,rows,parent=None):
+        dialog=QDialog(parent or self);dialog.setWindowTitle(title);dialog.resize(800,480);layout=QVBoxLayout(dialog)
+        layout.addWidget(QLabel(f'{len(rows)} items — passwords are never shown in this list.'))
+        search=QLineEdit();search.setPlaceholderText('Search this list');layout.addWidget(search)
+        table=QTableWidget(len(rows),len(headers));table.setHorizontalHeaderLabels(headers);table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers);table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch);layout.addWidget(table)
+        for i,values in enumerate(rows):
+            for j,value in enumerate(values):table.setItem(i,j,QTableWidgetItem(str(value)))
+        def filter_rows(query):
+            for i,values in enumerate(rows):table.setRowHidden(i,query.casefold() not in ' '.join(map(str,values)).casefold())
+        search.textChanged.connect(filter_rows);close=QPushButton('Close');close.clicked.connect(dialog.accept);layout.addWidget(close);dialog.exec();dialog.deleteLater()
 
     def location_help(self):
         QMessageBox.information(self,'Vault Locations',
@@ -390,7 +416,8 @@ class ManagedWindow(QMainWindow):
             if not item:user_details.setText('Select a user to see their groups.');return
             uid=item.data(Qt.ItemDataRole.UserRole);admin=self.vault.administration()
             names=sorted(g['name'] for g in admin['groups'].values() if uid in g['members'])
-            user_details.setText('Groups: '+(', '.join(names) or 'None')+'\nIndividual exclusions can further restrict access.')
+            records=[r for r in self.vault.entries() if uid in self.vault._recipients(r)]
+            user_details.setText(f'{len(names)} groups • {len(records)} accessible entries\nIndividual exclusions can further restrict access.')
         def show_group():
             item=groups.currentItem()
             if not item:group_details.setText('Select a group to see its members and entry counts.');return
@@ -398,14 +425,14 @@ class ManagedWindow(QMainWindow):
             names=sorted(admin['users'][uid]['identity']['name']+(' [disabled]' if admin['users'][uid]['identity']['disabled'] else '') for uid in group['members'])
             records=[r for r in self.vault.entries(True) if gid in r['groups']]
             active=sum(not r.get('deleted',False) for r in records)
-            group_details.setText('Members: '+(', '.join(names) or 'None')+f'\nEntries: {active} active, {len(records)-active} deleted.\nEntries may belong to multiple groups.')
+            group_details.setText(f'{len(names)} members\nEntries: {active} active, {len(records)-active} deleted.\nEntries may belong to multiple groups.')
         def populate():
             selected_uid=users.currentItem().data(Qt.ItemDataRole.UserRole) if users.currentItem() else None
             selected_gid=groups.currentItem().data(Qt.ItemDataRole.UserRole) if groups.currentItem() else None
             users.clear();groups.clear();admin=self.vault.administration()
             for uid,data in sorted(admin['users'].items(),key=lambda pair:pair[1]['identity']['name'].casefold()):
                 identity=data['identity'];names=sorted(g['name'] for g in admin['groups'].values() if uid in g['members'])
-                item=QListWidgetItem(identity['name']+' — '+', '.join(names)+(' [disabled]' if identity['disabled'] else '')+(' [Manager]' if uid==self.vault.uid else ''))
+                item=QListWidgetItem(identity['name']+f' — {len(names)} groups'+(' [disabled]' if identity['disabled'] else '')+(' [Manager]' if uid==self.vault.uid else ''))
                 item.setData(Qt.ItemDataRole.UserRole,uid);users.addItem(item)
                 if uid==selected_uid:users.setCurrentItem(item)
             for gid,data in sorted(admin['groups'].items(),key=lambda pair:pair[1]['name'].casefold()):
@@ -432,9 +459,12 @@ class ManagedWindow(QMainWindow):
                 if password.text()!=confirm.text():raise VaultError('Passwords do not match.')
                 gids=selected_groups(choices)
                 records=[r for r in self.vault.entries() if set(gids)&set(r['groups'])]
-                preview='\n'.join(r['description'] for r in records) or '(No current entries)'
-                if QMessageBox.question(dialog,'Review sharing','This user will receive these entries through their groups:\n\n'+preview+'\n\nCreate this account?',QMessageBox.StandardButton.Yes|QMessageBox.StandardButton.No,QMessageBox.StandardButton.No)==QMessageBox.StandardButton.Yes:
-                    self.vault.add_user(name.text(),password.text(),gids)
+                review=QDialog(form_dialog);review.setWindowTitle('Review sharing');review.resize(600,300);review_layout=QVBoxLayout(review)
+                text=QLabel(f'This user will receive {len(records)} entries through their groups.\n\n'+('\n'.join(' '.join(r['description'].split())[:100] for r in records[:5]) or '(No current entries)')+('\n…' if len(records)>5 else ''));text.setWordWrap(True);review_layout.addWidget(text)
+                full=QPushButton('View Full List…');full.clicked.connect(lambda:self.review_list('Entries to share',['Description','Link','User Name'],[[r.get(k,'') for k in ('description','link','user_name')] for r in records],review));review_layout.addWidget(full)
+                buttons=QDialogButtonBox(QDialogButtonBox.StandardButton.Yes|QDialogButtonBox.StandardButton.Cancel);review_layout.addWidget(buttons);buttons.button(QDialogButtonBox.StandardButton.Yes).setText('Create Account');buttons.accepted.connect(review.accept);buttons.rejected.connect(review.reject)
+                if review.exec()==QDialog.DialogCode.Accepted:self.vault.add_user(name.text(),password.text(),gids)
+                review.deleteLater()
             finally:password.clear();confirm.clear();form_dialog.deleteLater()
         def selected_user():
             if not users.currentItem():raise VaultError('Select a user.')
@@ -462,6 +492,19 @@ class ManagedWindow(QMainWindow):
             for text,callback in buttons:
                 b=QPushButton(text);b.clicked.connect(lambda checked=False,f=callback:action(f));row.addWidget(b)
             user_layout.addLayout(row)
+        def user_entries():
+            uid=selected_user();records=[r for r in self.vault.entries() if uid in self.vault._recipients(r)]
+            self.review_list('Accessible entries',['Description','Link','User Name'],[[r.get(k,'') for k in ('description','link','user_name')] for r in records],dialog)
+        def user_groups():
+            uid=selected_user();self.review_list('User groups',['Group'],[[g['name']] for g in self.vault.administration()['groups'].values() if uid in g['members']],dialog)
+        def group_members():
+            item=groups.currentItem()
+            if not item:raise VaultError('Select a group.')
+            admin=self.vault.administration();g=admin['groups'][item.data(Qt.ItemDataRole.UserRole)]
+            self.review_list('Group members',['Member','Status'],[[admin['users'][uid]['identity']['name'],'Disabled' if admin['users'][uid]['identity']['disabled'] else 'Active'] for uid in g['members']],dialog)
+        for text,callback in [('View Accessible Entries…',user_entries),('View User Groups…',user_groups)]:
+            button=QPushButton(text);button.clicked.connect(lambda checked=False,f=callback:action(f));user_layout.addWidget(button)
+        members=QPushButton('View Members…');members.clicked.connect(lambda:action(group_members));group_layout.addWidget(members)
         rename=QPushButton('Rename Manager…');rename.clicked.connect(lambda:action(rename_manager));user_layout.addWidget(rename)
         add=QPushButton('Add Group…');add.clicked.connect(lambda:action(add_group));group_layout.addWidget(add)
         close=QPushButton('Close');close.clicked.connect(dialog.accept);layout.addWidget(close)
@@ -699,4 +742,6 @@ class ManagedWindow(QMainWindow):
             if self.task:
                 self.closing=True;event.ignore();return
             if self.auto_sync():self.closing=True;event.ignore();return
-        self.auto_timer.stop();self.lock();event.accept()
+        self.auto_timer.stop();self.lock()
+        if self.companion:self.companion.hide()
+        event.accept()

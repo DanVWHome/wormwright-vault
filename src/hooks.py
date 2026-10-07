@@ -13,7 +13,7 @@ import sys
 import time
 
 VERSION = 1
-ACTIONS = ('open', 'lookup', 'lock', 'capabilities')
+ACTIONS = ('open', 'lookup', 'lock', 'capabilities', 'open_vault_view', 'open_manager_view')
 
 
 def default_vault():

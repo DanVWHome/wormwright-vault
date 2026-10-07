@@ -1109,7 +1109,8 @@ def main():
     path = args.vault or (startup_vault() if args.beta else default_vault())
     request = {'version': 1, 'action': 'lookup', 'query': args.lookup} if args.lookup is not None else {'version': 1, 'action': 'open'}
     try:
-        send(path, request)
+        launch_request=request if args.lookup is not None else {'version':1,'action':'open_manager_view' if args.manager else 'open_vault_view'}
+        send(path, launch_request)
         return
     except (FileNotFoundError, ConnectionRefusedError):
         pass
