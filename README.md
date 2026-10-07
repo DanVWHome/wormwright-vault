@@ -101,7 +101,7 @@ separately. No uploaded Atlas files or personal export is part of this repositor
 This remains a prototype. Forgotten-password recovery is not implemented. Shared-folder sync is manual
 and stops on conflicting edits; it does not merge records. Physical YubiKey enrollment/unlock and installer behavior
 must be checked on each target laptop/desktop before using real credentials.
-No application license has been selected; keep the repository private for now.
+No application license has been selected; public visibility does not grant an open-source license.
 Third-party component licenses remain applicable to bundled dependencies.
 
 ## Wormwright AI branding
@@ -222,9 +222,9 @@ Select an entry and use Copy Field to copy Description, Link, User Name, Passwor
 Add/Edit has a Generate button that fills the password field with a new 24-character password from the operating system’s cryptographic random source. It excludes commas, quotes, whitespace and line breaks. Generation does not save the entry or copy the password; use Save or Copy when ready.
 
 
-## Managed multi-user test build (0.2.11)
+## Managed multi-user test build (0.2.13)
 
-The separate `wormwright-vault-managed-beta_0.2.11_amd64.deb` installs alongside
+The separate `wormwright-vault-managed-beta_0.2.13_amd64.deb` installs alongside
 0.1.15. Open **Wormwright Vault — Managed Test** or **Wormwright Vault Manager —
 Test**. It defaults to a separate empty test vault and never automatically
 converts or shares personal data. New-format personal vaults include users,
@@ -237,20 +237,29 @@ entries, restore them and permanently delete records with confirmation and
 reauthentication. Passwords remain independently encrypted with per-user key
 envelopes. Administrative sync conflicts require explicit Manager reconciliation.
 
-Follow [the dummy-data test checklist](docs/MANAGED-TESTING.md) before converting
-personal data. Old-format vaults remain usable in the original interface.
+Follow [the dummy-data test checklist](docs/MANAGED-TESTING.md) before using
+personal data. The current apps use current-format vaults.
 [Design and limits](docs/MULTIUSER-DESIGN.md) explain offline revocation and
 backup behavior. This is a test release, not a production security certification.
 
-### Latest managed test release: 0.2.11
+### Latest managed test release: 0.2.13
 
 Includes searchable offline Help and setup walkthroughs, a separate About window,
 optional disposable demo vault, shared-session Vault/Manager views, compact
 searchable management lists, red deleted-entry markers and deleted-only filtering,
 selection-sensitive Restore, Manager-authenticated encrypted database export,
-and Emergency Lockdown with immediate shared publication attempts.
+and Emergency Lockdown with immediate shared publication attempts. Help includes
+an offline narrated tutorial and AI-assisted masked lookup documentation.
+Current-format vaults support multiple users by adding accounts; the obsolete
+personal-vault conversion option has been removed.
 
-Download the installer from [v0.2.11-beta.1](https://github.com/DanVWHome/wormwright-vault/releases/tag/v0.2.11-beta.1).
+Download the installer from [v0.2.13-beta.1](https://github.com/DanVWHome/wormwright-vault/releases/tag/v0.2.13-beta.1).
 This managed test package installs alongside the personal 0.1.15 package.
 Only the explicitly synthetic `assets/demo/wormwright-demo.sqlite` fixture belongs
 in source control; all personal vaults, exports and backups remain excluded.
+
+## Platform roadmap
+
+See [the roadmap](docs/ROADMAP.md). Priority remains a dependable version on the
+three Linux machines, followed by broader Ubuntu/Fedora support, macOS, Windows,
+iOS and Android apps. These additional platforms are planned, not yet supported.
