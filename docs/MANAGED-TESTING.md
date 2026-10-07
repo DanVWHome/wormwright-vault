@@ -1,4 +1,4 @@
-# Wormwright Vault / Vault Manager managed test build (0.2.4)
+# Wormwright Vault / Vault Manager managed test build (0.2.5)
 
 This is a separate test package, not the daily-use 0.1.15 upgrade. It installs
 `wormwright-vault-beta` and `wormwright-vault-manager-beta` side by side with
@@ -96,3 +96,17 @@ locking, YubiKey enrollment and account password changes.
 
 Local vaults can be saved anywhere on the computer; a dedicated local folder
 is optional. Only the shared NAS sync folder must be dedicated to one vault.
+
+## Compact lists and two views
+
+Users and groups show counts instead of long inline lists. View Accessible
+Entries, View User Groups and View Members open searchable, scrollable lists
+without passwords. New-user sharing confirmation previews at most five names
+and offers View Full List before Create Account.
+
+View → Open Vault View / Open Manager View opens an extra window in the same
+session. Starting the other launcher for that local vault also opens its view.
+Both views share edits/search, unlock state, clipboard clearing and one sync
+worker. Lock clears both. Unlock in the main window. Closing the extra view
+keeps the main window open; closing the main window closes the session.
+Only an authenticated Manager can use management controls.
