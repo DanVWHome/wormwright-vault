@@ -222,9 +222,9 @@ Select an entry and use Copy Field to copy Description, Link, User Name, Passwor
 Add/Edit has a Generate button that fills the password field with a new 24-character password from the operating system’s cryptographic random source. It excludes commas, quotes, whitespace and line breaks. Generation does not save the entry or copy the password; use Save or Copy when ready.
 
 
-## Managed multi-user test build (0.2.13)
+## Managed multi-user test build (0.2.15)
 
-The separate `wormwright-vault-managed-beta_0.2.13_amd64.deb` installs alongside
+The separate `wormwright-vault-managed-beta_0.2.15_amd64.deb` installs alongside
 0.1.15. Open **Wormwright Vault — Managed Test** or **Wormwright Vault Manager —
 Test**. It defaults to a separate empty test vault and never automatically
 converts or shares personal data. New-format personal vaults include users,
@@ -242,7 +242,7 @@ personal data. The current apps use current-format vaults.
 [Design and limits](docs/MULTIUSER-DESIGN.md) explain offline revocation and
 backup behavior. This is a test release, not a production security certification.
 
-### Latest managed test release: 0.2.13
+### Latest managed test release: 0.2.15
 
 Includes searchable offline Help and setup walkthroughs, a separate About window,
 optional disposable demo vault, shared-session Vault/Manager views, compact
@@ -253,7 +253,7 @@ an offline narrated tutorial and AI-assisted masked lookup documentation.
 Current-format vaults support multiple users by adding accounts; the obsolete
 personal-vault conversion option has been removed.
 
-Download the installer from [v0.2.13-beta.1](https://github.com/DanVWHome/wormwright-vault/releases/tag/v0.2.13-beta.1).
+Download the installer from [v0.2.15-beta.1](https://github.com/DanVWHome/wormwright-vault/releases/tag/v0.2.15-beta.1).
 This managed test package installs alongside the personal 0.1.15 package.
 Only the explicitly synthetic `assets/demo/wormwright-demo.sqlite` fixture belongs
 in source control; all personal vaults, exports and backups remain excluded.
@@ -263,3 +263,13 @@ in source control; all personal vaults, exports and backups remain excluded.
 See [the roadmap](docs/ROADMAP.md). Priority remains a dependable version on the
 three Linux machines, followed by broader Ubuntu/Fedora support, macOS, Windows,
 iOS and Android apps. These additional platforms are planned, not yet supported.
+
+### Sync and display fixes in 0.2.15
+
+Unchanged syncs reuse the displayed rows. Delete/Restore preserves selection and
+scroll position, selecting the nearest remaining row when a filter hides the
+entry. Long sync messages wrap so they do not force the app window wider.
+Managed sync requests private backup permissions at creation instead of using
+chmod on GVFS mounts. Unsupported share fsync is tolerated; real disk errors
+still stop replacement. Shared-file access permissions depend on NAS settings.
+The included narrated tutorial remains recorded against 0.2.13.
