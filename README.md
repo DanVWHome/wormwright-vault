@@ -7,7 +7,7 @@ fallback unlock the vault.
 
 ## Install the prototype
 
-The supplied `wormwright-vault_0.1.13_amd64.deb` targets **Linux Mint 22.x on
+The supplied `wormwright-vault_0.1.14_amd64.deb` targets **Linux Mint 22.x on
 Intel/AMD 64-bit computers** (glibc 2.39 or newer). It bundles Python, Qt,
 and encryption libraries. It does not download Python packages at launch.
 APT may download the Linux display and FIDO-permission prerequisites during
@@ -15,7 +15,7 @@ installation. Mint 21 needs a build made on its older base; this particular
 binary is not claimed compatible with it.
 
 ```sh
-sudo apt install ./wormwright-vault_0.1.13_amd64.deb
+sudo apt install ./wormwright-vault_0.1.14_amd64.deb
 ```
 
 Open **Wormwright Vault** from the application menu. If the key is not detected
@@ -212,4 +212,7 @@ The running version is shown in the window title and below the app heading. If S
 ### Entry-level automatic merging
 After a successful sync, each device remembers one baseline containing entry IDs and SHA-256 fingerprints of encrypted payloads, plus the authentication-metadata fingerprint. No readable passwords, descriptions or notes are stored in this history. Independent additions, edits and deletions merge automatically, including while locked. Competing edits to one entry, delete-versus-edit, differing authentication settings, or missing history require explicit review. Independent choices are preselected in the comparison so only unresolved entries need a decision.
 
-Existing devices establish this history on their next successful sync; divergent copies with no history must first be reconciled manually. Do not copy the device-local .sync.json file between devices. Backups retain both original copies before a merge and use the configured retention limit. Shared and local replacement are separate operations; an interrupted transfer can need a retry or review. Concurrent local edits during the background merge are preserved and prevent local replacement. Update all participating devices to 0.1.13 for consistent merging behavior.
+Existing devices establish this history on their next successful sync; divergent copies with no history must first be reconciled manually. Do not copy the device-local .sync.json file between devices. Backups retain both original copies before a merge and use the configured retention limit. Shared and local replacement are separate operations; an interrupted transfer can need a retry or review. Concurrent local edits during the background merge are preserved and prevent local replacement. Update all participating devices to 0.1.14 for consistent merging behavior.
+
+### Copy individual fields
+Select an entry and use Copy Field to copy Description, Link, User Name, Password or Notes. Each masked password row also has a Copy button. Add/Edit windows provide Copy beside each field, using the current unsaved text. Copying does not reveal passwords. All app copy buttons restart the 30-second clipboard timer and clear on lock; later clipboard content from other applications is left alone.
