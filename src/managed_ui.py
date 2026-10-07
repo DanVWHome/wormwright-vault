@@ -9,7 +9,7 @@ from PySide6.QtGui import QIcon,QPixmap
 from PySide6.QtWidgets import (QApplication,QMainWindow,QWidget,QVBoxLayout,QHBoxLayout,
     QLabel,QLineEdit,QPushButton,QTableWidget,QTableWidgetItem,QHeaderView,QAbstractItemView,
     QDialog,QDialogButtonBox,QFormLayout,QTextEdit,QMessageBox,QFileDialog,QCheckBox,QListWidget,
-    QListWidgetItem,QInputDialog,QSpinBox,QMenu,QComboBox)
+    QListWidgetItem,QInputDialog,QSpinBox,QMenu,QComboBox,QSplitter)
 from managed_vault import ManagedVault,is_managed,convert_personal
 from managed_sync import synchronize,state,combined,snapshot,reconcile
 from vault import VaultError
@@ -301,14 +301,44 @@ class ManagedWindow(QMainWindow):
 
     def manage(self):
         if not self.vault.manager or self.task:return
-        dialog=QDialog(self);dialog.setWindowTitle('Wormwright Vault Manager — Users & Groups');dialog.resize(700,460);layout=QVBoxLayout(dialog)
-        users=QListWidget();layout.addWidget(users)
+        dialog=QDialog(self);dialog.setWindowTitle('Wormwright Vault Manager — Users & Groups');dialog.resize(900,540);layout=QVBoxLayout(dialog)
+        splitter=QSplitter(Qt.Orientation.Horizontal);layout.addWidget(splitter)
+        user_panel=QWidget();user_layout=QVBoxLayout(user_panel);user_layout.addWidget(QLabel('Users'))
+        users=QListWidget();users.setObjectName('management_users');user_layout.addWidget(users)
+        user_details=QLabel('Select a user to see their groups.');user_details.setWordWrap(True);user_layout.addWidget(user_details)
+        group_panel=QWidget();group_layout=QVBoxLayout(group_panel);group_layout.addWidget(QLabel('Groups'))
+        groups=QListWidget();groups.setObjectName('management_groups');group_layout.addWidget(groups)
+        group_details=QLabel('Select a group to see its members and entry counts.');group_details.setWordWrap(True);group_layout.addWidget(group_details)
+        splitter.addWidget(user_panel);splitter.addWidget(group_panel);splitter.setSizes([480,360])
+        def show_user():
+            item=users.currentItem()
+            if not item:user_details.setText('Select a user to see their groups.');return
+            uid=item.data(Qt.ItemDataRole.UserRole);admin=self.vault.administration()
+            names=sorted(g['name'] for g in admin['groups'].values() if uid in g['members'])
+            user_details.setText('Groups: '+(', '.join(names) or 'None')+'\nIndividual exclusions can further restrict access.')
+        def show_group():
+            item=groups.currentItem()
+            if not item:group_details.setText('Select a group to see its members and entry counts.');return
+            gid=item.data(Qt.ItemDataRole.UserRole);admin=self.vault.administration();group=admin['groups'][gid]
+            names=sorted(admin['users'][uid]['identity']['name']+(' [disabled]' if admin['users'][uid]['identity']['disabled'] else '') for uid in group['members'])
+            records=[r for r in self.vault.entries(True) if gid in r['groups']]
+            active=sum(not r.get('deleted',False) for r in records)
+            group_details.setText('Members: '+(', '.join(names) or 'None')+f'\nEntries: {active} active, {len(records)-active} deleted.\nEntries may belong to multiple groups.')
         def populate():
-            users.clear();admin=self.vault.administration()
-            for uid,data in admin['users'].items():
-                identity=data['identity'];names=[g['name'] for g in admin['groups'].values() if uid in g['members']]
+            selected_uid=users.currentItem().data(Qt.ItemDataRole.UserRole) if users.currentItem() else None
+            selected_gid=groups.currentItem().data(Qt.ItemDataRole.UserRole) if groups.currentItem() else None
+            users.clear();groups.clear();admin=self.vault.administration()
+            for uid,data in sorted(admin['users'].items(),key=lambda pair:pair[1]['identity']['name'].casefold()):
+                identity=data['identity'];names=sorted(g['name'] for g in admin['groups'].values() if uid in g['members'])
                 item=QListWidgetItem(identity['name']+' — '+', '.join(names)+(' [disabled]' if identity['disabled'] else '')+(' [Manager]' if uid==self.vault.uid else ''))
                 item.setData(Qt.ItemDataRole.UserRole,uid);users.addItem(item)
+                if uid==selected_uid:users.setCurrentItem(item)
+            for gid,data in sorted(admin['groups'].items(),key=lambda pair:pair[1]['name'].casefold()):
+                item=QListWidgetItem(data['name']+f" — {len(data['members'])} members")
+                item.setData(Qt.ItemDataRole.UserRole,gid);groups.addItem(item)
+                if gid==selected_gid:groups.setCurrentItem(item)
+            show_user();show_group()
+        users.currentItemChanged.connect(show_user);groups.currentItemChanged.connect(show_group)
         def action(callback):
             try:callback();populate();self.update_state();self.refresh();self.again=True
             except Exception as error:self.warning(error)
@@ -345,10 +375,13 @@ class ManagedWindow(QMainWindow):
             if password is not None:self.vault.reset_password(uid,password)
         def disable():
             uid=selected_user();identity=self.vault.administration()['users'][uid]['identity'];self.vault.set_disabled(uid,not identity['disabled'])
-        row=QHBoxLayout()
-        for text,callback in [('Add User…',user_form),('Add Group…',add_group),('Assign Groups…',memberships),('Reset Password…',reset),('Disable / Enable',disable)]:
-            b=QPushButton(text);b.clicked.connect(lambda checked=False,f=callback:action(f));row.addWidget(b)
-        layout.addLayout(row);close=QPushButton('Close');close.clicked.connect(dialog.accept);layout.addWidget(close)
+        for buttons in [[('Add User…',user_form),('Assign Groups…',memberships)], [('Reset Password…',reset),('Disable / Enable',disable)]]:
+            row=QHBoxLayout()
+            for text,callback in buttons:
+                b=QPushButton(text);b.clicked.connect(lambda checked=False,f=callback:action(f));row.addWidget(b)
+            user_layout.addLayout(row)
+        add=QPushButton('Add Group…');add.clicked.connect(lambda:action(add_group));group_layout.addWidget(add)
+        close=QPushButton('Close');close.clicked.connect(dialog.accept);layout.addWidget(close)
         populate();self.dialog=dialog;dialog.exec();self.dialog=None;dialog.deleteLater();self.auto_sync()
 
     def exclusions(self):
