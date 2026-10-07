@@ -123,3 +123,6 @@ without recurring popups. Conflicts require Sync Now review after unlocking.
 Closing waits for a final attempt; an unavailable share or conflict keeps local
 changes saved. Forced exit/crash cannot guarantee a final sync. No-change polls
 do not create retained backups. Different devices keep their own interval settings.
+
+ENTRY-LEVEL MERGING (0.1.13)
+A successful sync establishes encrypted-entry fingerprints on this device. Independent entry edits, additions and deletions merge automatically. Competing edits or delete-versus-edit require Sync Now review. Independent choices are preselected. No plaintext history is saved. Upgrade every device; establish one successful sync before testing offline independent edits. Missing history or different authentication settings still require review.
