@@ -654,7 +654,7 @@ class Window(QMainWindow):
             selected_id = self.table.item(self.table.currentRow(), 0).data(Qt.ItemDataRole.UserRole) if self.table.currentRow() >= 0 else None
             changed = finish_sync(self.vault, task)
             self.sync_status.setText(task.result)
-            if task.result.startswith('Downloaded'):
+            if task.result.startswith(('Downloaded', 'Merged')):
                 self.update_state()
                 self.refresh()
                 for row in range(self.table.rowCount()):

@@ -32,6 +32,7 @@ class AutoSyncTask(QThread):
         self.error = None
         self.conflict = False
         self.baseline = None
+        self.entry_history = None
 
     def run(self):
         vault = Vault(self.snapshot) if self.key is not None else EncryptedSnapshot(self.snapshot)
@@ -43,7 +44,9 @@ class AutoSyncTask(QThread):
                 vault.reopen_unlocked(self.key)
             self.result = synchronize(vault, backup_target=self.original, encrypted_only=encrypted_only)
             from sync import read_settings
-            self.baseline = read_settings(vault)['baseline']
+            completed = read_settings(vault)
+            self.baseline = completed['baseline']
+            self.entry_history = completed['entry_history']
         except Exception as error:
             self.conflict = isinstance(error, SyncConflict)
             self.error = str(error)
@@ -66,7 +69,7 @@ def finish_sync(vault, task):
     if task.error:
         raise ValueError(task.error)
     changed = fingerprint(vault.path) != task.original_hash
-    if task.result.startswith('Downloaded'):
+    if task.result.startswith(('Downloaded', 'Merged')):
         if changed:
             raise SyncConflict('Local entries changed while downloading. Both copies were kept. Click Sync Now to review.')
         session_key = vault.data_key
@@ -89,5 +92,6 @@ def finish_sync(vault, task):
             staged.unlink(missing_ok=True)
     settings = dict(task.settings)
     settings['baseline'] = task.baseline
+    settings['entry_history'] = task.entry_history
     atomic_json(settings_path(vault), settings)
     return changed

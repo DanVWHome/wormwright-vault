@@ -11,6 +11,7 @@ import time
 import uuid
 from nacl.secret import SecretBox
 from vault import Vault, VaultError
+from merge import state, decisions
 
 class SyncConflict(VaultError):
     pass
@@ -67,6 +68,8 @@ def configure(vault, folder, limit, automatic=True, interval=30):
     data = {'folder': str(folder), 'limit': limit, 'automatic': bool(automatic), 'interval': interval}
     if previous.get('folder') == str(folder):
         data['baseline'] = previous.get('baseline')
+        if previous.get('entry_history'):
+            data['entry_history'] = previous['entry_history']
     atomic_json(settings_path(vault), data)
 
 
@@ -134,7 +137,10 @@ def synchronize(vault, backup_target=None, encrypted_only=False):
         elif baseline and local_hash == baseline and remote_hash:
             action = 'Downloaded shared changes.'
         else:
-            raise SyncConflict('Both copies changed, or these copies have not been paired. Nothing was overwritten. Keep both copies and resolve the differences before syncing.')
+            choices = decisions(config.get('entry_history'), state(vault.path), state(snapshot)) if baseline and remote_hash else None
+            if choices is None or any(choice is None for choice in choices.values()):
+                raise SyncConflict('Competing edits, authentication changes, or missing sync history need review. Nothing was overwritten. Click Sync Now to resolve the differences.')
+            action = 'Merged independent entry changes.'
         if remote_hash and remote_hash != local_hash:
             # Validate that this is the same encrypted vault, not another vault.
             other = EncryptedSnapshot(snapshot) if encrypted_only else Vault(snapshot)
@@ -148,7 +154,45 @@ def synchronize(vault, backup_target=None, encrypted_only=False):
                     if ours.get('wrapped_key') != theirs.get('wrapped_key'):
                         raise VaultError('Cannot confirm that an empty shared copy belongs to this vault. Nothing was overwritten.')
         retained = []
-        if action.startswith('Uploaded'):
+        if action.startswith('Merged'):
+            retained.append(backup(other, remote))
+            retained.append(backup(vault, backup_target or vault.path))
+            merged_path = scratch / 'merged.sqlite'
+            vault.backup(merged_path)
+            ours = dict(vault.db.execute('SELECT id,payload FROM entries'))
+            theirs = dict(other.db.execute('SELECT id,payload FROM entries'))
+            with closing(sqlite3.connect(merged_path)) as db:
+                with db:
+                    db.execute('DELETE FROM entries')
+                    db.executemany('INSERT INTO entries VALUES (?,?)',
+                        [(key, records[key]) for key, choice in choices.items()
+                         for records in [ours if choice == 'local' else theirs] if key in records])
+            validate_encrypted(merged_path)
+            if not encrypted_only:
+                check = Vault(merged_path)
+                try:
+                    check.reopen_unlocked(vault.data_key)
+                finally:
+                    check.lock()
+            new_hash = fingerprint(merged_path)
+            fd, name = tempfile.mkstemp(dir=folder, prefix='.wormwright-sync-', suffix='.sqlite')
+            os.close(fd)
+            staged = Path(name)
+            shutil.copyfile(merged_path, staged)
+            other.lock()
+            os.replace(staged, remote)
+            fd, name = tempfile.mkstemp(dir=vault.path.parent, prefix='.wormwright-sync-', suffix='.sqlite')
+            os.close(fd)
+            staged = Path(name)
+            shutil.copyfile(merged_path, staged)
+            session_key = vault.data_key
+            vault.lock()
+            os.replace(staged, vault.path)
+            if encrypted_only:
+                vault.db = sqlite3.connect(vault.path)
+            else:
+                vault.reopen_unlocked(session_key)
+        elif action.startswith('Uploaded'):
             if other:
                 retained.append(backup(other, remote))
             retained.append(backup(vault, backup_target or vault.path))
@@ -181,6 +225,7 @@ def synchronize(vault, backup_target=None, encrypted_only=False):
         else:
             new_hash = local_hash
         config['baseline'] = new_hash
+        config['entry_history'] = state(vault.path)
         atomic_json(settings_path(vault), config)
         # Prune only this app's automatic sync backups, after a successful sync.
         for target in (backup_target or vault.path, remote):

@@ -32,7 +32,10 @@ class ConflictDialog(QDialog):
             selector.addItem('Local' if local else 'Local (absent: remove)', 'local')
             selector.addItem('Shared' if shared else 'Shared (absent: remove)', 'shared')
             selector.addItem('Omit entry', 'omit')
-            if local == shared:
+            suggestion = getattr(comparison, 'suggestions', {}).get(self.rows[index][0])
+            if suggestion:
+                selector.setCurrentIndex(selector.findData(suggestion))
+            elif local == shared:
                 selector.setCurrentIndex(1)
             selector.currentIndexChanged.connect(self.update_apply)
             self.table.setCellWidget(index, 3, selector)
