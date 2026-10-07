@@ -1,4 +1,4 @@
-# Wormwright Vault / Vault Manager managed test build (0.2.0)
+# Wormwright Vault / Vault Manager managed test build (0.2.2)
 
 This is a separate test package, not the daily-use 0.1.15 upgrade. It installs
 `wormwright-vault-beta` and `wormwright-vault-manager-beta` side by side with
@@ -8,14 +8,14 @@ Use dummy accounts and passwords for these first tests. No personal database is
 automatically converted, replaced or shared.
 
 The new format contains encrypted users, groups, exclusions and entries even
-in personal mode. The initial group is Generic and the creator is Manager.
+in personal mode. The initial group is Generic. Choose your own Manager username during creation; the account is identified with [Manager]. The Manager belongs to all groups automatically and cannot be unassigned. Use Rename Manager in Users & Groups to change the name later.
 Username is hidden in personal mode, then appears when a second account is
 created. Each user has separate password and optional YubiKey enrollment.
 
 ## Test in this order
 
 1. Install the managed-beta .deb. Open **Wormwright Vault Manager — Test**.
-2. Create an empty test vault, confirming a 12+ character master password.
+2. On the welcome screen choose Create New Vault. Enter your Manager username and confirm a 12+ character master password. Open Existing Vault selects an existing new-format local copy; Convert Personal Vault preserves an older vault and creates a separate copy.
 3. Add one dummy entry in Generic, then open Users & Groups and add Family.
 4. Add an entry in Family using the Manager's multi-select group control.
 5. Add Alice and Bob, selecting Family. Carefully review the sharing preview.
@@ -24,7 +24,7 @@ created. Each user has separate password and optional YubiKey enrollment.
 7. Edit Family's entry, create another in Family, and delete one. Deleted
    entries should disappear from Alice's view. Ordinary users cannot change
    the groups of an existing entry.
-8. Unlock as Manager and check **Show deleted entries**. Deleted rows should
+8. Unlock using your chosen Manager username and check **Show deleted entries**. Deleted rows should
    say Deleted. Edit them, restore one, then verify Alice sees it again.
 9. Exclude Alice from a Family entry. Bob should still see it; Alice should
    not. Exclusion overrides group membership and creator ownership.
