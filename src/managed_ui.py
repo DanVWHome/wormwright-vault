@@ -73,10 +73,17 @@ class ManagedWindow(QMainWindow):
         self.fallback=QPushButton('Use Password');self.fallback.clicked.connect(self.show_fallback);login.addWidget(self.fallback)
         self.username.textChanged.connect(self.update_state);self.master.returnPressed.connect(self.unlock)
         layout.addLayout(login)
-        row=QHBoxLayout()
+        self.welcome=QWidget();welcome_layout=QVBoxLayout(self.welcome)
+        heading=QLabel('Welcome — choose how to get started');heading.setStyleSheet('font-size:20px;font-weight:bold');welcome_layout.addWidget(heading)
+        help_text=QLabel('Create a new vault to start from scratch. Open a local copy of an existing new-format vault, or convert an older personal vault into a separate copy. Your original vault is preserved.');help_text.setWordWrap(True);welcome_layout.addWidget(help_text)
+        welcome_row=QHBoxLayout()
+        for text,callback in [('Create New Vault…',self.unlock),('Open Existing Vault…',self.open_existing),('Convert Personal Vault…',self.convert)]:
+            b=QPushButton(text);b.clicked.connect(callback);welcome_row.addWidget(b)
+        welcome_layout.addLayout(welcome_row);layout.addWidget(self.welcome)
+        self.location_row=QWidget();row=QHBoxLayout(self.location_row);row.setContentsMargins(0,0,0,0)
         for text,callback in [('Choose Vault…',self.choose),('Recent Vaults…',self.recent),('Convert Personal Vault…',self.convert)]:
             button=QPushButton(text);button.clicked.connect(callback);row.addWidget(button)
-        layout.addLayout(row)
+        layout.addWidget(self.location_row)
         row=QHBoxLayout();self.search=QLineEdit();self.search.setPlaceholderText('Search description, link or notes');self.search.textChanged.connect(self.refresh);row.addWidget(self.search)
         self.controls=[]
         for text,callback in [('Add',self.add),('Edit',self.edit),('Clone',self.clone),('Delete',self.delete),('Lock',self.lock)]:
@@ -123,12 +130,13 @@ class ManagedWindow(QMainWindow):
 
     def update_state(self):
         unlocked=self.vault.unlocked
+        missing=not self.vault.path.exists();self.welcome.setVisible(missing);self.location_row.setVisible(not missing)
         self.status.setText(f'{"Unlocked" if unlocked else "Locked"} • {self.vault.path}')
         try:personal=self.vault.personal;has_key=self.vault.yubikey_settings(self.username.text()) is not None
         except Exception:personal=True;has_key=False
         self.username.setVisible(not unlocked and not personal)
         password_visible=not unlocked and (not has_key or self.password_fallback)
-        self.master.setVisible(password_visible);self.unlock_button.setVisible(password_visible)
+        self.master.setVisible(password_visible and not missing);self.unlock_button.setVisible(password_visible and not missing);self.unlock_button.setText('Unlock Vault')
         self.key_button.setVisible(not unlocked and has_key);self.fallback.setVisible(not unlocked and has_key and not self.password_fallback)
         self.manager_row.setVisible(self.vault.manager);self.search.setEnabled(unlocked)
         for button in self.controls:button.setEnabled(unlocked and not self.task)
@@ -136,10 +144,14 @@ class ManagedWindow(QMainWindow):
     def show_fallback(self):self.password_fallback=True;self.update_state()
 
     def password_prompt(self,label='Current account password:'):
-        return QInputDialog.getText(self,'Authenticate',label,QLineEdit.EchoMode.Password)
+        dialog=QInputDialog(self);dialog.setWindowTitle('Authenticate');dialog.setLabelText(label);dialog.setTextEchoMode(QLineEdit.EchoMode.Password);dialog.resize(560,160);dialog.setMinimumWidth(520)
+        try:
+            accepted=dialog.exec()==QDialog.DialogCode.Accepted
+            return dialog.textValue(),accepted
+        finally:dialog.setTextValue('');dialog.deleteLater()
 
     def new_password(self,title,minimum=False):
-        dialog=QDialog(self);dialog.setWindowTitle(title);form=QFormLayout(dialog)
+        dialog=QDialog(self);dialog.setWindowTitle(title);dialog.resize(600,220);dialog.setMinimumWidth(560);form=QFormLayout(dialog)
         password=QLineEdit();password.setEchoMode(QLineEdit.EchoMode.Password)
         confirmation=QLineEdit();confirmation.setEchoMode(QLineEdit.EchoMode.Password)
         form.addRow('Password (12+ characters):' if minimum else 'New password:',password);form.addRow('Confirm password:',confirmation)
@@ -154,17 +166,37 @@ class ManagedWindow(QMainWindow):
         try:return password.text() if dialog.exec()==QDialog.DialogCode.Accepted else None
         finally:password.clear();confirmation.clear();self.dialog=previous_dialog;dialog.deleteLater()
 
+    def create_account(self):
+        dialog=QDialog(self);dialog.setWindowTitle('Create New Vault');dialog.resize(640,300);dialog.setMinimumWidth(580);form=QFormLayout(dialog)
+        explanation=QLabel('Choose your own Manager name and an initial master password. This account can access every group. You can add other users later in Users & Groups.');explanation.setWordWrap(True);form.addRow(explanation)
+        name=QLineEdit();name.setPlaceholderText('Your name, for example Dan')
+        password=QLineEdit();password.setEchoMode(QLineEdit.EchoMode.Password)
+        confirm=QLineEdit();confirm.setEchoMode(QLineEdit.EchoMode.Password)
+        form.addRow('Manager username:',name);form.addRow('Master password (12+ characters):',password);form.addRow('Confirm master password:',confirm)
+        form.addRow(QLabel('Local vault: '+str(self.vault.path)))
+        error=QLabel();form.addRow(error)
+        buttons=QDialogButtonBox(QDialogButtonBox.StandardButton.Save|QDialogButtonBox.StandardButton.Cancel);form.addRow(buttons)
+        def accept():
+            if not name.text().strip():error.setText('Enter your Manager username.')
+            elif len(password.text())<12:error.setText('Enter at least 12 characters.')
+            elif password.text()!=confirm.text():error.setText('Passwords do not match.')
+            else:dialog.accept()
+        buttons.accepted.connect(accept);buttons.rejected.connect(dialog.reject)
+        previous=self.dialog;self.dialog=dialog
+        try:
+            if dialog.exec()!=QDialog.DialogCode.Accepted:return False
+            self.vault.create(password.text(),name.text().strip());self.username.setText(name.text().strip());return True
+        finally:password.clear();confirm.clear();self.dialog=previous;dialog.deleteLater()
+
     def unlock(self):
         if self.task:return
         try:
             if not self.vault.path.exists():
-                password=self.new_password('Create Personal Vault',True)
-                if password is None:return
-                self.vault.create(password)
+                if not self.create_account():return
             else:self.vault.unlock(self.master.text(),self.username.text())
             self.master.clear();self.history.remember(self.vault.path);self.touch();self.update_state();self.refresh()
             self.complete_lookup();self.auto_sync()
-            if self.manager_app and self.vault.manager:QTimer.singleShot(0,self.manage)
+            # Keep the main vault visible after unlock; management is an explicit action.
         except Exception as error:self.warning(error);self.update_state()
 
     def selected(self):
@@ -268,6 +300,11 @@ class ManagedWindow(QMainWindow):
         if self.vault.unlocked and self.pending_lookup is not None:
             query=self.pending_lookup;self.pending_lookup=None;self.search.setText(query);self.refresh()
 
+    def open_existing(self):
+        if self.task:return
+        path,_=QFileDialog.getOpenFileName(self,'Open existing local vault',str(self.vault.path.parent),'SQLite vault (*.sqlite)')
+        if path:self.open_path(Path(path))
+
     def choose(self):
         if self.task:return
         path,_=QFileDialog.getSaveFileName(self,'Choose or create local vault',str(self.vault.path),'SQLite vault (*.sqlite)',options=QFileDialog.Option.DontConfirmOverwrite)
@@ -346,7 +383,7 @@ class ManagedWindow(QMainWindow):
             name,ok=QInputDialog.getText(dialog,'New group','Group name:')
             if ok:self.vault.add_group(name)
         def user_form():
-            form_dialog=QDialog(dialog);form_dialog.setWindowTitle('Add User');form=QFormLayout(form_dialog)
+            form_dialog=QDialog(dialog);form_dialog.setWindowTitle('Add User');form_dialog.resize(600,420);form_dialog.setMinimumWidth(560);form=QFormLayout(form_dialog)
             name=QLineEdit();password=QLineEdit();password.setEchoMode(QLineEdit.EchoMode.Password);confirm=QLineEdit();confirm.setEchoMode(QLineEdit.EchoMode.Password)
             labels=self.vault.available_groups();choices=groups_list(labels,[g for g,n in labels.items() if n=='Generic'])
             form.addRow('Username:',name);form.addRow('Password:',password);form.addRow('Confirm:',confirm);form.addRow('Groups:',choices)
@@ -365,11 +402,18 @@ class ManagedWindow(QMainWindow):
             if not users.currentItem():raise VaultError('Select a user.')
             return users.currentItem().data(Qt.ItemDataRole.UserRole)
         def memberships():
-            uid=selected_user();admin=self.vault.administration();choices=groups_list(self.vault.available_groups(),[g for g,data in admin['groups'].items() if uid in data['members']])
+            uid=selected_user()
+            if uid==self.vault.uid:
+                QMessageBox.information(dialog,'Manager groups','The Manager is automatically assigned to every group and cannot be unassigned.');return
+            admin=self.vault.administration();choices=groups_list(self.vault.available_groups(),[g for g,data in admin['groups'].items() if uid in data['members']])
             d=QDialog(dialog);d.setWindowTitle('Assign User Groups');l=QVBoxLayout(d);l.addWidget(QLabel('Changes affect access to existing entries. Creators retain their own entries unless excluded.'));l.addWidget(choices)
             buttons=QDialogButtonBox(QDialogButtonBox.StandardButton.Save|QDialogButtonBox.StandardButton.Cancel);l.addWidget(buttons);buttons.accepted.connect(d.accept);buttons.rejected.connect(d.reject)
             if d.exec()==QDialog.DialogCode.Accepted:self.vault.set_memberships(uid,selected_groups(choices))
             d.deleteLater()
+        def rename_manager():
+            current=self.vault.administration()['users'][self.vault.uid]['identity']['name']
+            name,ok=QInputDialog.getText(dialog,'Rename Manager','Manager username:',text=current)
+            if ok:self.vault.rename_manager(name);self.username.setText(name.strip())
         def reset():
             uid=selected_user();password=self.new_password('Reset account password')
             if password is not None:self.vault.reset_password(uid,password)
@@ -380,6 +424,7 @@ class ManagedWindow(QMainWindow):
             for text,callback in buttons:
                 b=QPushButton(text);b.clicked.connect(lambda checked=False,f=callback:action(f));row.addWidget(b)
             user_layout.addLayout(row)
+        rename=QPushButton('Rename Manager…');rename.clicked.connect(lambda:action(rename_manager));user_layout.addWidget(rename)
         add=QPushButton('Add Group…');add.clicked.connect(lambda:action(add_group));group_layout.addWidget(add)
         close=QPushButton('Close');close.clicked.connect(dialog.accept);layout.addWidget(close)
         populate();self.dialog=dialog;dialog.exec();self.dialog=None;dialog.deleteLater();self.auto_sync()
