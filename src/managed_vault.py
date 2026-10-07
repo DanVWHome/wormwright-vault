@@ -654,34 +654,3 @@ class ManagedVault:
             self.db = None
 
 
-def convert_personal(source, destination, password, username='Manager', hardware_response=None):
-    """Create a new format-2 copy; never replace or change the source vault."""
-    from vault import Vault
-    old = Vault(source)
-    new = ManagedVault(destination)
-    created = False
-    try:
-        old.unlock(password)
-        records = old.entries()
-        settings = old.yubikey_settings()
-        if hardware_response is not None:
-            old.verify_yubikey(settings, hardware_response)
-        # Initial creation keeps its 12-character rule; migrated passwords may
-        # already have been changed to a shorter nonempty fallback password.
-        temporary_password = uuid.uuid4().hex
-        new.create(temporary_password, username)
-        created = True
-        new.change_password(temporary_password, password)
-        for record in records:
-            new.save({key:record.get(key,'') for key in ('description','link','user_name','password','notes')})
-        if settings and hardware_response is not None:
-            new.enroll_yubikey(settings['credential'],settings['salt'],hardware_response)
-        new.entries(include_deleted=True)
-        return bool(settings and hardware_response is None)
-    except Exception:
-        new.lock()
-        if created:
-            Path(destination).unlink(missing_ok=True)
-        raise
-    finally:
-        old.lock();new.lock()

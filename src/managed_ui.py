@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (QApplication,QMainWindow,QWidget,QVBoxLayout,QHBo
     QLabel,QLineEdit,QPushButton,QTableWidget,QTableWidgetItem,QHeaderView,QAbstractItemView,
     QDialog,QDialogButtonBox,QFormLayout,QTextEdit,QMessageBox,QFileDialog,QCheckBox,QListWidget,
     QListWidgetItem,QInputDialog,QSpinBox,QMenu,QComboBox,QSplitter)
-from managed_vault import ManagedVault,is_managed,convert_personal
+from managed_vault import ManagedVault,is_managed
 from managed_sync import synchronize,state,combined,snapshot,reconcile
 from vault import VaultError
 from sync import read_settings,configure,SyncConflict
@@ -77,9 +77,9 @@ class ManagedWindow(QMainWindow):
         layout.addLayout(login)
         self.welcome=QWidget();welcome_layout=QVBoxLayout(self.welcome)
         heading=QLabel('Welcome — choose how to get started');heading.setStyleSheet('font-size:20px;font-weight:bold');welcome_layout.addWidget(heading)
-        help_text=QLabel('Create a new vault to start from scratch. Open a local copy of an existing new-format vault, or convert an older personal vault into a separate copy. Your original vault is preserved. Local vaults can be saved anywhere on this computer; a separate folder is optional.');help_text.setWordWrap(True);welcome_layout.addWidget(help_text)
+        help_text=QLabel('Create a new vault to start from scratch. Open a local copy of an existing vault, or load the optional demo to learn. Local vaults can be saved anywhere on this computer; a separate folder is optional.');help_text.setWordWrap(True);welcome_layout.addWidget(help_text)
         welcome_row=QHBoxLayout()
-        for text,callback in [('Create New Vault…',self.new_vault),('Open Existing Vault…',self.open_existing),('Convert Personal Vault…',self.convert),('Load Demo Vault…',self.load_demo)]:
+        for text,callback in [('Create New Vault…',self.new_vault),('Open Existing Vault…',self.open_existing),('Load Demo Vault…',self.load_demo)]:
             b=QPushButton(text);b.clicked.connect(callback);welcome_row.addWidget(b)
         welcome_layout.addLayout(welcome_row);layout.addWidget(self.welcome)
         row=QHBoxLayout();self.search=QLineEdit();self.search.setPlaceholderText('Search description, link or notes');self.search.textChanged.connect(self.refresh);row.addWidget(self.search)
@@ -96,7 +96,7 @@ class ManagedWindow(QMainWindow):
         self.only_deleted=QCheckBox('Only deleted entries');self.only_deleted.setObjectName('only_deleted');self.only_deleted.toggled.connect(self.refresh);row.addWidget(self.only_deleted);row.addStretch();layout.addWidget(self.manager_row)
         vault_menu=self.menuBar().addMenu('Vault')
         self.location_actions=[]
-        for text,callback in [('Open Existing Vault…',self.open_existing),('Create New Vault…',self.new_vault),('Recent Vaults…',self.recent),('Convert Personal Vault…',self.convert),('Choose Folder for New Vaults…',self.choose_folder)]:
+        for text,callback in [('Open Existing Vault…',self.open_existing),('Create New Vault…',self.new_vault),('Recent Vaults…',self.recent),('Choose Folder for New Vaults…',self.choose_folder)]:
             action=vault_menu.addAction(text);action.triggered.connect(callback);self.location_actions.append(action)
         vault_menu.addAction('Load Demo Vault…',self.load_demo)
         vault_menu.addSeparator();vault_menu.addAction('Vault Locations Explained…',self.location_help)
@@ -114,7 +114,7 @@ class ManagedWindow(QMainWindow):
         settings_menu.addSeparator()
         for text,callback in [('Set Up YubiKey…',self.enroll),('Change Account Password…',self.change_password)]:
             action=settings_menu.addAction(text);action.triggered.connect(callback);self.controls.append(action)
-        help_menu=self.menuBar().addMenu('Help');help_menu.addAction('Searchable Help…',self.show_help);help_menu.addSeparator();help_menu.addAction('About Wormwright Vault…',self.show_about)
+        help_menu=self.menuBar().addMenu('Help');help_menu.addAction('Searchable Help…',self.show_help);help_menu.addAction('Watch Tutorial…',self.show_tutorial);help_menu.addSeparator();help_menu.addAction('About Wormwright Vault…',self.show_about)
         self.table=QTableWidget(0,6);self.table.setHorizontalHeaderLabels(['Description','Link','User Name','Password','Groups','Duplicate Password'])
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows);self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers);self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
@@ -127,6 +127,10 @@ class ManagedWindow(QMainWindow):
         self.auto_timer=QTimer(self);self.auto_timer.timeout.connect(self.auto_sync);self.auto_timer.start(self.interval())
         QApplication.instance().installEventFilter(self)
         self.update_state();QTimer.singleShot(0,self.auto_sync)
+
+    def show_tutorial(self):
+        from tutorial_window import show_tutorial
+        show_tutorial(self)
 
     def show_about(self):
         from about_window import show_about
@@ -426,30 +430,13 @@ class ManagedWindow(QMainWindow):
     def open_path(self,path):
         if path.resolve()==self.vault.path.resolve():return
         if path.exists() and not is_managed(path):
-            QMessageBox.information(self,'Personal vault','This is a legacy personal vault. Use Convert Personal Vault to create a new-format copy; the original stays usable.');return
+            QMessageBox.information(self,'Unsupported vault','This file is not a supported current-format vault. Create a new vault or open a current-format copy.');return
         self.lock();self.lockdown_pending=False;self.vault=ManagedVault(path);self.username.clear();self.search.clear();self.password_fallback=False;self.update_state()
     def recent(self):
         dialog=QDialog(self);dialog.setWindowTitle('Recent Vaults');layout=QVBoxLayout(dialog);items=QListWidget();items.addItems(self.history.read());layout.addWidget(items)
         buttons=QDialogButtonBox(QDialogButtonBox.StandardButton.Open|QDialogButtonBox.StandardButton.Cancel);layout.addWidget(buttons);buttons.accepted.connect(dialog.accept);buttons.rejected.connect(dialog.reject)
         if dialog.exec()==QDialog.DialogCode.Accepted and items.currentItem() and not self.task:self.open_path(Path(items.currentItem().text()))
         dialog.deleteLater()
-    def convert(self):
-        if self.task:return
-        source,_=QFileDialog.getOpenFileName(self,'Select personal vault to convert','','SQLite vault (*.sqlite)')
-        if not source:return
-        if is_managed(source):self.warning('This vault already uses the new format.');return
-        destination,_=QFileDialog.getSaveFileName(self,'Save converted copy',str(Path(source).with_name(Path(source).stem+'-managed.sqlite')),'SQLite vault (*.sqlite)')
-        if not destination:return
-        password,ok=self.password_prompt('Personal vault password:')
-        if not ok:return
-        username,ok=QInputDialog.getText(self,'Manager account','Your Manager username:',text='Manager')
-        if not ok:return
-        try:
-            needs_key=convert_personal(source,destination,password,username)
-            self.open_path(Path(destination));self.master.setText(password);self.unlock()
-            if needs_key:QMessageBox.information(self,'YubiKey enrollment','The original vault and its YubiKey enrollment are unchanged. Enroll your YubiKey for the converted copy using Set Up YubiKey.')
-        except Exception as error:self.warning(error)
-
     def manage(self):
         if not self.vault.manager or self.task:return
         dialog=QDialog(self);dialog.setWindowTitle('Wormwright Vault Manager — Users & Groups');dialog.resize(900,540);layout=QVBoxLayout(dialog)
