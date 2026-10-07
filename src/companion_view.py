@@ -26,7 +26,9 @@ class CompanionView(QMainWindow):
             a=menu.addAction('Show deleted entries');a.setCheckable(True);a.toggled.connect(controller.show_deleted.setChecked);self.deleted_action=a
             a=menu.addAction('Only deleted entries');a.setCheckable(True);a.toggled.connect(controller.only_deleted.setChecked);self.only_deleted_action=a
         self.table=QTableWidget(0,4);self.table.setHorizontalHeaderLabels(['Description','Link','User Name','Password'])
+        self.table.horizontalHeaderItem(3).setToolTip('Password sorting is disabled to protect password privacy.')
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers);self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows);self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection);self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.table.horizontalHeader().setSortIndicatorShown(True);self.table.horizontalHeader().sectionClicked.connect(controller.sort_entries)
         self.table.currentCellChanged.connect(self.select);self.table.cellDoubleClicked.connect(controller.edit);layout.addWidget(self.table)
         layout.addWidget(QLabel('Shares the main session. Both views lock together. Close this view to keep the main window open.'))
         self.refresh()
@@ -44,6 +46,8 @@ class CompanionView(QMainWindow):
             self.deleted_action.blockSignals(True);self.deleted_action.setChecked(c.show_deleted.isChecked());self.deleted_action.blockSignals(False);self.deleted_action.setEnabled(c.vault.manager and not c.task)
         if self.manager:
             self.only_deleted_action.blockSignals(True);self.only_deleted_action.setChecked(c.only_deleted.isChecked());self.only_deleted_action.blockSignals(False);self.only_deleted_action.setEnabled(c.vault.manager and not c.task)
+        if c.sort_column<4:self.table.horizontalHeader().setSortIndicator(c.sort_column,Qt.SortOrder.DescendingOrder if c.sort_descending else Qt.SortOrder.AscendingOrder)
+        self.table.horizontalHeader().setSortIndicatorShown(c.sort_column<4)
         visible=c.records if unlocked and (not self.manager or c.vault.manager) else []
         if visible==getattr(self,'rendered_records',None):return
         vertical=self.table.verticalScrollBar().value();horizontal=self.table.horizontalScrollBar().value()

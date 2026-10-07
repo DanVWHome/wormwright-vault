@@ -56,6 +56,7 @@ class ManagedWindow(QMainWindow):
         self.dialog=None;self.key_task=None;self.password_display=None;self.clipboard_value=None;self.task=None
         self.again=False;self.closing=False;self.conflicted=False;self.manual=False;self.companion=None
         self.lockdown_pending=False
+        self.sort_column=0;self.sort_descending=False
         self.history=VaultHistory();self.lock_minutes=read_timeout();self.password_fallback=False
         self.setWindowTitle(f'Wormwright Vault{" Manager" if manager_app else ""} {VERSION} — Managed test build')
         self.resize(1160,700)
@@ -116,9 +117,12 @@ class ManagedWindow(QMainWindow):
             action=settings_menu.addAction(text);action.triggered.connect(callback);self.controls.append(action)
         help_menu=self.menuBar().addMenu('Help');help_menu.addAction('Searchable Help…',self.show_help);help_menu.addAction('Watch Tutorial…',self.show_tutorial);help_menu.addSeparator();help_menu.addAction('About Wormwright Vault…',self.show_about)
         self.table=QTableWidget(0,6);self.table.setHorizontalHeaderLabels(['Description','Link','User Name','Password','Groups','Duplicate Password'])
+        self.table.horizontalHeaderItem(3).setToolTip('Password sorting is disabled to protect password privacy.')
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows);self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers);self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.table.horizontalHeader().setSectionResizeMode(3,QHeaderView.ResizeMode.Fixed);self.table.setColumnWidth(3,240)
+        self.table.horizontalHeader().setSortIndicatorShown(True);self.table.horizontalHeader().setSortIndicator(0,Qt.SortOrder.AscendingOrder)
+        self.table.horizontalHeader().sectionClicked.connect(self.sort_entries)
         self.table.cellDoubleClicked.connect(self.edit);self.table.currentCellChanged.connect(self.selection_changed);layout.addWidget(self.table)
         self.sync_status=QLabel('Sync not configured.');self.sync_status.setWordWrap(True);layout.addWidget(self.sync_status)
         layout.addWidget(QLabel('Clipboard clears after 30 seconds • Deleted entries are visible only to the Manager'))
@@ -198,6 +202,46 @@ class ManagedWindow(QMainWindow):
             return dialog.textValue(),accepted
         finally:dialog.setTextValue('');dialog.deleteLater()
 
+    def reauthenticate(self):
+        """Fresh current-account authentication, using enrolled hardware or fallback."""
+        try:
+            settings=self.vault.yubikey_settings()
+            if settings:
+                choice=QMessageBox(self);choice.setWindowTitle('Authenticate');choice.setText('Choose how to authenticate this action.')
+                key=choice.addButton('YubiKey — PIN + Touch',QMessageBox.ButtonRole.AcceptRole)
+                fallback=choice.addButton('Account Password',QMessageBox.ButtonRole.ActionRole)
+                choice.addButton(QMessageBox.StandardButton.Cancel);choice.setDefaultButton(key);choice.exec()
+                if choice.clickedButton()==key:
+                    pin,ok=QInputDialog.getText(self,'YubiKey authentication','FIDO2 PIN:',QLineEdit.EchoMode.Password)
+                    if not ok:return None
+                    from yubikey_auth import unlock
+                    response=self.key_request(lambda event:unlock(settings,pin,event))
+                    self.vault.verify_yubikey(settings,response)
+                    return {'yubikey_settings':settings,'yubikey_response':response}
+                if choice.clickedButton()!=fallback:return None
+            password,ok=self.password_prompt()
+            if not ok:return None
+            self.vault.verify_password(password)
+            return {'password':password}
+        except Exception as error:self.warning(error);return None
+
+    def update_sort_indicators(self):
+        order=Qt.SortOrder.DescendingOrder if self.sort_descending else Qt.SortOrder.AscendingOrder
+        self.table.horizontalHeader().setSortIndicator(self.sort_column,order)
+        if self.companion:
+            header=self.companion.table.horizontalHeader()
+            header.setSortIndicatorShown(self.sort_column in (0,1,2))
+            if self.sort_column in (0,1,2):header.setSortIndicator(self.sort_column,order)
+
+    def sort_entries(self,column):
+        if column not in (0,1,2,4,5):
+            self.update_sort_indicators()
+            return
+        self.sort_descending=not self.sort_descending if column==self.sort_column else False
+        self.sort_column=column
+        self.table.horizontalHeader().setSortIndicator(column,Qt.SortOrder.DescendingOrder if self.sort_descending else Qt.SortOrder.AscendingOrder)
+        self.refresh()
+
     def new_password(self,title,minimum=False):
         dialog=QDialog(self);dialog.setWindowTitle(title);dialog.resize(600,220);dialog.setMinimumWidth(560);form=QFormLayout(dialog)
         password=QLineEdit();password.setEchoMode(QLineEdit.EchoMode.Password)
@@ -265,6 +309,13 @@ class ManagedWindow(QMainWindow):
             visible=[r for r in records if r['id'] in ids]
             groups=self.vault.available_groups()
             counts=Counter(r['password'] for r in records if r.get('password'))
+            def sort_key(record):
+                keys={0:'description',1:'link',2:'user_name'}
+                if self.sort_column in keys:return str(record.get(keys[self.sort_column],'')).casefold()
+                if self.sort_column not in (4,5):return str(record.get('description','')).casefold()
+                if self.sort_column==4:return ', '.join(groups.get(g,'Shared group') for g in record['groups']).casefold()
+                return counts[record.get('password','')]
+            visible.sort(key=sort_key,reverse=self.sort_descending)
             if visible==self.records and groups==getattr(self,'rendered_groups',None) and counts==getattr(self,'rendered_counts',None):
                 if self.companion:self.companion.refresh()
                 return
@@ -346,9 +397,8 @@ class ManagedWindow(QMainWindow):
         record=self.selected()
         if not record or not self.vault.manager or self.task:return
         if QMessageBox.question(self,'Permanently delete entry','Remove this record from the database permanently? Existing backups may retain it. This cannot be undone in the current vault.',QMessageBox.StandardButton.Yes|QMessageBox.StandardButton.No,QMessageBox.StandardButton.No)!=QMessageBox.StandardButton.Yes:return
-        password,ok=self.password_prompt()
-        if not ok:return
-        try:self.vault.verify_password(password);self.vault.purge(record['id']);self.refresh();self.auto_sync()
+        if not self.reauthenticate():return
+        try:self.vault.purge(record['id']);self.refresh();self.auto_sync()
         except Exception as error:self.warning(error)
 
     def copy_text(self,value):
@@ -596,23 +646,22 @@ class ManagedWindow(QMainWindow):
 
     def export_database(self):
         if not self.vault.manager or self.task:return
-        password,ok=self.password_prompt()
-        if not ok:return
+        if not self.reauthenticate():return
         try:
-            self.vault.verify_password(password)
             path,_=QFileDialog.getSaveFileName(self,'Export encrypted database for another device',str(managed_locations.local_folder()/'vault-for-device.sqlite'),'SQLite vault (*.sqlite)',options=QFileDialog.Option.DontConfirmOverwrite)
             if not path:return
-            self.vault.export_database(path)
+            overwrite=Path(path).exists()
+            if overwrite and QMessageBox.question(self,'Replace exported database?',f'Replace the existing file?\n{path}\n\nThe existing copy will be replaced with this encrypted vault.',QMessageBox.StandardButton.Yes|QMessageBox.StandardButton.No,QMessageBox.StandardButton.No)!=QMessageBox.StandardButton.Yes:return
+            self.vault.export_database(path,overwrite=overwrite)
             QMessageBox.information(self,'Encrypted database exported','This copy contains the whole encrypted vault. Each account can unlock only its permitted entries.\n\nOn the other computer choose Open Existing Vault, sign in, and configure the same shared sync folder. Sync this Manager copy before distributing it so it matches the shared master. Device settings and sync history are not included.')
         except Exception as error:self.warning(error)
 
     def emergency_lockdown(self):
         if not self.vault.manager or self.task:return
         if QMessageBox.warning(self,'Emergency Lockdown','Disable every ordinary account, including YubiKey access, while preserving the Manager? Connected devices are affected only after successfully downloading the update. Offline copies and previously copied passwords remain accessible. Re-enable users individually to recover.',QMessageBox.StandardButton.Yes|QMessageBox.StandardButton.No,QMessageBox.StandardButton.No)!=QMessageBox.StandardButton.Yes:return
-        password,ok=self.password_prompt()
-        if not ok:return
+        if not self.reauthenticate():return
         try:
-            self.vault.verify_password(password);count=self.vault.emergency_lockdown()
+            count=self.vault.emergency_lockdown()
             self.lockdown_pending=True;self.refresh();self.update_state()
             self.sync_status.setText(f'Lockdown saved locally: {count} ordinary accounts disabled. Shared publication pending.')
             if read_settings(self.vault).get('folder'):
@@ -629,10 +678,8 @@ class ManagedWindow(QMainWindow):
         if not self.vault.manager or self.task:
             self.warning('Only the Manager may restore a whole-vault backup.');return
         if QMessageBox.warning(self,'Restore Backup','Restoring also restores old account credentials, memberships and exclusions. Previously revoked access may return. Save the current copy and continue?',QMessageBox.StandardButton.Yes|QMessageBox.StandardButton.No,QMessageBox.StandardButton.No)!=QMessageBox.StandardButton.Yes:return
-        current,ok=self.password_prompt()
-        if not ok:return
+        if not self.reauthenticate():return
         try:
-            self.vault.verify_password(current)
             source,_=QFileDialog.getOpenFileName(self,'Choose encrypted backup','','SQLite vault (*.sqlite)')
             if not source:return
             username,ok=QInputDialog.getText(self,'Backup Manager','Manager username in the backup:',text='Manager')
@@ -643,11 +690,12 @@ class ManagedWindow(QMainWindow):
         except Exception as error:self.warning(error)
 
     def export(self):
-        password,ok=self.password_prompt()
-        if not ok:return
+        if QMessageBox.warning(self,'Unencrypted CSV export','The exported file is not encrypted and includes passwords. Store it carefully and remove it when no longer needed. Continue?',QMessageBox.StandardButton.Yes|QMessageBox.StandardButton.No,QMessageBox.StandardButton.No)!=QMessageBox.StandardButton.Yes:return
+        authentication=self.reauthenticate()
+        if not authentication:return
         path,_=QFileDialog.getSaveFileName(self,'Export visible active entries to plaintext CSV','','CSV (*.csv)')
         if path:
-            try:export_csv(self.vault,path,password=password)
+            try:export_csv(self.vault,path,**authentication)
             except Exception as error:self.warning(error)
     def import_entries(self):
         path,_=QFileDialog.getOpenFileName(self,'Import Vault CSV','','CSV (*.csv)')
@@ -660,11 +708,11 @@ class ManagedWindow(QMainWindow):
             self.refresh();self.auto_sync()
         except Exception as error:self.warning(error)
     def change_password(self):
-        current,ok=self.password_prompt()
-        if not ok:return
+        authentication=self.reauthenticate()
+        if not authentication:return
         new=self.new_password('Change account password')
         if new is not None:
-            try:self.vault.change_password(current,new);self.auto_sync()
+            try:self.vault.change_password(authentication.get("password"),new,yubikey_settings=authentication.get("yubikey_settings"),yubikey_response=authentication.get("yubikey_response"));self.auto_sync()
             except Exception as error:self.warning(error)
     def key_request(self,operation):
         from app import Window
@@ -680,10 +728,8 @@ class ManagedWindow(QMainWindow):
             self.master.clear();self.touch();self.history.remember(self.vault.path);self.update_state();self.refresh();self.complete_lookup();self.auto_sync()
         except Exception as error:self.warning(error)
     def enroll(self):
-        password,ok=self.password_prompt()
-        if not ok:return
+        if not self.reauthenticate():return
         try:
-            self.vault.verify_password(password)
             pin,ok=QInputDialog.getText(self,'Enroll YubiKey','FIDO2 PIN:',QLineEdit.EchoMode.Password)
             if not ok:return
             from yubikey_auth import enroll
@@ -819,9 +865,7 @@ class ManagedWindow(QMainWindow):
                     groups=groups_list(labels,[]);l.addWidget(groups);btn=QDialogButtonBox(QDialogButtonBox.StandardButton.Ok|QDialogButtonBox.StandardButton.Cancel);l.addWidget(btn);btn.accepted.connect(d.accept);btn.rejected.connect(d.reject)
                     if d.exec()!=QDialog.DialogCode.Accepted:d.deleteLater();return
                     assignments[eid]=selected_groups(groups);d.deleteLater()
-            password,ok=self.password_prompt()
-            if not ok:return
-            self.vault.verify_password(password)
+            if not self.reauthenticate():return
             message=reconcile(self.vault.path,self.vault.session(),'local' if authority.currentIndex()==1 else 'shared',choices,[ours,theirs],assignments)
             self.vault.resume(self.vault.session());self.conflicted=False;self.refresh();self.sync_status.setText(message)
         finally:self.dialog=None;dialog.deleteLater();self.update_state()

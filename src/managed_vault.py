@@ -514,10 +514,25 @@ class ManagedVault:
         self._management_change(operation)
         return len(users)
 
-    def export_database(self,destination):
+    def export_database(self,destination,*,overwrite=False):
         """Manager-only encrypted provision/recovery copy, without device settings."""
         self._admin_box()
-        self.backup(destination)
+        destination=Path(destination)
+        if destination.is_symlink() or destination.resolve()==self.path.resolve() or (destination.exists() and os.path.samefile(destination,self.path)):
+            raise VaultError('Choose an export file separate from the open vault.')
+        from sync import read_settings
+        folder=read_settings(self).get('folder')
+        if folder and destination.resolve()==(Path(folder)/'wormwright-vault.sqlite').resolve():
+            raise VaultError('Use Sync for the shared master; choose a separate export file.')
+        if not overwrite or not destination.exists():
+            self.backup(destination);return
+        original=destination.stat()
+        with tempfile.TemporaryDirectory(prefix='.wormwright-export-',dir=destination.parent) as temporary:
+            staged=Path(temporary)/'export.sqlite';self.backup(staged)
+            current=destination.stat()
+            if (current.st_dev,current.st_ino,current.st_size,current.st_mtime_ns)!=(original.st_dev,original.st_ino,original.st_size,original.st_mtime_ns):
+                raise VaultError('The destination changed during export. Review it and try again.')
+            os.replace(staged,destination)
 
     def reset_password(self, uid, password):
         admin = self.administration()
@@ -528,8 +543,10 @@ class ManagedVault:
         with self.db:
             self.db.execute('UPDATE users SET salt=?,credential=? WHERE id=?', (salt,wrapped,uid))
 
-    def change_password(self, current_password, new_password):
-        self.verify_password(current_password)
+    def change_password(self, current_password, new_password, *, yubikey_settings=None, yubikey_response=None):
+        if current_password is not None:self.verify_password(current_password)
+        elif yubikey_settings is not None and yubikey_response is not None:self.verify_yubikey(yubikey_settings,yubikey_response)
+        else:raise VaultError('Authenticate again before changing your password.')
         if not new_password:
             raise VaultError('The account password cannot be empty.')
         salt = utils.random(pwhash.argon2id.SALTBYTES)
