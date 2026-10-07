@@ -40,7 +40,7 @@ class CompanionView(QMainWindow):
         if unlocked and (not self.manager or c.vault.manager):
             for i,r in enumerate(c.records):
                 self.table.insertRow(i)
-                for j,key in enumerate(['description','link','user_name']):self.table.setItem(i,j,QTableWidgetItem(r.get(key,'')))
+                for j,key in enumerate(['description','link','user_name']):self.table.setItem(i,j,QTableWidgetItem(r.get(key,'')+(' [Deleted]' if j==0 and r.get('deleted') else '')))
                 box=QWidget();row=QHBoxLayout(box);row.setContentsMargins(2,0,2,0);row.addWidget(QLabel('••••••••'))
                 for text,callback in [('Show',lambda checked=False,r=r:c.reveal(r)),('Copy',lambda checked=False,r=r:c.copy_text(r['password']))]:
                     b=QPushButton(text);b.setEnabled(not c.task and not c.dialog);b.clicked.connect(callback);row.addWidget(b)
