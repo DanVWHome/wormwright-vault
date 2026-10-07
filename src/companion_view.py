@@ -10,14 +10,14 @@ class CompanionView(QMainWindow):
         self.setWindowTitle('Wormwright Vault Manager' if manager else 'Wormwright Vault')
         self.setWindowIcon(controller.windowIcon());self.resize(1100,650)
         root=QWidget();self.setCentralWidget(root);layout=QVBoxLayout(root)
-        self.status=QLabel();layout.addWidget(self.status)
+        self.status=QLabel();self.status.setWordWrap(True);layout.addWidget(self.status)
         row=QHBoxLayout();self.search=QLineEdit();self.search.setPlaceholderText('Search description, link or notes');row.addWidget(self.search)
         self.search.textChanged.connect(controller.search.setText);self.buttons=[]
         for text,callback in [('Add',controller.add),('Edit',controller.edit),('Delete',controller.delete),('Lock',controller.lock)]:
             b=QPushButton(text);b.clicked.connect(callback);row.addWidget(b);self.buttons.append(b)
             if text=='Delete':self.delete_button=b
         layout.addLayout(row)
-        help_menu=self.menuBar().addMenu('Help');help_menu.addAction('Searchable Help…',controller.show_help);help_menu.addSeparator();help_menu.addAction('About Wormwright Vault…',controller.show_about)
+        help_menu=self.menuBar().addMenu('Help');help_menu.addAction('Searchable Help…',controller.show_help);help_menu.addAction('Watch Tutorial…',controller.show_tutorial);help_menu.addSeparator();help_menu.addAction('About Wormwright Vault…',controller.show_about)
         self.management=[]
         if manager:
             menu=self.menuBar().addMenu('Manage')
@@ -44,7 +44,11 @@ class CompanionView(QMainWindow):
             self.deleted_action.blockSignals(True);self.deleted_action.setChecked(c.show_deleted.isChecked());self.deleted_action.blockSignals(False);self.deleted_action.setEnabled(c.vault.manager and not c.task)
         if self.manager:
             self.only_deleted_action.blockSignals(True);self.only_deleted_action.setChecked(c.only_deleted.isChecked());self.only_deleted_action.blockSignals(False);self.only_deleted_action.setEnabled(c.vault.manager and not c.task)
-        self.table.blockSignals(True);self.table.setRowCount(0)
+        visible=c.records if unlocked and (not self.manager or c.vault.manager) else []
+        if visible==getattr(self,'rendered_records',None):return
+        vertical=self.table.verticalScrollBar().value();horizontal=self.table.horizontalScrollBar().value()
+        self.rendered_records=visible
+        self.table.setUpdatesEnabled(False);self.table.blockSignals(True);self.table.setRowCount(0)
         if unlocked and (not self.manager or c.vault.manager):
             for i,r in enumerate(c.records):
                 self.table.insertRow(i)
@@ -58,6 +62,8 @@ class CompanionView(QMainWindow):
                 for text,callback in [('Show',lambda checked=False,r=r:c.reveal(r)),('Copy',lambda checked=False,r=r:c.copy_text(r['password']))]:
                     b=QPushButton(text);b.setEnabled(not c.task and not c.dialog);b.clicked.connect(callback);row.addWidget(b)
                 self.table.setCellWidget(i,3,box)
-        self.table.blockSignals(False)
+        if self.table.rowCount() and c.table.currentRow()>=0:self.table.selectRow(c.table.currentRow())
+        self.table.verticalScrollBar().setValue(vertical);self.table.horizontalScrollBar().setValue(horizontal)
+        self.table.blockSignals(False);self.table.setUpdatesEnabled(True)
     def closeEvent(self,event):
         self.hide();event.ignore()

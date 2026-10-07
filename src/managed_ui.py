@@ -120,7 +120,7 @@ class ManagedWindow(QMainWindow):
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers);self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.table.horizontalHeader().setSectionResizeMode(3,QHeaderView.ResizeMode.Fixed);self.table.setColumnWidth(3,240)
         self.table.cellDoubleClicked.connect(self.edit);self.table.currentCellChanged.connect(self.selection_changed);layout.addWidget(self.table)
-        self.sync_status=QLabel('Sync not configured.');layout.addWidget(self.sync_status)
+        self.sync_status=QLabel('Sync not configured.');self.sync_status.setWordWrap(True);layout.addWidget(self.sync_status)
         layout.addWidget(QLabel('Clipboard clears after 30 seconds • Deleted entries are visible only to the Manager'))
         self.clipboard_timer=QTimer(self);self.clipboard_timer.setSingleShot(True);self.clipboard_timer.timeout.connect(self.clear_clipboard)
         self.lock_timer=QTimer(self);self.lock_timer.setSingleShot(True);self.lock_timer.timeout.connect(self.lock)
@@ -255,14 +255,21 @@ class ManagedWindow(QMainWindow):
         return self.records[row] if 0<=row<len(self.records) else None
 
     def refresh(self,*args):
-        self.close_display();self.records=[];self.table.setRowCount(0)
+        selected=self.selected();selected_id=selected["id"] if selected else None
+        old_row=self.table.currentRow();vertical=self.table.verticalScrollBar().value();horizontal=self.table.horizontalScrollBar().value()
         if not self.vault.unlocked:return
         try:
             records=self.vault.entries(include_deleted=self.vault.manager and (self.show_deleted.isChecked() or self.only_deleted.isChecked()))
             if self.vault.manager and self.only_deleted.isChecked():records=[r for r in records if r.get('deleted')]
             ids=set(matching_ids(records,self.search.text())) if self.search.text() else {r['id'] for r in records}
-            self.records=[r for r in records if r['id'] in ids]
+            visible=[r for r in records if r['id'] in ids]
+            groups=self.vault.available_groups()
             counts=Counter(r['password'] for r in records if r.get('password'))
+            if visible==self.records and groups==getattr(self,'rendered_groups',None) and counts==getattr(self,'rendered_counts',None):
+                if self.companion:self.companion.refresh()
+                return
+            self.close_display();self.records=visible;self.rendered_groups=groups;self.rendered_counts=counts
+            self.table.setUpdatesEnabled(False);self.table.blockSignals(True);self.table.setRowCount(0)
             self.table.setRowCount(len(self.records))
             for i,record in enumerate(self.records):
                 values=[record['description']+(' [Deleted]' if record.get('deleted') else ''),record.get('link',''),record.get('user_name',''),'••••••••',
@@ -279,9 +286,14 @@ class ManagedWindow(QMainWindow):
                 for text,callback in [('Show',lambda checked=False,r=record:self.reveal(r)),('Copy',lambda checked=False,r=record:self.copy_text(r['password']))]:
                     button=QPushButton(text);button.clicked.connect(callback);row.addWidget(button)
                 self.table.setCellWidget(i,3,widget)
-            if self.records:self.table.selectRow(0)
+            if self.records:
+                row=next((i for i,r in enumerate(self.records) if r['id']==selected_id),min(max(old_row,0),len(self.records)-1))
+                self.table.selectRow(row)
+            self.table.verticalScrollBar().setValue(vertical);self.table.horizontalScrollBar().setValue(horizontal)
+            self.table.blockSignals(False);self.table.setUpdatesEnabled(True);self.selection_changed()
             if self.companion:self.companion.refresh()
         except Exception as error:self.lock();self.warning(error)
+        finally:self.table.blockSignals(False);self.table.setUpdatesEnabled(True)
 
     def edit_record(self,record=None):
         if not self.vault.unlocked or self.task:return
@@ -712,7 +724,7 @@ class ManagedWindow(QMainWindow):
         self.start_sync(True)
     def start_sync(self,manual,choices=None,expected=None):
         if self.task:return
-        self.manual=manual;self.again=False;self.close_display();session=self.vault.session()
+        self.manual=manual;self.again=False;session=self.vault.session()
         self.task=SyncTask(self.vault.path,session,choices,expected);self.task.finished.connect(self.sync_finished)
         self.sync_status.setText('Syncing…');self.update_state();self.task.start()
     def sync_finished(self):
@@ -722,8 +734,10 @@ class ManagedWindow(QMainWindow):
         else:
             try:
                 session=self.vault.session()
-                if session:self.vault.resume(session)
-                self.refresh();self.sync_status.setText(task.result);self.complete_lookup()
+                if task.result!='Already up to date.':
+                    if session:self.vault.resume(session)
+                    self.refresh()
+                self.sync_status.setText(task.result);self.complete_lookup()
                 if self.lockdown_pending:
                     admin=self.vault.administration()
                     if all(data['identity']['disabled'] for uid,data in admin['users'].items() if uid!=self.vault.uid):

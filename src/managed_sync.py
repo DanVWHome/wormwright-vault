@@ -1,5 +1,6 @@
 """Snapshot sync for format 2. Administrative state never merges piecemeal."""
 from contextlib import closing
+import errno
 import hashlib
 import json
 import os
@@ -62,7 +63,10 @@ def _retained(source, target, limit):
     folder=target.parent/'.wormwright-managed-backups';folder.mkdir(mode=0o700,exist_ok=True)
     prefix=hashlib.sha256(target.name.encode()).hexdigest()[:16]+'-'
     name=folder/(prefix+str(time.time_ns())+'-'+uuid.uuid4().hex+'.sqlite')
-    shutil.copyfile(source,name);name.chmod(0o600)
+    # Request private permissions at creation; GVFS may not support chmod.
+    fd=os.open(name,os.O_CREAT|os.O_EXCL|os.O_WRONLY,0o600)
+    with os.fdopen(fd,'wb') as destination, open(source,'rb') as origin:
+        shutil.copyfileobj(origin,destination)
     return folder,prefix,limit
 
 
@@ -72,7 +76,12 @@ def _replace(source, target):
     os.close(fd)
     try:
         shutil.copyfile(source,name)
-        with open(name,'rb') as stream:os.fsync(stream.fileno())
+        with open(name,'rb') as stream:
+            try:os.fsync(stream.fileno())
+            except OSError as error:
+                # Some mounted shares cannot offer fsync; close and atomic rename
+                # still apply. Permission, capacity and I/O errors must propagate.
+                if error.errno not in (errno.ENOTSUP,errno.ENOSYS):raise
         os.replace(name,target)
     finally:
         Path(name).unlink(missing_ok=True)
