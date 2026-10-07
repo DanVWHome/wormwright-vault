@@ -1,5 +1,7 @@
 import os
 import sys
+import secrets
+import string
 import threading
 from collections import Counter
 from pathlib import Path
@@ -101,6 +103,11 @@ class EntryDialog(QDialog):
                 show.setCheckable(True)
                 show.toggled.connect(lambda checked: (field.setEchoMode(QLineEdit.EchoMode.Normal if checked else QLineEdit.EchoMode.Password), show.setText('Hide' if checked else 'Show')))
                 row.addWidget(show)
+                generate = QPushButton('Generate')
+                generate.setObjectName('generate_password')
+                generate.setToolTip('Generate a 24-character random password without commas, quotes or line breaks')
+                generate.clicked.connect(self.generate_password)
+                row.addWidget(generate)
             copy_button = QPushButton('Copy')
             copy_button.setObjectName('copy_' + key)
             copy_button.setToolTip('Copy ' + label.lower() + '; clipboard clears after 30 seconds')
@@ -121,6 +128,12 @@ class EntryDialog(QDialog):
         buttons.accepted.connect(self.validate)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
+
+    def generate_password(self):
+        # secrets uses the operating system's cryptographic random source.
+        alphabet = string.ascii_letters + string.digits + '!@#$%&*+-_=?.'
+        password = ''.join(secrets.choice(alphabet) for _ in range(24))
+        self.fields['password'].setText(password)
 
     def validate(self):
         if not self.fields['description'].text().strip():
