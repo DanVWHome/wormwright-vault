@@ -29,7 +29,7 @@ def main():
     shutil.copy2(ROOT/'docs/MANAGED-TESTING.md',stage/'usr/share/doc/wormwright-vault-managed-beta/MANAGED-TESTING.md')
     control=stage/'DEBIAN/control';control.write_text(control.read_text().replace('Package: vanwormai-vault','Package: wormwright-vault-managed-beta').replace('Offline encrypted password vault with optional YubiKey unlock','Managed multi-user vault test build, installed alongside personal Vault'))
     result=output/f'wormwright-vault-managed-beta_{VERSION}_amd64.deb'
-    subprocess.run(['dpkg-deb','--root-owner-group','-Zxz','--build',str(stage),str(result)],check=True)
+    subprocess.run(['dpkg-deb','--root-owner-group','-Zxz','-z1','--build',str(stage),str(result)],check=True)
     print(result)
 
 if __name__=='__main__':main()
