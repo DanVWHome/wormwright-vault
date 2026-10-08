@@ -62,6 +62,8 @@ with tempfile.TemporaryDirectory() as directory:
     vault = ManagedVault(local);vault.create('synthetic-master-password');vault.lock()
     window = ManagedWindow(root/'missing.sqlite')
     window.open_path(local)
+    window.master.setText('synthetic-master-password');window.unlock()
+    assert window.vault.unlocked
     configure(window.vault, share, 10, automatic=False)
     with patch.object(managed_locations, 'sys', SimpleNamespace(platform='win32')):
         restarted = managed_locations.initial_vault()

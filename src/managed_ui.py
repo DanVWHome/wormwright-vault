@@ -126,7 +126,7 @@ class ManagedWindow(QMainWindow):
         self.table.horizontalHeader().sectionClicked.connect(self.sort_entries)
         self.table.cellDoubleClicked.connect(self.edit);self.table.currentCellChanged.connect(self.selection_changed);layout.addWidget(self.table)
         self.sync_status=QLabel('Sync not configured.');self.sync_status.setWordWrap(True);layout.addWidget(self.sync_status)
-        layout.addWidget(QLabel('Clipboard clears after 30 seconds • Deleted entries are visible only to the Manager'))
+        clipboard_note=QLabel('Clipboard clears after 30 seconds • Deleted entries are visible only to the Manager');clipboard_note.setWordWrap(True);layout.addWidget(clipboard_note)
         self.clipboard_timer=QTimer(self);self.clipboard_timer.setSingleShot(True);self.clipboard_timer.timeout.connect(self.clear_clipboard)
         self.lock_timer=QTimer(self);self.lock_timer.setSingleShot(True);self.lock_timer.timeout.connect(self.lock)
         self.auto_timer=QTimer(self);self.auto_timer.timeout.connect(self.auto_sync);self.auto_timer.start(self.interval())
