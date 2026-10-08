@@ -66,7 +66,12 @@ def configure(vault, folder, limit, automatic=True, interval=30):
     if type(interval) is not int or not 5 <= interval <= 86400:
         raise VaultError('Choose a sync interval from 5 to 86400 seconds.')
     data = {'folder': str(folder), 'limit': limit, 'automatic': bool(automatic), 'interval': interval}
-    if previous.get('folder') == str(folder):
+    same_folder = previous.get('folder') == str(folder)
+    if os.name == 'nt' and isinstance(previous.get('folder'), str):
+        # Windows resolves short names and ignores path casing. Saving the
+        # same endpoint through either spelling must preserve sync ancestry.
+        same_folder = Path(previous['folder']).resolve() == folder
+    if same_folder:
         data['baseline'] = previous.get('baseline')
         if 'managed_baseline' in previous:
             data['managed_baseline'] = previous['managed_baseline']
