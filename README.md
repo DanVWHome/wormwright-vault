@@ -6,19 +6,19 @@ network folder you control. Use Vault alone for one user on one or several
 devices. The optional Vault Manager handles separate users, groups, exclusions,
 recovery and administration within one shared vault.
 
-## Linux Mint release: 0.3.0
+## Linux Mint release: 0.3.1
 
 Supports **Linux Mint 22.x on Intel/AMD 64-bit computers (amd64)**, with glibc
 2.39 or newer. Cinnamon and XFCE are the intended desktop environments.
 Other distributions, earlier Mint versions, ARM, Windows, macOS and mobile apps
 are not included in the current support claim.
 
-[Download the release](https://github.com/DanVWHome/wormwright-vault/releases/tag/v0.3.0)
-without a GitHub account. Choose `wormwright-vault-mint_0.3.0_amd64.deb` in Assets.
+[Download the release](https://github.com/DanVWHome/wormwright-vault/releases/tag/v0.3.1)
+without a GitHub account. Choose `wormwright-vault-mint_0.3.1_amd64.deb` in Assets.
 Make an encrypted backup and close both apps before installing:
 
 ```bash
-sudo apt install ~/Downloads/wormwright-vault-mint_0.3.0_amd64.deb
+sudo apt install ~/Downloads/wormwright-vault-mint_0.3.1_amd64.deb
 ```
 
 Open **Wormwright Vault** or **Wormwright Vault Manager** from the application menu.
@@ -93,7 +93,7 @@ python3 -m venv .venv
 .venv/bin/python packaging/build-mint.py --work-dir build/mint --output-dir dist
 ```
 
-The full synthetic regression suite passes for 0.3.0, including storage, tamper
+The full synthetic regression suite passes for 0.3.1, including storage, tamper
 rejection, user isolation, authentication simulation, backups, exports, local IPC,
 sync, merges, UI behavior and package staging. Reported device testing covered
 three Linux computers, offline edits, conflicts, FTP and SMB. This is not an
