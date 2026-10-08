@@ -74,7 +74,7 @@ printf '%s\\n' 'Desktop launcher enabled for this login and future logins.'
     shutil.copy2(ROOT / 'README.md', docs / 'README.md')
     shutil.copy2(ROOT / 'docs/INTEGRATION.txt', docs / 'INTEGRATION.txt')
     notices = docs / 'third-party'
-    for name in ['PySide6-Essentials', 'shiboken6', 'PyNaCl', 'cryptography', 'fido2', 'cffi', 'pycparser', 'pyinstaller']:
+    for name in ['PySide6-Essentials', 'PySide6-Addons', 'shiboken6', 'PyNaCl', 'cryptography', 'fido2', 'cffi', 'pycparser', 'pyinstaller']:
         distribution = importlib.metadata.distribution(name)
         for entry in distribution.files or []:
             if 'license' in str(entry).lower() or 'copying' in str(entry).lower():
