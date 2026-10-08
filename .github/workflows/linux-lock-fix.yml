@@ -12,7 +12,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: c78d5a5
+          ref: c78d5a51db6bbfb828473c2b7e4b8f0a0c44cad0
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
