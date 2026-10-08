@@ -116,7 +116,7 @@ class Vault:
         try:
             with closing(sqlite3.connect(destination)) as target:
                 self.db.backup(target)
-            with destination.open('rb') as snapshot:
+            with destination.open('rb+') as snapshot:
                 os.fsync(snapshot.fileno())
         except Exception:
             destination.unlink(missing_ok=True)
@@ -271,7 +271,7 @@ class Vault:
             candidate.unlock(password)
             restored_key = candidate.data_key
             candidate.lock()
-            with staged.open('rb') as snapshot:
+            with staged.open('rb+') as snapshot:
                 os.fsync(snapshot.fileno())
             safety = self.path.with_name(self.path.stem + '-before-restore-' + uuid.uuid4().hex[:12] + '.sqlite')
             self.backup(safety)

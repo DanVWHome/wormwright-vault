@@ -563,7 +563,7 @@ class ManagedVault:
         try:
             with closing(sqlite3.connect(destination)) as target:
                 self.db.backup(target)
-            with destination.open('rb') as stream:
+            with destination.open('rb+') as stream:
                 os.fsync(stream.fileno())
         except Exception:
             destination.unlink(missing_ok=True)
@@ -585,7 +585,7 @@ class ManagedVault:
             restored_session=candidate.session();candidate.lock()
             safety=self.path.with_name(self.path.stem+'-before-restore-'+uuid.uuid4().hex+'.sqlite')
             self.backup(safety)
-            with staged.open('rb') as stream:os.fsync(stream.fileno())
+            with staged.open('rb+') as stream:os.fsync(stream.fileno())
             self.lock();os.replace(staged,self.path);self.resume(restored_session)
             return safety
         finally:candidate.lock();staged.unlink(missing_ok=True)

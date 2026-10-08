@@ -78,7 +78,7 @@ def _replace(source, target):
     os.close(fd)
     try:
         shutil.copyfile(source,name)
-        with open(name,'rb') as stream:
+        with open(name,'rb+') as stream:
             try:os.fsync(stream.fileno())
             except OSError as error:
                 # Some mounted shares cannot offer fsync; close and atomic rename
