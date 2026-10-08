@@ -1,6 +1,7 @@
 """Device-local managed vault locations; contains paths only."""
 import json
 import os
+import sys
 from pathlib import Path
 from sync import atomic_json
 from platform_paths import data_home
@@ -37,3 +38,12 @@ def remember(folder=None,vault=None):
     if vault is not None:value['last_vault']=str(Path(vault).resolve())
     settings_path().parent.mkdir(parents=True,exist_ok=True,mode=0o700)
     atomic_json(settings_path(),value)
+
+
+def initial_vault(explicit=None, beta=False):
+    if explicit is not None:
+        return explicit
+    if beta or sys.platform == 'win32':
+        return startup_vault()
+    from hooks import default_vault
+    return default_vault()

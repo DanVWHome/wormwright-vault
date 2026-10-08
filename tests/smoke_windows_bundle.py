@@ -1,5 +1,6 @@
 """Check the packaged app starts and responds without using an existing vault."""
 import os
+import json
 from pathlib import Path
 import subprocess
 import sys
@@ -11,8 +12,12 @@ from windows_control import send
 executable = Path(sys.argv[1]).resolve()
 with tempfile.TemporaryDirectory(prefix='wormwright-bundle-') as directory:
     vault = Path(directory) / 'dummy.sqlite'
+    locations = Path(directory) / 'wormwright-vault-beta/locations.json'
+    locations.parent.mkdir()
+    locations.write_text(json.dumps({'last_vault': str(vault)}))
     environment = {**os.environ, 'LOCALAPPDATA': directory, 'QT_QPA_PLATFORM': 'offscreen'}
-    child = subprocess.Popen([str(executable), str(vault)], env=environment)
+    # No explicit vault argument: the packaged app must restore its saved path.
+    child = subprocess.Popen([str(executable)], env=environment)
     try:
         deadline = time.monotonic() + 30
         while True:

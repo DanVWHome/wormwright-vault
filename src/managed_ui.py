@@ -1,4 +1,5 @@
 """Managed-format UI shared by Vault and the optional Vault Manager launcher."""
+from key_ui import request_key_pin
 from pathlib import Path
 import sys
 import tempfile
@@ -131,6 +132,8 @@ class ManagedWindow(QMainWindow):
         self.auto_timer=QTimer(self);self.auto_timer.timeout.connect(self.auto_sync);self.auto_timer.start(self.interval())
         QApplication.instance().installEventFilter(self)
         self.update_state();QTimer.singleShot(0,self.auto_sync)
+        from window_geometry import fit_to_screen
+        QTimer.singleShot(0, lambda: fit_to_screen(self, 1160, 700))
 
     def show_tutorial(self):
         from tutorial_window import show_tutorial
@@ -212,7 +215,7 @@ class ManagedWindow(QMainWindow):
                 fallback=choice.addButton('Account Password',QMessageBox.ButtonRole.ActionRole)
                 choice.addButton(QMessageBox.StandardButton.Cancel);choice.setDefaultButton(key);choice.exec()
                 if choice.clickedButton()==key:
-                    pin,ok=QInputDialog.getText(self,'YubiKey authentication','FIDO2 PIN:',QLineEdit.EchoMode.Password)
+                    pin,ok=request_key_pin(self, 'YubiKey authentication', 'FIDO2 PIN:')
                     if not ok:return None
                     from yubikey_auth import unlock
                     response=self.key_request(lambda event:unlock(settings,pin,event))
@@ -493,6 +496,7 @@ class ManagedWindow(QMainWindow):
         if path.resolve()==self.vault.path.resolve():return
         if path.exists() and not is_managed(path):
             QMessageBox.information(self,'Unsupported vault','This file is not a supported current-format vault. Create a new vault or open a current-format copy.');return
+        managed_locations.remember(vault=path)
         self.lock();self.lockdown_pending=False;self.vault=ManagedVault(path);self.username.clear();self.search.clear();self.password_fallback=False;self.update_state()
     def recent(self):
         dialog=QDialog(self);dialog.setWindowTitle('Recent Vaults');layout=QVBoxLayout(dialog);items=QListWidget();items.addItems(self.history.read());layout.addWidget(items)
@@ -718,19 +722,19 @@ class ManagedWindow(QMainWindow):
         from app import Window
         return Window.key_request(self,operation)
     def unlock_key(self):
-        pin,ok=QInputDialog.getText(self,'YubiKey','FIDO2 PIN:',QLineEdit.EchoMode.Password)
+        pin,ok=request_key_pin(self, 'YubiKey', 'FIDO2 PIN:')
         if not ok:return
         try:
             from yubikey_auth import unlock
             settings=self.vault.yubikey_settings(self.username.text())
             if not settings:raise VaultError('No YubiKey enrolled for this account.')
             response=self.key_request(lambda event:unlock(settings,pin,event));self.vault.unlock_yubikey(settings,response)
-            self.master.clear();self.touch();self.history.remember(self.vault.path);self.update_state();self.refresh();self.complete_lookup();self.auto_sync()
+            self.master.clear();self.touch();self.history.remember(self.vault.path);managed_locations.remember(vault=self.vault.path);self.update_state();self.refresh();self.complete_lookup();self.auto_sync()
         except Exception as error:self.warning(error)
     def enroll(self):
         if not self.reauthenticate():return
         try:
-            pin,ok=QInputDialog.getText(self,'Enroll YubiKey','FIDO2 PIN:',QLineEdit.EchoMode.Password)
+            pin,ok=request_key_pin(self, 'Enroll YubiKey', 'FIDO2 PIN:')
             if not ok:return
             from yubikey_auth import enroll
             credential,salt,response=self.key_request(lambda event:enroll(pin,event));self.vault.enroll_yubikey(credential,salt,response);self.update_state();self.auto_sync()

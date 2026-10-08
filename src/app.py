@@ -1,3 +1,4 @@
+from key_ui import request_key_pin
 import os
 import sys
 import secrets
@@ -308,6 +309,8 @@ class Window(QMainWindow):
         QApplication.instance().installEventFilter(self)
         self.restart_lock_timer()
         self.update_state()
+        from window_geometry import fit_to_screen
+        QTimer.singleShot(0, lambda: fit_to_screen(self, 1100, 640))
 
     def restart_lock_timer(self):
         self.lock_timer.stop()
@@ -441,11 +444,11 @@ class Window(QMainWindow):
         return result
 
     def unlock_key(self):
-        pin, ok = QInputDialog.getText(self, 'YubiKey unlock', 'YubiKey FIDO2 PIN:', QLineEdit.EchoMode.Password)
+        pin, ok = request_key_pin(self, 'YubiKey unlock', 'YubiKey FIDO2 PIN:')
         if not ok:
             return
         try:
-            if not pin:
+            if not pin and sys.platform != 'win32':
                 raise VaultError('Enter your YubiKey PIN.')
             from yubikey_auth import unlock
             settings = self.vault.yubikey_settings()
@@ -477,10 +480,10 @@ class Window(QMainWindow):
                 answer = QMessageBox.question(self, 'Replace enrolled key?', 'This replaces the key enrolled for this vault. The fallback password will continue to work. Continue?', QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
                 if answer != QMessageBox.StandardButton.Yes:
                     return
-            pin, ok = QInputDialog.getText(self, 'Set up YubiKey', 'Existing YubiKey FIDO2 PIN:', QLineEdit.EchoMode.Password)
+            pin, ok = request_key_pin(self, 'Set up YubiKey', 'Existing YubiKey FIDO2 PIN:')
             if not ok:
                 return
-            if not pin:
+            if not pin and sys.platform != 'win32':
                 raise VaultError('Enter your YubiKey PIN.')
             from yubikey_auth import enroll
             credential, salt, response = self.key_request(lambda event: enroll(pin, event))
@@ -588,6 +591,9 @@ class Window(QMainWindow):
     def remember_vault(self):
         try:
             self.vault_history.remember(self.vault.path)
+            if sys.platform == 'win32':
+                from managed_locations import remember
+                remember(vault=self.vault.path)
         except OSError:
             QMessageBox.warning(self, 'History not saved', 'The vault is unlocked, but its location could not be added to recent history.')
 
@@ -845,11 +851,11 @@ class Window(QMainWindow):
             if not ok:
                 return None
         if method == 'YubiKey PIN + Touch':
-            pin, ok = QInputDialog.getText(self, 'Authorize CSV export', 'YubiKey FIDO2 PIN:', QLineEdit.EchoMode.Password)
+            pin, ok = request_key_pin(self, 'Authorize CSV export', 'YubiKey FIDO2 PIN:')
             if not ok:
                 return None
             try:
-                if not pin:
+                if not pin and sys.platform != 'win32':
                     raise VaultError('Enter your YubiKey PIN.')
                 from yubikey_auth import unlock
                 response = self.key_request(lambda event: unlock(settings, pin, event))
@@ -1111,8 +1117,8 @@ def main():
         DefaultClientDataCollector(ORIGIN).verify_rp_id(RP_ID, ORIGIN)
         print('YubiKey runtime data loaded successfully.')
         return
-    from managed_locations import startup_vault
-    path = args.vault or (startup_vault() if args.beta else default_vault())
+    from managed_locations import initial_vault
+    path = initial_vault(args.vault, args.beta)
     request = {'version': 1, 'action': 'lookup', 'query': args.lookup} if args.lookup is not None else {'version': 1, 'action': 'open'}
     try:
         launch_request=request if args.lookup is not None else {'version':1,'action':'open_manager_view' if args.manager else 'open_vault_view'}

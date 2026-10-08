@@ -44,7 +44,7 @@ def main():
                     destination.parent.mkdir(parents=True, exist_ok=True)
                     shutil.copy2(source, destination)
     (bundle / 'Open Manager.cmd').write_text('@echo off\r\nstart "" "%~dp0WormwrightVault.exe" --manager\r\n')
-    name = f'wormwright-vault_{VERSION}_windows_x64_preview'
+    name = f'wormwright-vault_{VERSION}_windows_x64_preview2'
     archive = Path(shutil.make_archive(str(output / name), 'zip', bundle.parent, bundle.name))
     (output / (archive.name + '.sha256')).write_text(hashlib.sha256(archive.read_bytes()).hexdigest() + '  ' + archive.name + '\n')
     print(archive)

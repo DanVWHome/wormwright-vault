@@ -1,8 +1,14 @@
-# Wormwright Vault 0.3.2 Windows preview
+# Wormwright Vault 0.3.2 Windows preview 2
 
 Windows 10/11 x64. Extract the entire ZIP into a local folder and run
 WormwrightVault.exe. Open Manager.cmd opens the Manager interface. No Python
 installation is required. This preview is unsigned.
+
+Windows remembers your last selected vault on restart, including its saved NAS settings.
+The initial window fits the usable screen area. YubiKey operations use the native
+Windows security-key prompt; enter the key PIN there. Use your existing enrolled
+key without resetting or registering it again for Windows. Actual hardware
+unlock must still be verified on your computer.
 
 Device-local settings use %LOCALAPPDATA%. Choose a local working vault, and
 select a mapped NAS drive or UNC shared folder in NAS settings. Keep the working
