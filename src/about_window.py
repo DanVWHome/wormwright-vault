@@ -1,6 +1,6 @@
 """Product description shared by the offline About window and website copy."""
 from PySide6.QtWidgets import QDialog,QVBoxLayout,QTextBrowser,QDialogButtonBox
-from version import VERSION
+from version import VERSION, RELEASE_LABEL
 
 ABOUT_HTML = '''
 <h1>Wormwright Vault</h1>
@@ -35,14 +35,14 @@ ABOUT_HTML = '''
 <h2>What it is—and what it is not</h2>
 <p>Wormwright Vault is intended for personal, family and small-team desktop use with local working copies and a mounted shared folder. It does not currently provide HTTP/HTTPS vault syncing or a hosted web service. Remote access through a VPN still uses the shared-folder workflow. FTP itself does not provide transport encryption; choose a protected connection appropriate to your network.</p>
 <p>It is not currently a browser autofill extension, a mobile password manager or an enterprise identity-management service. The current managed test installer targets 64-bit Linux Mint/Ubuntu; Windows and macOS versions, broader Ubuntu/Fedora support, and iOS and Android apps are planned future work.</p>
-<p>There are practical limits: the app must run for background sync; the share must be mounted, writable and compatible with the required file operations. Permissions changes and lockdown cannot recall passwords already seen, exported or retained in an old offline copy or backup. The Manager can access all entries and has recovery authority. This is a managed test build, not a claim of an independently audited security product.</p>
+<p>There are practical limits: the app must run for background sync; the share must be mounted, writable and compatible with the required file operations. Permissions changes and lockdown cannot recall passwords already seen, exported or retained in an old offline copy or backup. The Manager can access all entries and has recovery authority. This Linux Mint release has automated checks and user testing; it has not undergone an independent security audit.</p>
 <p><b>Keep control of your storage. Keep working offline. Share only what each person needs.</b></p>
 '''
 
 class AboutWindow(QDialog):
     def __init__(self,parent=None):
         super().__init__(parent);self.setWindowTitle('About Wormwright Vault');self.resize(850,680)
-        layout=QVBoxLayout(self);text=QTextBrowser();text.setHtml(f'<p><b>Version {VERSION} · Managed test build</b></p>'+ABOUT_HTML);layout.addWidget(text)
+        layout=QVBoxLayout(self);text=QTextBrowser();text.setHtml(f'<p><b>Version {VERSION} · {RELEASE_LABEL}</b></p>'+ABOUT_HTML);layout.addWidget(text)
         buttons=QDialogButtonBox(QDialogButtonBox.StandardButton.Close);buttons.rejected.connect(self.close);layout.addWidget(buttons)
 
 def show_about(owner):

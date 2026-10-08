@@ -19,7 +19,7 @@ from history import VaultHistory
 from search import matching_ids
 from exporter import export_csv
 from importer import read_export
-from version import VERSION
+from version import VERSION, RELEASE_LABEL
 import managed_locations
 
 
@@ -58,7 +58,7 @@ class ManagedWindow(QMainWindow):
         self.lockdown_pending=False
         self.sort_column=0;self.sort_descending=False
         self.history=VaultHistory();self.lock_minutes=read_timeout();self.password_fallback=False
-        self.setWindowTitle(f'Wormwright Vault{" Manager" if manager_app else ""} {VERSION} — Managed test build')
+        self.setWindowTitle(f'Wormwright Vault{" Manager" if manager_app else ""} {VERSION} — {RELEASE_LABEL}')
         self.resize(1160,700)
         root=QWidget();self.setCentralWidget(root);layout=QVBoxLayout(root)
         logo=QHBoxLayout();icon=QLabel();asset=Path(getattr(sys,'_MEIPASS',Path(__file__).parent.parent))/'assets'/('wormwright-vault-manager.png' if manager_app else 'wormwright-vault.png')
@@ -66,7 +66,7 @@ class ManagedWindow(QMainWindow):
             self.setWindowIcon(QIcon(str(asset)));icon.setPixmap(QPixmap(str(asset)).scaled(56,56,Qt.AspectRatioMode.KeepAspectRatio,Qt.TransformationMode.SmoothTransformation));logo.addWidget(icon)
         title=QLabel('Wormwright Vault Manager' if manager_app else 'Wormwright Vault');title.setStyleSheet('font-size:26px;font-weight:bold')
         logo.addWidget(title);logo.addStretch();layout.addLayout(logo)
-        layout.addWidget(QLabel(f'Version {VERSION} • Managed test build'))
+        layout.addWidget(QLabel(f'Version {VERSION} • {RELEASE_LABEL}'))
         self.status=QLabel();layout.addWidget(self.status)
         login=QHBoxLayout();self.username=QLineEdit();self.username.setPlaceholderText('Username');self.username.setObjectName('vault_username')
         self.master=QLineEdit();self.master.setEchoMode(QLineEdit.EchoMode.Password);self.master.setPlaceholderText('Account password')
