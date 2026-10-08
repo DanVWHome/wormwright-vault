@@ -1,3 +1,7 @@
+# Current Linux Mint release: 0.3.0
+
+Download `wormwright-vault-mint_0.3.0_amd64.deb` from [v0.3.0](https://github.com/DanVWHome/wormwright-vault/releases/tag/v0.3.0). Supports Linux Mint 22.x amd64. Includes Vault and Vault Manager, and replaces the managed beta while preserving vault files and settings. See [installation, upgrade and release limits](docs/MINT-RELEASE.md). Android for Pixel 10 / GrapheneOS is next. Older sections below describe earlier prototypes and test releases.
+
 # Wormwright Vault
 
 An offline Linux password-vault prototype by Dan Van Wormer with AI assistance.
