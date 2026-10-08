@@ -14,7 +14,11 @@ with tempfile.TemporaryDirectory() as name:
  shared=w.vault.save({'description':'Family mail','password':'mail-secret','groups':[family]})
  w.vault.delete(shared);w.update_state();w.refresh();assert w.table.rowCount()==1
  w.show_deleted.setChecked(True);assert w.table.rowCount()==2
- assert any(w.table.item(i,5).text()=='Deleted' for i in range(w.table.rowCount()))
+ deleted_row=next(i for i,r in enumerate(w.records) if r['id']==shared)
+ assert '[Deleted]' in w.table.item(deleted_row,0).text()
+ assert w.table.item(deleted_row,0).background().color().name()=='#ffe0e0'
+ w.only_deleted.setChecked(True);assert len(w.records)==1 and w.records[0]['id']==shared
+ w.only_deleted.setChecked(False)
  w.vault.restore_entry(shared);w.lock();w.vault.unlock('alice-dummy-password','Alice');w.update_state();w.refresh()
  assert w.table.rowCount()==1 and w.records[0]['id']==shared
  assert w.manager_row.isHidden();w.search.setText('Manager private');assert w.table.rowCount()==0
