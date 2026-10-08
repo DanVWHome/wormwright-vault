@@ -93,10 +93,18 @@ class NativeWindowsClient:
         self.client = client
 
     def make_credential(self, options, event):
-        return self.client.make_credential(options, event=WindowsCancellation(event))
+        native_event = WindowsCancellation(event)
+        try:
+            return self.client.make_credential(options, event=native_event)
+        finally:
+            native_event.set()
 
     def get_assertion(self, options, event):
-        return self.client.get_assertion(options, event=WindowsCancellation(event))
+        native_event = WindowsCancellation(event)
+        try:
+            return self.client.get_assertion(options, event=native_event)
+        finally:
+            native_event.set()
 
 
 @contextmanager

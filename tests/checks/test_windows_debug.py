@@ -40,6 +40,16 @@ with patch.object(yubikey_auth, 'sys', SimpleNamespace(platform='win32')), patch
         assert client.make_credential({}, cancelled) == 'native credential'
         assert client.get_assertion({}, cancelled) == 'native assertion'
         assert not cancelled.is_set()
+events = []
+class FailingNative:
+    def get_assertion(self, options, event):
+        events.append(event)
+        raise ValueError('Synthetic device failure')
+try:
+    yubikey_auth.NativeWindowsClient(FailingNative()).get_assertion({}, cancelled)
+    raise AssertionError('Native failure ignored')
+except ValueError:
+    assert events[0].wait(.1) and not cancelled.is_set()
 user_cancelled = threading.Event(); user_cancelled.set()
 assert yubikey_auth.WindowsCancellation(user_cancelled).wait(.1)
 with patch('key_ui.sys', SimpleNamespace(platform='win32')), patch('key_ui.QInputDialog.getText', side_effect=AssertionError('Duplicate PIN prompt')):
