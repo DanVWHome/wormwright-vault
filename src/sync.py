@@ -1,4 +1,5 @@
 """Explicit whole-vault synchronization; conflicting edits never overwrite."""
+from sync_lock import release_lock
 from contextlib import closing
 import hashlib
 import json
@@ -117,9 +118,10 @@ def synchronize(vault, backup_target=None, encrypted_only=False):
         raise VaultError('Another sync is running, or an interrupted sync left a lock. No files were changed. Check the other devices before removing .wormwright-sync-lock.')
     staged = None
     other = None
-    temporary = tempfile.TemporaryDirectory(prefix="wormwright-sync-")
-    scratch = Path(temporary.name)
+    temporary = None
     try:
+        temporary = tempfile.TemporaryDirectory(prefix="wormwright-sync-")
+        scratch = Path(temporary.name)
         if remote.is_symlink() or remote.resolve() == vault.path.resolve():
             raise VaultError('The shared vault must be a separate regular file.')
         for suffix in ('-wal', '-journal'):
@@ -241,12 +243,15 @@ def synchronize(vault, backup_target=None, encrypted_only=False):
                 prune(directory, hashlib.sha256(target.name.encode()).hexdigest()[:16] + '-', config.get('limit', DEFAULT_LIMIT))
         return action
     finally:
-        if other:
-            other.lock()
-        if staged:
-            staged.unlink(missing_ok=True)
-        temporary.cleanup()
-        lock.rmdir()
+        try:
+            if other:
+                other.lock()
+            if staged:
+                staged.unlink(missing_ok=True)
+            if temporary:
+                temporary.cleanup()
+        finally:
+            release_lock(lock)
 
 
 def validate_encrypted(path):

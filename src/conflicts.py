@@ -1,4 +1,5 @@
 """Local encrypted snapshots for explicit two-way conflict resolution."""
+from sync_lock import release_lock
 from pathlib import Path
 import os
 import shutil
@@ -110,10 +111,12 @@ class Comparison:
             atomic_json(self.local.path.with_name(self.local.path.name + '.sync.json'), self.config)
             return safety_local, safety_shared
         finally:
-            for path in (transfer, local_stage):
-                if path:
-                    path.unlink(missing_ok=True)
-            lock.rmdir()
+            try:
+                for path in (transfer, local_stage):
+                    if path:
+                        path.unlink(missing_ok=True)
+            finally:
+                release_lock(lock)
 
     def close(self):
         self.rows.clear()

@@ -1,4 +1,5 @@
 """Snapshot sync for format 2. Administrative state never merges piecemeal."""
+from sync_lock import release_lock
 from contextlib import closing
 import errno
 import hashlib
@@ -187,7 +188,7 @@ def synchronize(path, session=None, choices=None, expected=None):
                     if old.is_file() and not old.is_symlink():old.unlink()
             return message
     finally:
-        lock.rmdir()
+        release_lock(lock)
 
 
 def reconcile(path, session, authority_side, choices, expected, assignments=None):
@@ -239,4 +240,4 @@ def reconcile(path, session, authority_side, choices, expected, assignments=None
                         if old.is_file() and not old.is_symlink():old.unlink()
                 return 'Reconciled entries and Manager-selected access settings.'
             finally:a.lock();b.lock();out.lock()
-    finally:lock.rmdir()
+    finally:release_lock(lock)
