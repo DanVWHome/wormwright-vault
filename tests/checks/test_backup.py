@@ -13,7 +13,8 @@ with tempfile.TemporaryDirectory() as folder:
     entry_id=v.save(record)
     backup=root/'backup.sqlite'
     v.backup(backup)
-    assert backup.stat().st_mode & 0o777 == 0o600
+    if sys.platform != "win32":
+        assert backup.stat().st_mode & 0o777 == 0o600
     assert b'encrypted-secret' not in backup.read_bytes()
     try:
         v.backup(backup)

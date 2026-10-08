@@ -3,9 +3,10 @@ import json
 import os
 from pathlib import Path
 from sync import atomic_json
+from platform_paths import data_home
 
 def preferences_path():
-    return Path(os.environ.get('XDG_DATA_HOME', str(Path.home() / '.local/share'))) / 'vanwormai-vault/preferences.json'
+    return data_home() / 'vanwormai-vault/preferences.json'
 
 def read_timeout():
     try:

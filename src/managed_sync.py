@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import shutil
 import sqlite3
+import sys
 import tempfile
 import time
 import uuid
@@ -86,6 +87,15 @@ def _replace(source, target):
         os.replace(name,target)
     finally:
         Path(name).unlink(missing_ok=True)
+
+
+def _replace_local(source, target):
+    if sys.platform != 'win32':
+        return _replace(source, target)
+    # Windows SQLite handles prevent rename of an open local database. Backup
+    # commits the complete encrypted snapshot as one SQLite transaction. Keep
+    # staged-file publication for the NAS, where the database must stay closed.
+    snapshot(source, target)
 
 
 def synchronize(path, session=None, choices=None, expected=None):
@@ -169,7 +179,7 @@ def synchronize(path, session=None, choices=None, expected=None):
                 retained.append(_retained(local,path,config.get('limit',10)))
                 # Race after remote publication is preserved rather than lost.
                 if state(path)!=ours:raise SyncConflict('Local changes arrived after upload. Shared copy saved; local copy preserved. Retry.')
-                _replace(result,path)
+                _replace_local(result,path)
             config['managed_baseline']=result_state
             atomic_json(settings_path(type('Location',(),{'path':path})()),config)
             for directory,prefix,limit in retained:
@@ -222,7 +232,7 @@ def reconcile(path, session, authority_side, choices, expected, assignments=None
                 out.lock()
                 _replace(result,remote)
                 if state(path)!=expected[0]:raise SyncConflict('Local changes arrived after publication. Local copy preserved; review again.')
-                _replace(result,path)
+                _replace_local(result,path)
                 config['managed_baseline']=state(result);atomic_json(settings_path(type('Location',(),{'path':path})()),config)
                 for directory,prefix,limit in retained:
                     for old in sorted(directory.glob(prefix+'*.sqlite'),key=lambda p:p.name,reverse=True)[limit:]:

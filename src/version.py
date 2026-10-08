@@ -1,3 +1,4 @@
 """Application version and release description shared by the interface."""
 VERSION = '0.3.2'
-RELEASE_LABEL = 'Linux Mint release'
+import sys
+RELEASE_LABEL = 'Windows preview' if sys.platform == 'win32' else 'Linux Mint release'

@@ -3,10 +3,11 @@ import json
 import os
 from pathlib import Path
 from sync import atomic_json
+from platform_paths import data_home
 
 
 def default_folder():
-    return Path(os.environ.get('XDG_DATA_HOME',str(Path.home()/'.local/share')))/'wormwright-vault-beta'
+    return data_home()/'wormwright-vault-beta'
 
 
 def settings_path():

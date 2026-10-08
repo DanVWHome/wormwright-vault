@@ -15,7 +15,8 @@ with tempfile.TemporaryDirectory() as folder:
     assert len(vault.entries()) == 1
     assert vault.entries()[0]['notes'] == 'updated secret notes'
     vault.lock()
-    assert path.stat().st_mode & 0o777 == 0o600
+    if sys.platform != "win32":
+        assert path.stat().st_mode & 0o777 == 0o600
     raw = path.read_bytes()
     assert all(value.encode() not in raw for value in record.values())
     try:

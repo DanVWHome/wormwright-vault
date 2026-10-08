@@ -1,6 +1,5 @@
 """Versioned, local-only UI requests. Never returns vault contents or secrets."""
 import argparse
-import fcntl
 import hashlib
 import json
 import os
@@ -10,6 +9,8 @@ import stat
 import struct
 import subprocess
 import sys
+if sys.platform != "win32":
+    import fcntl
 import time
 
 VERSION = 1
@@ -17,7 +18,8 @@ ACTIONS = ('open', 'lookup', 'lock', 'capabilities', 'open_vault_view', 'open_ma
 
 
 def default_vault():
-    data = Path(os.environ.get('XDG_DATA_HOME', str(Path.home() / '.local/share')))
+    from platform_paths import data_home
+    data = data_home()
     legacy = data / 'atlas-portable/demo-vault.sqlite'
     return legacy if legacy.exists() else data / 'vanwormai-vault/demo-vault.sqlite'
 
@@ -189,6 +191,10 @@ def main():
                              stderr=subprocess.DEVNULL, start_new_session=True)
             response = {'version': VERSION, 'launch_requested': True}
     print(json.dumps(response))
+
+
+if sys.platform == 'win32':
+    from windows_control import LocalControl, send
 
 
 if __name__ == '__main__':
