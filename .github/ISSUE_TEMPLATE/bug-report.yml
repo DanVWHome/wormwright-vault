@@ -1,0 +1,50 @@
+name: Bug report
+description: Report a problem with Wormwright Vault.
+title: "[Bug]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not attach real vaults, backups, password exports, passwords, recovery codes, YubiKey PINs or NAS credentials. Remove private details from screenshots and logs. For security vulnerabilities, use the private reporting link instead of a public issue.
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - Linux
+        - Android
+        - Windows
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: App version and operating system
+      placeholder: Windows preview 2, Windows 11
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Explain the steps, including whether the problem involves local use, a YubiKey or NAS sync. Do not include credentials.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened
+      description: Include the exact error message if possible.
+    validations:
+      required: true
+  - type: textarea
+    id: details
+    attributes:
+      label: Additional details
+      description: Optional sanitized screenshots or logs. Public reports are visible to everyone.

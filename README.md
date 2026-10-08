@@ -101,8 +101,11 @@ separately. No uploaded Atlas files or personal export is part of this repositor
 This remains a prototype. Forgotten-password recovery is not implemented. Shared-folder sync is manual
 and stops on conflicting edits; it does not merge records. Physical YubiKey enrollment/unlock and installer behavior
 must be checked on each target laptop/desktop before using real credentials.
-No application license has been selected; keep the repository private for now.
-Third-party component licenses remain applicable to bundled dependencies.
+Wormwright Vault is licensed under [GNU GPLv3](LICENSE), version 3 only.
+See [licensing scope](LICENSING.md) for branding exclusions and dependencies.
+Third-party licenses and notices remain applicable.
+Use the structured bug-report form for ordinary bugs and [SECURITY.md](SECURITY.md)
+for private security reporting. Never attach real vault data or credentials.
 
 ## Wormwright AI branding
 
