@@ -30,6 +30,8 @@ def main():
     bundle = work / 'bundle/WormwrightVault'
     subprocess.run([str(bundle / 'WormwrightVault.exe'), '--check-yubikey-runtime'], check=True)
     docs = bundle / 'docs'; docs.mkdir(exist_ok=True)
+    for license_name in ('LICENSE', 'LICENSING.md'):
+        shutil.copy2(ROOT / license_name, docs / license_name)
     shutil.copy2(ROOT / 'docs/WINDOWS.md', bundle / 'README.md')
     shutil.copy2(ROOT / 'docs/RELEASE-0.3.2.md', docs)
     shutil.copytree(ROOT / 'docs/third-party', docs / 'third-party', dirs_exist_ok=True)

@@ -114,9 +114,9 @@ fixtures belong in Git. Real databases, CSV exports, backups, credentials,
 signing keys and build environments must remain excluded. Installer artifacts
 are published separately as release assets. Do not attach real data to bug reports.
 
-No application license has been selected; public visibility does not grant an
-open-source license. Third-party licenses apply to bundled dependencies, and
-notices are included in the package. Approved mascot references are in assets.
+Wormwright Vault is licensed under [GNU GPLv3](LICENSE), version 3 only.
+See [licensing scope](LICENSING.md). Third-party licenses and notices remain
+applicable; branding is separately covered.
 
 
 ## Android preview
