@@ -6,7 +6,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'src'))
 from history import VaultHistory, MAX_RECENT
 
 with tempfile.TemporaryDirectory() as directory:
-    root = Path(directory)
+    root = Path(directory).resolve()
     history = VaultHistory(root / 'history.json')
     assert history.read() == []
     for index in range(MAX_RECENT + 5):
