@@ -51,7 +51,8 @@ def combined(base, local, remote):
     if local['admin'] != remote['admin']:
         return None
     if not base:
-        return {eid:None for eid in set(local['entries'])|set(remote['entries'])}
+        return {eid: 'local' if local['entries'].get(eid) == remote['entries'].get(eid) else None
+                for eid in set(local['entries']) | set(remote['entries'])}
     choices={}
     for eid in set(base['entries'])|set(local['entries'])|set(remote['entries']):
         old=base['entries'].get(eid);ours=local['entries'].get(eid);theirs=remote['entries'].get(eid)

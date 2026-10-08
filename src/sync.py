@@ -68,6 +68,8 @@ def configure(vault, folder, limit, automatic=True, interval=30):
     data = {'folder': str(folder), 'limit': limit, 'automatic': bool(automatic), 'interval': interval}
     if previous.get('folder') == str(folder):
         data['baseline'] = previous.get('baseline')
+        if 'managed_baseline' in previous:
+            data['managed_baseline'] = previous['managed_baseline']
         if previous.get('entry_history'):
             data['entry_history'] = previous['entry_history']
     atomic_json(settings_path(vault), data)
