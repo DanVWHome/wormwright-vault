@@ -11,7 +11,7 @@ with tempfile.TemporaryDirectory() as name:
  gid=next(iter(w.vault.available_groups()));family=w.vault.add_group('Family')
  uid=w.vault.add_user('Alice','alice-dummy-password',[family])
  private=w.vault.save({'description':'Manager private','password':'private','groups':[gid]})
- shared=w.vault.save({'description':'Family mail','password':'mail-secret','groups':[family]})
+ shared=w.vault.save({'description':'Family mail','user_name':'mouse','password':'mail-secret','groups':[family]})
  w.vault.delete(shared);w.update_state();w.refresh();assert w.table.rowCount()==1
  w.show_deleted.setChecked(True);assert w.table.rowCount()==2
  deleted_row=next(i for i,r in enumerate(w.records) if r['id']==shared)
@@ -21,6 +21,9 @@ with tempfile.TemporaryDirectory() as name:
  w.only_deleted.setChecked(False)
  w.vault.restore_entry(shared);w.lock();w.vault.unlock('alice-dummy-password','Alice');w.update_state();w.refresh()
  assert w.table.rowCount()==1 and w.records[0]['id']==shared
+ w.search.setText('mouse');assert w.table.rowCount()==1
+ w.search.setText('mail-secret');assert w.table.rowCount()==0
+ w.search.clear()
  assert w.manager_row.isHidden();w.search.setText('Manager private');assert w.table.rowCount()==0
  w.search.clear();w.copy_field('password');assert application.clipboard().text()=='mail-secret';w.lock();assert not application.clipboard().text()
  w.update_state();assert not w.username.isHidden()

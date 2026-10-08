@@ -83,7 +83,7 @@ class ManagedWindow(QMainWindow):
         for text,callback in [('Create New Vault…',self.new_vault),('Open Existing Vault…',self.open_existing),('Load Demo Vault…',self.load_demo)]:
             b=QPushButton(text);b.clicked.connect(callback);welcome_row.addWidget(b)
         welcome_layout.addLayout(welcome_row);layout.addWidget(self.welcome)
-        row=QHBoxLayout();self.search=QLineEdit();self.search.setPlaceholderText('Search description, link or notes');self.search.textChanged.connect(self.refresh);row.addWidget(self.search)
+        row=QHBoxLayout();self.search=QLineEdit();self.search.setPlaceholderText('Search description, username, link or notes');self.search.textChanged.connect(self.refresh);row.addWidget(self.search)
         self.controls=[]
         for text,callback in [('Add',self.add),('Edit',self.edit),('Clone',self.clone),('Delete',self.delete),('Lock',self.lock)]:
             button=QPushButton(text);button.clicked.connect(callback);row.addWidget(button);self.controls.append(button)
@@ -617,7 +617,7 @@ class ManagedWindow(QMainWindow):
             if uid!=self.vault.uid:users.addItem(data['identity']['name'],uid)
         if not users.count():self.warning('Create an ordinary user first.');dialog.deleteLater();return
         layout.addWidget(QLabel('Checked entries are excluded, even through group membership or creation.'));layout.addWidget(users)
-        search=QLineEdit();search.setObjectName('exclusion_search');search.setPlaceholderText('Search description, link or notes…');layout.addWidget(search)
+        search=QLineEdit();search.setObjectName('exclusion_search');search.setPlaceholderText('Search description, username, link or notes…');layout.addWidget(search)
         records=self.vault.entries(True);items=QListWidget();items.setObjectName('exclusion_entries');layout.addWidget(items)
         def filter_entries():
             ids=set(matching_ids(records,search.text())) if search.text() else {r['id'] for r in records}

@@ -1,4 +1,4 @@
-# Wormwright Vault 0.3.0 — Linux Mint release
+# Wormwright Vault 0.3.1 — Linux Mint release
 
 Supports Linux Mint 22.x, Intel/AMD 64-bit (amd64), glibc 2.39 or newer.
 Cinnamon and XFCE are the intended desktop environments. Earlier Mint versions,
@@ -8,12 +8,12 @@ an optional synthetic demo, About and the narrated tutorial recorded on 0.2.13.
 
 ## Install or upgrade
 
-Download `wormwright-vault-mint_0.3.0_amd64.deb` from the public GitHub release.
+Download `wormwright-vault-mint_0.3.1_amd64.deb` from the public GitHub release.
 Before upgrading, make an encrypted backup of each working vault and close both
 apps. Install with:
 
 ```bash
-sudo apt install ~/Downloads/wormwright-vault-mint_0.3.0_amd64.deb
+sudo apt install ~/Downloads/wormwright-vault-mint_0.3.1_amd64.deb
 ```
 
 APT replaces the managed beta package. It keeps the current-format vault files,
@@ -25,7 +25,7 @@ The historical `wormwright-vault-beta` device-settings folder is retained so the
 upgrade remembers existing vault locations. It is not a requirement to store
 working vaults there.
 
-Confirm 0.3.0 in the heading. Confirm the chosen local vault and Sync Settings,
+Confirm 0.3.1 in the heading. Confirm the chosen local vault and Sync Settings,
 then verify one synthetic sync entry before continuing daily use. Keep the local
 working database off the NAS; use a dedicated mounted folder for the shared
 master. SMB and FTP mounts must support the required filesystem operations.

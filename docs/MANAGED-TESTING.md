@@ -152,3 +152,20 @@ Ordinary sessions lock after downloading the policy; password and hardware
 unlock are denied. Offline old copies and already obtained secrets cannot be
 recalled. Re-enable users individually to recover. Help covers these limits and
 password reset propagation (next password unlock after sync; YubiKey retained).
+
+## 0.2.12: bundled narrated tutorial and expanded About
+
+Help → Watch Tutorial opens a local narrated video inside both app views, with
+play/pause, seeking, mute, volume and an offline transcript. No network or vault
+entries are used by the player. The recording uses disposable demo data and
+includes AI-assisted masked lookup. The interface label states the recording
+version. Close stops playback; hide pauses it.
+
+About and matching website copy explain local AI hooks, their acknowledgment-only
+responses and user-controlled authentication/reveal. They also describe storing
+non-website secrets (combinations, PINs, bank account numbers and alarm/smart-lock
+codes) in the encrypted password field, with optional links and encrypted notes.
+
+Playback needs the bundled Qt multimedia runtime. Source installs also require
+PySide6-Addons. Desktop audio output must be checked on the user's machine; the
+headless test environment cannot validate speakers.

@@ -177,6 +177,8 @@ class Window(QMainWindow):
         super().__init__()
         from help_window import show_help
         help_menu=self.menuBar().addMenu('Help');help_menu.addAction('Searchable Help…',lambda:show_help(self))
+        from tutorial_window import show_tutorial
+        help_menu.addAction('Watch Tutorial…',lambda:show_tutorial(self))
         from about_window import show_about
         help_menu.addSeparator();help_menu.addAction('About Wormwright Vault…',lambda:show_about(self))
         self.vault = Vault(path)
@@ -241,7 +243,7 @@ class Window(QMainWindow):
         layout.addLayout(unlock)
         actions = QHBoxLayout()
         self.search = QLineEdit()
-        self.search.setPlaceholderText('Search description, link, or notes')
+        self.search.setPlaceholderText('Search description, username, link, or notes')
         self.search.textChanged.connect(self.refresh)
         actions.addWidget(self.search)
         self.controls = []

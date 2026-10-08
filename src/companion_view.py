@@ -11,7 +11,7 @@ class CompanionView(QMainWindow):
         self.setWindowIcon(controller.windowIcon());self.resize(1100,650)
         root=QWidget();self.setCentralWidget(root);layout=QVBoxLayout(root)
         self.status=QLabel();self.status.setWordWrap(True);layout.addWidget(self.status)
-        row=QHBoxLayout();self.search=QLineEdit();self.search.setPlaceholderText('Search description, link or notes');row.addWidget(self.search)
+        row=QHBoxLayout();self.search=QLineEdit();self.search.setPlaceholderText('Search description, username, link or notes');row.addWidget(self.search)
         self.search.textChanged.connect(controller.search.setText);self.buttons=[]
         for text,callback in [('Add',controller.add),('Edit',controller.edit),('Delete',controller.delete),('Lock',controller.lock)]:
             b=QPushButton(text);b.clicked.connect(callback);row.addWidget(b);self.buttons.append(b)

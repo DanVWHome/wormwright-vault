@@ -24,7 +24,7 @@ The legacy FIDO relying-party ID and encryption context are deliberately
 retained internally so existing enrolled keys continue working.
 
 SEARCH AND ENTRY CONTROLS
-Search applies SQL LIKE '%term%' to description, link, and notes. Standard
+Search applies SQL LIKE '%term%' to description, username, link, and notes. Standard
 SQLite LIKE behavior applies: ASCII case-insensitivity, % matches any number
 of characters, and _ matches one character. Usernames and passwords are not
 searched. Matching metadata is indexed only in memory, not written to disk.

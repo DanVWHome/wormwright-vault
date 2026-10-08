@@ -117,3 +117,8 @@ are published separately as release assets. Do not attach real data to bug repor
 No application license has been selected; public visibility does not grant an
 open-source license. Third-party licenses apply to bundled dependencies, and
 notices are included in the package. Approved mascot references are in assets.
+
+
+## Android preview
+
+An Android preview is available for manual APK installation, tested on Pixel 10 with GrapheneOS. It imports an encrypted format-2 vault and supports offline editing and direct SMB NAS sync. See [Android setup](android/README.md). Desktop 0.3.1 adds username search.

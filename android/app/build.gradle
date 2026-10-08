@@ -1,0 +1,40 @@
+plugins { id 'com.android.application'; id 'com.chaquo.python' }
+android {
+    namespace 'ai.wormwright.vault'
+    compileSdk 35
+    defaultConfig {
+        applicationId 'ai.wormwright.vault.preview'
+        minSdk 30
+        targetSdk 35
+        versionCode 3
+        versionName '0.1.0-preview.3'
+        ndk { abiFilters 'arm64-v8a', 'x86_64' }
+    }
+    signingConfigs {
+        preview {
+            def credentials = new Properties()
+            credentials.load(rootProject.file('../tools/signing/preview.properties').newInputStream())
+            storeFile rootProject.file('../tools/signing/preview.jks')
+            storePassword credentials.getProperty('password')
+            keyAlias 'wormwright-preview'
+            keyPassword credentials.getProperty('password')
+        }
+    }
+    buildTypes {
+        release { minifyEnabled false; signingConfig signingConfigs.preview }
+    }
+    compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+}
+dependencies {
+    implementation 'com.hierynomus:smbj:0.14.0'
+    implementation 'org.slf4j:slf4j-nop:2.0.9'
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.json:json:20240303'
+}
+chaquopy {
+    defaultConfig {
+        version = '3.13'
+        buildPython rootProject.file('../tools/python/cpython-3.13-linux-x86_64-gnu/bin/python3.13').absolutePath
+        pip { install 'PyNaCl==1.5.0' }
+    }
+}
