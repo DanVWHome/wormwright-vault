@@ -19,3 +19,6 @@ dist/
 .vanwormai-control/
 core
 core.*
+
+# Only the disposable, documented learning fixture may be committed.
+!assets/demo/wormwright-demo.sqlite

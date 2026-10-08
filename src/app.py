@@ -175,6 +175,10 @@ class PasswordDisplay(QDialog):
 class Window(QMainWindow):
     def __init__(self, path):
         super().__init__()
+        from help_window import show_help
+        help_menu=self.menuBar().addMenu('Help');help_menu.addAction('Searchable Help…',lambda:show_help(self))
+        from about_window import show_about
+        help_menu.addSeparator();help_menu.addAction('About Wormwright Vault…',lambda:show_about(self))
         self.vault = Vault(path)
         self.vault_history = VaultHistory()
         self.lock_minutes = read_timeout()
@@ -646,6 +650,12 @@ class Window(QMainWindow):
             return
         filename, _ = QFileDialog.getOpenFileName(self, 'Open Wormwright AI vault', str(self.vault.path.parent), 'SQLite vault (*.sqlite);;All files (*)')
         if filename and Path(filename).resolve() != self.vault.path.resolve():
+            from managed_vault import is_managed
+            if is_managed(filename):
+                import subprocess
+                command = [sys.executable] + ([] if getattr(sys, 'frozen', False) else [str(Path(__file__).resolve())]) + [filename]
+                subprocess.Popen(command, start_new_session=True)
+                return
             self.lock()
             self.vault = Vault(filename)
             self.update_state()
@@ -1088,8 +1098,10 @@ def main():
     import argparse
     os.umask(0o077)
     parser = argparse.ArgumentParser(description='Wormwright Vault')
-    parser.add_argument('vault', nargs='?', type=Path, default=default_vault())
+    parser.add_argument('vault', nargs='?', type=Path)
     parser.add_argument('--lookup')
+    parser.add_argument('--beta', action='store_true', help=argparse.SUPPRESS)
+    parser.add_argument('--manager', action='store_true', help='Open the optional Vault Manager interface')
     parser.add_argument('--check-yubikey-runtime', action='store_true', help=argparse.SUPPRESS)
     args = parser.parse_args()
     if args.check_yubikey_runtime:
@@ -1097,24 +1109,43 @@ def main():
         DefaultClientDataCollector(ORIGIN).verify_rp_id(RP_ID, ORIGIN)
         print('YubiKey runtime data loaded successfully.')
         return
-    path = args.vault
+    from managed_locations import startup_vault
+    path = args.vault or (startup_vault() if args.beta else default_vault())
     request = {'version': 1, 'action': 'lookup', 'query': args.lookup} if args.lookup is not None else {'version': 1, 'action': 'open'}
     try:
-        send(path, request)
+        launch_request=request if args.lookup is not None else {'version':1,'action':'open_manager_view' if args.manager else 'open_vault_view'}
+        send(path, launch_request)
         return
     except (FileNotFoundError, ConnectionRefusedError):
         pass
     app = QApplication([sys.argv[0]])
-    window = Window(path)
+    from managed_vault import is_managed
+    if args.manager or is_managed(path) or not path.exists():
+        from managed_ui import ManagedWindow
+        window = ManagedWindow(path, manager_app=args.manager)
+    else:
+        window = Window(path)
     try:
         control = LocalControl(path, window.handle_control)
     except Exception as error:
         QMessageBox.warning(window, 'Cannot open vault', str(error))
         return
     timer = QTimer(window)
-    timer.timeout.connect(control.poll)
+    path_holder = [path.resolve()]
+    # Rebind UI-only requests when the user chooses another local vault.
+    def poll_current():
+        nonlocal control
+        if window.vault.path.resolve() != path_holder[0]:
+            control.close()
+            try:control = LocalControl(window.vault.path, window.handle_control)
+            except Exception as error:
+                QMessageBox.warning(window, 'Cannot open vault', str(error))
+                window.lock();return
+            path_holder[0] = window.vault.path.resolve()
+        control.poll()
+    timer.timeout.connect(poll_current)
     timer.start(100)
-    app.aboutToQuit.connect(control.close)
+    app.aboutToQuit.connect(lambda: control.close())
     window.show()
     window.handle_control(request)
     sys.exit(app.exec())
