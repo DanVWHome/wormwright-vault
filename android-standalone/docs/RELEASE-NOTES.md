@@ -1,18 +1,20 @@
-# Wormwright Pocket 0.1.0-test.3 — device testing draft
+# Wormwright Pocket 0.1.0-test.4 — device testing draft
 
 Your personal password vault. Standalone offline Android app by Dan Van Wormer.
 
-This update fixes the camera/status-bar overlap by respecting system-bar, display
-cutout and keyboard insets on every main screen, in portrait and landscape. The
-record dialog now uses its description as the title, shows username, website,
-masked password and notes together, and groups all action buttons below the fields.
-Show/Hide password toggles like the NAS companion. Copying each field remains
-available. Dialog contents are cleared when closed. VersionCode is now 3.
+Test.4 fixes the editor crash reported on test.3. Delayed record-dismiss callbacks
+cannot clear a newer editor, and editor/password callbacks reference their own
+window. Opening a vault or sample now immediately shows an indeterminate spinner
+and “Opening vault…”. Repeat opening attempts are blocked while work is underway;
+completion, errors and locking clear the indicator without stale callbacks hiding
+newer work. Camera spacing, grouped record controls and the approved icon remain.
 
-The package and dedicated test signing identity are unchanged. Export a portable
-backup, then install over test.1 or test.2 without uninstalling. Dan confirmed
-test.2 downloaded and installed; physical cutout and layout verification of this
-update remains pending.
+Package and dedicated test signing identity are unchanged. Export a portable
+backup, then install over the earlier test build without uninstalling. VersionCode
+is 4. The NAS companion receives the same opening feedback in preview.5. Real
+Android message-loop tests cover repeated record/edit/save/cancel transitions,
+visible opening feedback, error cleanup and stale completion after locking.
+Physical biometric/PIN and actual SMB NAS acceptance remain separate checks.
 
 - Create a personal encrypted vault protected by phone authentication through an
   authentication-per-operation Android Keystore key. Optional separate vault
@@ -27,7 +29,7 @@ update remains pending.
 - Export real signed format-2 desktop/NAS migration vaults, with a chosen master
   password and existing Owner identity. Preserve entry fields and deleted entries.
 - Distinct app name/icon and package `ai.wormwright.vault.standalone`; existing
-  desktop and Android companion code is unchanged. No network permission or NAS
+  desktop code is unchanged. The NAS companion gets loading feedback separately. No network permission or NAS
   libraries, analytics, advertising, cloud services or generative AI features.
 - Target API 36; APK/native-library static alignment checks passed for 16 KiB pages.
 
@@ -39,8 +41,8 @@ Automated validation: six offline engine tests, including fresh-key restoration,
 wrong secrets, corruption, crypto password wrapping, CRUD/lock/sample isolation,
 and a real desktop/companion engine migration round trip with a simulated shared
 folder. Android compilation and lint passed. APK signature and all 138 nested ELF
-libraries were checked. Desktop/companion source files and crypto engine were not
-changed. Physical biometric/PIN fallback, coinstallation/update/uninstall retention,
+libraries were checked. Desktop sources and crypto engine were not changed. The companion
+receives loading feedback in preview.5. Physical biometric/PIN fallback, coinstallation/update/uninstall retention,
 16 KiB runtime and actual desktop UI + SMB NAS + companion device workflow remain
 pending. Automated protocol checks do not replace those device tests.
 

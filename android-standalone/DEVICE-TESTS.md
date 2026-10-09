@@ -5,11 +5,15 @@ attach personal vaults, PINs, passwords, recovery keys or NAS credentials to rep
 Dan confirmed test.2 downloaded and installed, then reported camera overlap and
 record-layout issues. Remaining checks require explicit results on the phone.
 
-- Check test.3 home, list and search screens in portrait and landscape. Text
+- Check test.4 home, list and search screens in portrait and landscape. Text
   and controls must stay clear of the camera, status/navigation bars and keyboard,
   including while scrolling. Open a sample record: description is the title,
   fields appear together, all actions are grouped, Show/Hide toggles, and each
   copy action copies its intended field. Check long notes and large text size.
+- Confirm opening immediately shows a spinner and blocks duplicate attempts. Open
+  a record, edit, save, reopen and cancel repeatedly without a crash. Check errors
+  and locking clear the indicator. Automated emulator results do not replace
+  personal-vault authentication and real phone checks.
 - Confirm both launcher entries: existing companion `ai.wormwright.vault.preview`
   and standalone `ai.wormwright.vault.standalone`. Install Pocket while companion
   remains installed. Do not import, read, edit or sync the existing personal vault.

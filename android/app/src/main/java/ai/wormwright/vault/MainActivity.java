@@ -18,9 +18,12 @@ import android.text.Editable;
 import android.text.InputType;
 import android.text.TextWatcher;
 import android.view.View;
+import android.view.ViewGroup;
+import android.view.Gravity;
 import android.view.WindowManager;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.Button;
+import android.widget.ProgressBar;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
@@ -49,7 +52,10 @@ public class MainActivity extends Activity {
     private final Handler handler = new Handler(Looper.getMainLooper());
     private LinearLayout root, rows;
     private EditText username, password, search;
-    private TextView status;
+    private TextView status, progressLabel;
+    private LinearLayout progressRow;
+    private String progressText = "Working…";
+    private final java.util.Map<View, Boolean> disabledControls = new java.util.IdentityHashMap<>();
     private AlertDialog detailDialog;
     private AlertDialog nasDialog;
     private AlertDialog editorDialog;
@@ -135,6 +141,12 @@ public class MainActivity extends Activity {
         });
         heading.addView(help);
         root.addView(heading); root.addView(label(subtitle, 15));
+        progressRow = new LinearLayout(this); progressRow.setGravity(Gravity.CENTER_VERTICAL);
+        ProgressBar spinner = new ProgressBar(this); spinner.setIndeterminate(true); spinner.setContentDescription("Operation in progress");
+        progressRow.addView(spinner, new LinearLayout.LayoutParams(dp(36),dp(36)));
+        progressLabel = label(progressText, 16); progressLabel.setPadding(dp(12),dp(8),0,dp(8));
+        progressLabel.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE); progressRow.addView(progressLabel);
+        root.addView(progressRow); updateProgress();
         setContentView(root); root.requestApplyInsets();
     }
     private void openWebsite() {
@@ -170,21 +182,37 @@ public class MainActivity extends Activity {
         form.addView(label("Personal vault: leave account name blank.", 14));
         form.addView(label("Read and edit your encrypted vault offline. Changes sync with your NAS after unlocking, saving and while the app is open. Complete the first NAS sync before editing.", 16));
         form.addView(label("Locks when you leave the app or after two minutes idle. Screenshots and device backups are disabled. Copied values clear after 30 seconds or when you lock.", 14));
-        form.addView(label("0.1.0-preview.4 · No Google Play services needed", 13));
+        form.addView(label("0.1.0-preview.5 · No Google Play services needed", 13));
     }
     private PyObject bridge() { return Python.getInstance().getModule("mobile_bridge"); }
     private interface Job { String run() throws Exception; }
     private interface Result { void accept(String value) throws Exception; }
-    private void job(Job task, Result success, String errorText) {
+    private void updateProgress() {
+        if (progressRow != null) { progressLabel.setText(busy ? progressText : "Syncing with NAS…"); progressRow.setVisibility(busy || nasRunning ? View.VISIBLE : View.GONE); }
+    }
+    private void setBusy(boolean value, String label) {
+        busy = value; progressText = label; updateProgress();
+        if (value) { disabledControls.clear(); disableControls(root); }
+        else { for (java.util.Map.Entry<View, Boolean> entry : disabledControls.entrySet()) entry.getKey().setEnabled(entry.getValue()); disabledControls.clear(); }
+    }
+    private void disableControls(View view) {
+        if (view instanceof Button && !"Lock".contentEquals(((Button)view).getText()) && !"Help".contentEquals(((Button)view).getText()) || view instanceof EditText) {
+            disabledControls.put(view,view.isEnabled()); view.setEnabled(false);
+        }
+        if (view instanceof ViewGroup) for(int i=0;i<((ViewGroup)view).getChildCount();i++) disableControls(((ViewGroup)view).getChildAt(i));
+    }
+    private void job(Job task, Result success, String errorText) { job("Working…", task, success, errorText); }
+    private void job(String label, Job task, Result success, String errorText) {
+        if (busy) return;
         final int token = generation;
-        busy = true;
+        setBusy(true, label);
         worker.execute(() -> {
             String result = null; boolean failed = false;
             try { result = task.run(); } catch (Exception error) { failed = true; }
             final String value = result; final boolean error = failed;
             handler.post(() -> {
                 if (token != generation || !resumed || isFinishing()) return;
-                busy = false;
+                setBusy(false, "");
                 if (error) { lockNow(errorText); return; }
                 try { success.accept(value); }
                 catch (Exception ignored) { lockNow("Cannot read this vault. Import a valid encrypted copy."); }
@@ -198,7 +226,7 @@ public class MainActivity extends Activity {
         password.getText().clear();
         ((InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(password.getWindowToken(), 0);
         status.setText("Unlocking and checking vault signatures…");
-        job(() -> bridge().callAttr("unlock", vaultFile.getAbsolutePath(), account, secret, true, false).toString(),
+        job("Opening vault…", () -> bridge().callAttr("unlock", vaultFile.getAbsolutePath(), account, secret, true, false).toString(),
             result -> {
                 unlocked = true; sampleMode = false; showEntries(result); resetIdleTimer();
                 if (nasSettings.exists()) { refreshNas(false); handler.postDelayed(nasPoll, 60000); }
@@ -357,7 +385,7 @@ public class MainActivity extends Activity {
     }
     private void openSample() {
         status.setText("Opening the invented sample entries…");
-        job(() -> {
+        job("Opening vault…", () -> {
             File sample = new File(getNoBackupFilesDir(), "sample.db");
             try (InputStream input = getAssets().open("sample-vault.db"); FileOutputStream output = new FileOutputStream(sample)) {
                 byte[] buffer = new byte[65536]; int count;
@@ -372,7 +400,7 @@ public class MainActivity extends Activity {
     }
     @Override public void onUserInteraction() { super.onUserInteraction(); resetIdleTimer(); }
     private void lockNow(String message) {
-        ++generation; ++searchVersion; unlocked = false; busy = false;
+        ++generation; ++searchVersion; unlocked = false; nasRunning = false; setBusy(false, "");
         handler.removeCallbacks(idleLock); handler.removeCallbacks(nasPoll); clearOwnedClipboard();
         if (detailDialog != null) detailDialog.dismiss();
         if (nasDialog != null) nasDialog.dismiss();
@@ -561,7 +589,7 @@ public class MainActivity extends Activity {
     private void refreshNas(boolean manual,String choices,String expected) {
         if(!unlocked || sampleMode || !resumed || busy || nasRunning || editorDialog!=null || conflictReview!=null) return;
         if(detailDialog!=null) { if(manual) detailDialog.dismiss(); else return; }
-        nasRunning=true; final int token=generation; final String query=search.getText().toString();
+        nasRunning=true; updateProgress(); final int token=generation; final String query=search.getText().toString();
         search.setEnabled(false); status.setText("Syncing encrypted vault with NAS…");
         worker.execute(()->{
             JSONObject result=new JSONObject(); File directory=null;
@@ -592,7 +620,7 @@ public class MainActivity extends Activity {
             }
             final JSONObject response=result;
             handler.post(()->{
-                nasRunning=false; if(token!=generation || !resumed || isFinishing()) return;
+                if(token!=generation || !resumed || isFinishing()) return; nasRunning=false; updateProgress();
                 search.setEnabled(true);
                 try {
                     if(response.has("ready") && !response.getBoolean("ready")) {

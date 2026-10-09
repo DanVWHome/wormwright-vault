@@ -6,18 +6,20 @@ android {
         applicationId 'ai.wormwright.vault.preview'
         minSdk 30
         targetSdk 35
-        versionCode 4
-        versionName '0.1.0-preview.4'
+        versionCode 5
+        versionName '0.1.0-preview.5'
+        testInstrumentationRunner 'ai.wormwright.vault.UiRegressionInstrumentation'
         ndk { abiFilters 'arm64-v8a', 'x86_64' }
     }
     signingConfigs {
         preview {
-            def credentials = new Properties()
-            credentials.load(rootProject.file('../tools/signing/preview.properties').newInputStream())
-            storeFile rootProject.file('../tools/signing/preview.jks')
-            storePassword credentials.getProperty('password')
-            keyAlias 'wormwright-preview'
-            keyPassword credentials.getProperty('password')
+            def source = System.getenv('WORMWRIGHT_PREVIEW_SIGNING') ?: rootProject.file('../tools/signing/preview.properties').absolutePath
+            if (new File(source).isFile()) {
+                def credentials = new Properties(); credentials.load(new File(source).newInputStream())
+                storeFile new File(System.getenv('WORMWRIGHT_PREVIEW_KEYSTORE') ?: rootProject.file('../tools/signing/preview.jks').absolutePath)
+                storePassword credentials.getProperty('password')
+                keyAlias 'wormwright-preview'; keyPassword credentials.getProperty('password')
+            }
         }
     }
     buildTypes {
@@ -34,7 +36,7 @@ dependencies {
 chaquopy {
     defaultConfig {
         version = '3.13'
-        buildPython rootProject.file('../tools/python/cpython-3.13-linux-x86_64-gnu/bin/python3.13').absolutePath
+        buildPython System.getenv('WORMWRIGHT_BUILD_PYTHON') ?: rootProject.file('../tools/python/cpython-3.13-linux-x86_64-gnu/bin/python3.13').absolutePath
         pip { install 'PyNaCl==1.5.0' }
     }
 }

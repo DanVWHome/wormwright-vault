@@ -25,7 +25,10 @@ public class MainActivity extends Activity {
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
     private final Handler ui = new Handler(Looper.getMainLooper());
     private LinearLayout root, rows;
-    private TextView status;
+    private TextView status, progressLabel;
+    private LinearLayout progressRow;
+    private String progressText = "Working…";
+    private final java.util.Map<View, Boolean> disabledControls = new java.util.IdentityHashMap<>();
     private boolean unlocked, sample, busy, resumed;
     private volatile int epoch;
     private CancellationSignal auth;
@@ -62,17 +65,30 @@ public class MainActivity extends Activity {
     private File slotFile(String slot) { return new File(base, "vault-" + slot + ".sqlite"); }
     private byte[] decode(String s) { return Base64.decode(s, Base64.NO_WRAP); }
     private String encode(byte[] b) { return Base64.encodeToString(b, Base64.NO_WRAP); }
-    private void task(Job job, Done done) {
+    private void setBusy(boolean value, String message) {
+        busy = value; progressText = message;
+        if (progressRow != null) { progressLabel.setText(message); progressRow.setVisibility(value ? View.VISIBLE : View.GONE); }
+        if (value) { disabledControls.clear(); disableControls(root); }
+        else { for (java.util.Map.Entry<View, Boolean> entry : disabledControls.entrySet()) entry.getKey().setEnabled(entry.getValue()); disabledControls.clear(); }
+    }
+    private void disableControls(View view) {
+        if (view instanceof Button && !"Lock vault".contentEquals(((Button)view).getText()) || view instanceof EditText) {
+            disabledControls.put(view, view.isEnabled()); view.setEnabled(false);
+        }
+        if (view instanceof ViewGroup) for (int i=0;i<((ViewGroup)view).getChildCount();i++) disableControls(((ViewGroup)view).getChildAt(i));
+    }
+    private void task(Job job, Done done) { task("Working…", job, done); }
+    private void task(String label, Job job, Done done) {
         if (busy) { message("Please wait for the current operation."); return; }
-        busy = true; final int generation = epoch;
+        setBusy(true, label); final int generation = epoch;
         worker.execute(() -> {
             String result = null, error = null;
             try { if (generation == epoch) result = job.run(); }
             catch (Exception e) { error = safeError(e); }
             final String value = result, problem = error;
             ui.post(() -> {
-                busy = false;
-                if (generation != epoch || !resumed) return;
+                if (generation != epoch || !resumed || isFinishing()) return;
+                setBusy(false, "");
                 if (problem != null) { message(problem); return; }
                 try { done.accept(value); } catch (Exception e) { message(safeError(e)); }
             });
@@ -92,6 +108,11 @@ public class MainActivity extends Activity {
     private void screen(String title) {
         root = column(); root.setPadding(dp(20),dp(16),dp(20),dp(16)); root.setBackgroundColor(0xfffff9ee);
         root.addView(text(title)); status = text(""); root.addView(status);
+        progressRow = column(); LinearLayout loading = new LinearLayout(this); loading.setGravity(Gravity.CENTER_VERTICAL);
+        ProgressBar spinner = new ProgressBar(this); spinner.setIndeterminate(true); spinner.setContentDescription("Operation in progress");
+        loading.addView(spinner, new LinearLayout.LayoutParams(dp(36),dp(36)));
+        progressLabel = text(progressText); progressLabel.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
+        loading.addView(progressLabel); progressRow.addView(loading); progressRow.setVisibility(busy ? View.VISIBLE : View.GONE); root.addView(progressRow);
         ScrollView scroll = new ScrollView(this); scroll.setBackgroundColor(0xfffff9ee);
         // Inset the viewport so scrolling never moves content beneath a camera or system bar.
         scroll.setOnApplyWindowInsetsListener((view, insets) -> {
@@ -104,7 +125,8 @@ public class MainActivity extends Activity {
     }
     private Button button(LinearLayout parent, String title, Runnable action) {
         Button v = new Button(this); v.setText(title); v.setAllCaps(false); parent.addView(v);
-        v.setOnClickListener(w -> { if (!busy) action.run(); else message("Please wait."); });
+        v.setEnabled(!busy || "Lock vault".equals(title));
+        v.setOnClickListener(w -> { if (!busy || "Lock vault".equals(title)) action.run(); else message("Please wait."); });
         return v;
     }
     private void message(String value) { if (status != null) status.setText(value); }
@@ -113,7 +135,7 @@ public class MainActivity extends Activity {
         boolean stored = new File(base, "active.json").exists();
         if (stored) button(root, "Unlock personal vault", this::unlockPersonal);
         else button(root, "Create personal vault", () -> createOrRestore(null, null));
-        button(root, "Open invented sample vault", () -> { sample = true; task(() -> call("sample", new File(base, "sample.sqlite").getPath()), v -> { unlocked = true; vaultScreen(); }); });
+        button(root, "Open invented sample vault", () -> { sample = true; task("Opening vault…", () -> call("sample", new File(base, "sample.sqlite").getPath()), v -> { unlocked = true; vaultScreen(); }); });
         button(root, "Restore portable encrypted backup", this::chooseRestore);
         button(root, "Backup and recovery help", this::help);
     }
@@ -146,7 +168,7 @@ public class MainActivity extends Activity {
         } catch (Exception e) { message("Device key or vault metadata unavailable. Your files were kept. Restore an exported portable backup; no replacement was created."); }
     }
     private void openEnvelope(String slot, String envelope, String password) {
-        task(() -> { String secret = call("unprotect", envelope, password); return call("unlock", slotFile(slot).getPath(), secret); }, v -> { sample = false; unlocked = true; vaultScreen(); });
+        task("Opening vault…", () -> { String secret = call("unprotect", envelope, password); return call("unlock", slotFile(slot).getPath(), secret); }, v -> { sample = false; unlocked = true; vaultScreen(); });
     }
     private void createOrRestore(File imported, String recovery) {
         if (!((KeyguardManager)getSystemService(KEYGUARD_SERVICE)).isDeviceSecure()) { message("Set a secure phone PIN, pattern or password first."); return; }
@@ -177,15 +199,23 @@ public class MainActivity extends Activity {
         LinearLayout fields = column(); EditText first = input(fields, "Password or recovery key", true);
         EditText second = confirmation ? input(fields, "Confirm password", true) : null;
         if (confirmation && !optional) button(fields, "Generate recovery key", () -> { String key = UUID.randomUUID().toString() + UUID.randomUUID().toString(); first.setText(key); second.setText(key); first.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD); });
-        dialog = new AlertDialog.Builder(this).setTitle(title).setView(fields).setNegativeButton("Cancel", null).setPositiveButton("Continue", null).create();
-        dialog.setOnShowListener(d -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
-            String p = first.getText().toString();
-            if (confirmation && (!p.equals(second.getText().toString()) || (!p.isEmpty() && p.length() < 12) || (!optional && p.length() < 12))) { first.setError("Match both fields; use at least 12 characters."); return; }
-            if (optional && p.isEmpty() && !confirmation) return;
-            dialog.dismiss(); first.setText(""); if (second != null) second.setText("");
-            try { done.accept(p); } catch (Exception e) { message(safeError(e)); }
-        })); dialog.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE); dialog.show();
+        final int token = epoch;
+        final AlertDialog prompt = new AlertDialog.Builder(this).setTitle(title).setView(fields).setNegativeButton("Cancel", null).setPositiveButton("Continue", null).create();
+        dialog = prompt;
+        prompt.setOnDismissListener(d -> { first.setText(""); if (second != null) second.setText(""); if (dialog == prompt) dialog = null; });
+        prompt.setOnShowListener(d -> {
+            if (!prompt.isShowing() || token != epoch) return;
+            prompt.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+                if (token != epoch || !prompt.isShowing()) return;
+                String value = first.getText().toString();
+                if (confirmation && (!value.equals(second.getText().toString()) || (!value.isEmpty() && value.length() < 12) || (!optional && value.length() < 12))) { first.setError("Match both fields; use at least 12 characters."); return; }
+                if (optional && value.isEmpty() && !confirmation) return;
+                prompt.dismiss();
+                try { done.accept(value); } catch (Exception e) { message(safeError(e)); }
+            });
+        }); prompt.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE); prompt.show();
     }
+
     private void vaultScreen() {
         screen(sample ? "Invented sample vault" : "Personal vault");
         button(root, "Lock vault", () -> lock("Vault locked."));
@@ -238,21 +268,30 @@ public class MainActivity extends Activity {
             button(actions,"Edit entry",()-> { dialog.dismiss(); edit(record); });
             button(actions,"Delete entry",()-> { dialog.dismiss(); new AlertDialog.Builder(this).setMessage("Move this entry to Recently deleted?").setNegativeButton("Cancel",null).setPositiveButton("Delete",(d,w)->task(()->call("delete",id),r->vaultScreen())).show(); });
             ScrollView scroll = new ScrollView(this); scroll.addView(view);
-            dialog = new AlertDialog.Builder(this).setTitle(record.optString("description")).setView(scroll).setPositiveButton("Done",null).create();
-            dialog.setOnDismissListener(d -> { secret.setText(""); view.removeAllViews(); dialog = null; });
-            dialog.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE); dialog.show();
+            final AlertDialog detail = new AlertDialog.Builder(this).setTitle(record.optString("description")).setView(scroll).setPositiveButton("Done",null).create();
+            dialog = detail;
+            detail.setOnDismissListener(d -> { secret.setText(""); view.removeAllViews(); if (dialog == detail) dialog = null; });
+            detail.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE); detail.show();
         });
     }
     private void edit(JSONObject record) {
         LinearLayout fields=column(); String[] keys={"description","user_name","password","link","notes"}; EditText[] inputs=new EditText[keys.length];
         for(int i=0;i<keys.length;i++){ inputs[i]=input(fields,keys[i].replace("user_name","Username"),keys[i].equals("password")); inputs[i].setText(record.optString(keys[i])); }
         ScrollView scroll=new ScrollView(this); scroll.addView(fields);
-        dialog=new AlertDialog.Builder(this).setTitle("Save entry").setView(scroll).setNegativeButton("Cancel",null).setPositiveButton("Save",null).create();
-        dialog.setOnShowListener(d->dialog.getButton(-1).setOnClickListener(v->{
-            if(inputs[0].getText().toString().trim().isEmpty()){inputs[0].setError("Description required");return;}
-            try { for(int i=0;i<keys.length;i++)record.put(keys[i],inputs[i].getText().toString()); dialog.dismiss(); task(()->call("save",record.toString()),r->vaultScreen()); } catch(Exception e){message(safeError(e));}
-        })); dialog.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE); dialog.show();
+        final int token = epoch;
+        final AlertDialog editor = new AlertDialog.Builder(this).setTitle("Save entry").setView(scroll).setNegativeButton("Cancel",null).setPositiveButton("Save",null).create();
+        dialog = editor;
+        editor.setOnDismissListener(d -> { for (EditText field : inputs) field.setText(""); if (dialog == editor) dialog = null; });
+        editor.setOnShowListener(d -> {
+            if (!editor.isShowing() || token != epoch || !unlocked) return;
+            editor.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+                if (token != epoch || !unlocked || busy || !editor.isShowing()) return;
+                if(inputs[0].getText().toString().trim().isEmpty()){inputs[0].setError("Description required");return;}
+                try { for(int i=0;i<keys.length;i++)record.put(keys[i],inputs[i].getText().toString()); editor.dismiss(); task("Saving entry…", ()->call("save",record.toString()),r->vaultScreen()); } catch(Exception e){message(safeError(e));}
+            });
+        }); editor.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE); editor.show();
     }
+
     private void recentlyDeleted() {
         task(()->call("deleted"),v->{ LinearLayout list=column();JSONArray records=new JSONArray(v);
             for(int i=0;i<records.length();i++){JSONObject r=records.getJSONObject(i);button(list,"Restore "+r.getString("description"),()->{dialog.dismiss();task(()->call("recover",r.optString("id")),x->vaultScreen());});}
@@ -308,7 +347,7 @@ public class MainActivity extends Activity {
         dialog=new AlertDialog.Builder(this).setTitle("Recovery and migration").setMessage("Phone authentication unlocks only this local vault. Exported backups require their separate password or generated recovery key on a replacement phone. Keep the backup and secret separately; losing the phone and all backup secrets makes recovery impossible.\n\nExports remain wherever you save them until you delete them. Wormwright Pocket does not rotate or delete exported backups. Deleted entries remain recoverable. Uninstalling clears app-private vaults and device keys, but does not delete exported documents.\n\nExport for desktop and NAS creates a signed format-2 personal vault; use its chosen master password (Owner account). Transfer it, open it on desktop, configure SMB NAS sync, then import a copy in the existing companion and complete initial NAS pairing. The phone vault stays independent. Format 2 retains deleted entries but has no per-entry edit history.\n\nSupport: danvanwormer@pm.me").setPositiveButton("Close",null).create();dialog.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE); dialog.show();
     }
     private void lock(String note) {
-        epoch++;unlocked=false;if(auth!=null)auth.cancel();if(dialog!=null)dialog.dismiss();ui.removeCallbacks(idle);clearClipboard();worker.execute(()->engine().callAttr("lock"));home(note);
+        epoch++;unlocked=false;setBusy(false, "");if(auth!=null)auth.cancel();if(dialog!=null)dialog.dismiss();ui.removeCallbacks(idle);clearClipboard();worker.execute(()->engine().callAttr("lock"));home(note);
     }
     @Override public void onUserInteraction(){super.onUserInteraction();if(unlocked){ui.removeCallbacks(idle);ui.postDelayed(idle,120000);}}
     @Override protected void onResume(){super.onResume();resumed=true;}

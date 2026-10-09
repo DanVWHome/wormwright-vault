@@ -1,4 +1,10 @@
-# Wormwright Vault Android preview 4
+# Wormwright Vault Android preview 5
+
+Preview 5 immediately shows a spinner and “Opening vault…” while checking the local
+encrypted vault or sample, blocks repeat opening attempts, and shows the indicator
+during NAS sync. Completion, errors and locking clear it safely. Real Android
+regression checks cover opening feedback, duplicate taps and stale completion.
+Package and preview signing identity are unchanged; install over preview 4.
 
 Preview 4 puts login fields and buttons ahead of the welcome notes, shortens the account-name placeholder, and keeps the login form scrollable above the keyboard. Help → Wormwright Website opens https://wormwright.com/ in your browser from either the locked or unlocked screen. The link contains no vault or account information.
 

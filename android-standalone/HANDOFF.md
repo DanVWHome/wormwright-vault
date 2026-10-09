@@ -1,7 +1,7 @@
 # Submission-chat handoff — pending device acceptance
 
 Publisher: Dan Van Wormer; support: danvanwormer@pm.me.
-App: Wormwright Pocket, version 0.1.0-test.3/versionCode 3.
+App: Wormwright Pocket, version 0.1.0-test.4/versionCode 4.
 Package: ai.wormwright.vault.standalone (permanent). Existing companion:
 ai.wormwright.vault.preview. Approved pocket-and-lock mascot icon is in
 app/src/main/res/drawable-nodpi/pocket_icon.png. There are no content providers, shared
@@ -10,7 +10,9 @@ Only USE_BIOMETRIC is declared; no Internet permission. Application sandbox and
 Keystore aliases separate it from the companion. Installation identifiers were
 checked statically; actual coexistence/update/uninstall testing remains pending.
 
-Test.3 fixes safe-area spacing and groups record controls to match the NAS app.
+Test.4 fixes record-to-editor dialog ownership and adds opening feedback. Safe-area
+spacing and grouped record controls remain. The existing NAS companion gets
+loading feedback in preview.5 as explicitly requested; desktop sources stay unchanged.
 Dan confirmed test.2 downloaded and installed; this update needs phone verification
 in portrait/landscape, with scrolling, keyboard and large text. Full device
 acceptance remains pending.
@@ -20,8 +22,7 @@ A draft test release and draft PR are prepared; links are provided in the chat.
 Public release publication requires explicit device-test confirmation. Current
 behavior, dependencies, key design, backup retention/deletion and complete desktop
 migration steps are documented in README.md; device acceptance in DEVICE-TESTS.md.
-Release notes/checksums/native verification accompany the installable APK. Existing
-desktop/companion directories are unchanged; copied encryption engine matches src.
+Release notes/checksums/native verification accompany the installable APK. Existing desktop sources are unchanged; copied encryption engine matches src.
 
 Validation passed: six offline Python tests; desktop account management and existing
 companion pair/edit/upload plus desktop download against a simulated shared folder;
