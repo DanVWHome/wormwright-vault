@@ -40,7 +40,9 @@ public class UiRegressionInstrumentation extends Instrumentation {
     private void await(java.util.function.BooleanSupplier condition,String label) {
         long limit=SystemClock.uptimeMillis()+60000;
         while(SystemClock.uptimeMillis()<limit) { final boolean[] ready={false}; runOnMainSync(()->ready[0]=condition.getAsBoolean()); if(ready[0])return; SystemClock.sleep(40); }
-        throw new AssertionError("Timed out: "+label);
+        final String[] state={""};
+        runOnMainSync(()->{try{state[0]="busy="+field("busy")+", resumed="+field("resumed")+", unlocked="+field("unlocked")+", status="+((TextView)field("status")).getText();}catch(Exception e){state[0]=e.toString();}});
+        throw new AssertionError("Timed out: "+label+"; "+state[0]);
     }
     private boolean busy() { try{return (Boolean)field("busy");}catch(Exception e){throw new RuntimeException(e);} }
     private boolean unlocked() { try{return (Boolean)field("unlocked");}catch(Exception e){throw new RuntimeException(e);} }

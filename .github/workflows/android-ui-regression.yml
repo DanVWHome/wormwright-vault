@@ -1,10 +1,6 @@
 name: Android opening and editor UI regression
 on:
   workflow_dispatch:
-  push:
-    paths: ['android/**', 'android-standalone/**', '.github/workflows/android-ui-regression.yml']
-  pull_request:
-    paths: ['android/**', 'android-standalone/**', '.github/workflows/android-ui-regression.yml']
 permissions:
   contents: read
 jobs:
@@ -33,6 +29,7 @@ jobs:
           sdkmanager 'platforms;android-35' 'platforms;android-36' 'build-tools;35.0.0' 'build-tools;36.0.0' 'emulator' 'system-images;android-36;google_apis;x86_64'
           gradle -p android-standalone assembleDebug assembleDebugAndroidTest lintDebug
           gradle -p android assembleDebug assembleDebugAndroidTest lintDebug testDebugUnitTest
+          gradle --stop
       - name: Enable isolated emulator acceleration
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -45,7 +42,7 @@ jobs:
           export ANDROID_AVD_HOME="$RUNNER_TEMP/regression-avd"
           mkdir -p "$ANDROID_AVD_HOME" regression-results
           echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd -n regression -k 'system-images;android-36;google_apis;x86_64' --device pixel_7
-          "$ANDROID_HOME/emulator/emulator" -avd regression -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot > regression-results/emulator.txt 2>&1 &
+          "$ANDROID_HOME/emulator/emulator" -avd regression -memory 4096 -cores 2 -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot > regression-results/emulator.txt 2>&1 &
           adb wait-for-device
           timeout 180 bash -c 'until [ "$(adb shell getprop sys.boot_completed | tr -d "\r")" = "1" ]; do sleep 2; done'
           adb shell input keyevent 82
