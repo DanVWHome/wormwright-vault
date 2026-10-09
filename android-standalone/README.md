@@ -5,7 +5,7 @@ Your personal password vault.
 Publisher: Dan Van Wormer. Support: danvanwormer@pm.me.
 Permanent application ID: **ai.wormwright.vault.standalone**.
 Coral Wormwright peeking out of a stitched blue pocket with a gold padlock. Minimum Android 11 (API 30),
-target/compile Android 16 (API 36); arm64-v8a and x86_64. Test version 0.1.0-test.7.
+target/compile Android 16 (API 36); arm64-v8a and x86_64. Test version 0.1.0-test.8.
 
 This updates previous Pocket Vault and Wormwright Pocket test builds. Keep the app installed;
 export a portable backup first, then install test.4 over it. The package and
@@ -158,3 +158,8 @@ files and vendor notices; preserve distribution/source obligations under GPLv3.
 The APK is a test build. Publish the prepared draft GitHub release only after the
 user confirms device tests passed. Do not submit it to Google Play. See
 DEVICE-TESTS.md and HANDOFF.md for remaining validation and submission requirements.
+
+## Vault removal and backups
+
+Help includes Create new vault, vault deletion, and Delete selected backups. Deletion requires fresh authorization and typing DELETE after reviewing its scope. Exported backups are selected explicitly in the Android Files picker, where multiple selection can select all backups in a folder. Offline copies and provider trash remain; deletion is not a guarantee of forensic storage erasure.
+Create new vault preserves the current vault; Switch personal vault reopens saved vaults after authentication. Delete all phone vaults removes active and retained private personal vaults and their device keys, plus sample and temporary data. Desktop, NAS and exported copies remain.

@@ -1,3 +1,7 @@
+# Wormwright Pocket 0.1.0-test.8
+
+Adds Create new vault and Switch personal vault without deleting existing vaults. Help → Delete all phone vaults removes active/retained private vault files and phone keys after fresh phone authentication, the optional vault password when configured, and typing DELETE. Help → Delete selected backups selects exported files for separately authorized cleanup. Other devices and provider trash remain.
+
 # 0.1.0-test.7
 
 Version is visible on the main screens. Help offers backup and recovery guidance, About with the installed version, and the Wormwright website.

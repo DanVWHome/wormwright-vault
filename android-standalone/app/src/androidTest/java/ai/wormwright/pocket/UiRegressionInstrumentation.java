@@ -32,7 +32,7 @@ public class UiRegressionInstrumentation extends Instrumentation {
             staleCompletion();
             failureFeedback();
             result.putBoolean("ui_regression_ok",true);
-            result.putString("stream","\nPASS opening spinner/duplicate taps, PIN creation/re-open with/without optional password, search keyboard/focus/latest results, new/edit password visibility, edit/save/cancel transitions, delete/restore list refresh, stale completion, error cleanup.\n");
+            result.putString("stream","\nPASS opening spinner/duplicate taps, PIN creation/re-open with/without optional password, new vault/switch preservation, freshly authorized delete/cancel/typed confirmation/reset/key removal, search keyboard/focus/latest results, new/edit password visibility, edit/save/cancel transitions, delete/restore list refresh, stale completion, error cleanup.\n");
             runOnMainSync(() -> activity.finish()); finish(Activity.RESULT_OK,result);
         } catch (Throwable error) {
             result.putBoolean("ui_regression_ok",false); result.putString("stream",android.util.Log.getStackTraceString(error));
@@ -128,11 +128,45 @@ public class UiRegressionInstrumentation extends Instrumentation {
                 runOnMainSync(()->{List<EditText> inputs=new ArrayList<>();collectInputs(dialog().getWindow().getDecorView(),inputs);inputs.get(0).setText(optional);dialog().getButton(AlertDialog.BUTTON_POSITIVE).performClick();});
             }
             await(()->unlocked()&&!busy(),"created vault unlocks again");
-            runOnMainSync(()->findButton(root(),"Lock vault").performClick());
-            ExecutorService worker=(ExecutorService)field("worker");
-            worker.submit(()->{DeviceKey.delete(slot);java.io.File base=activity.getNoBackupFilesDir();new java.io.File(base,"active.json").delete();new java.io.File(base,"vault-"+slot+".sqlite").delete();return null;}).get(60,TimeUnit.SECONDS);
-            runOnMainSync(()->{try{Field active=MainActivity.class.getDeclaredField("active");active.setAccessible(true);active.set(activity,null);Method home=MainActivity.class.getDeclaredMethod("home",String.class);home.setAccessible(true);home.invoke(activity,"Invented authentication regression complete.");}catch(Exception e){throw new RuntimeException(e);}});
+            maintenanceFlow(slot,optional);
+
         }
+    }
+    private void invoke(String name) {
+        try{Method method=MainActivity.class.getDeclaredMethod(name);method.setAccessible(true);method.invoke(activity);}catch(Exception e){throw new RuntimeException(e);}
+    }
+    private AlertDialog maintenanceDialog() {
+        try{Object owner=field("maintenance");Field f=owner.getClass().getDeclaredField("dialog");f.setAccessible(true);return (AlertDialog)f.get(owner);}catch(Exception e){throw new RuntimeException(e);}
+    }
+    private void enterOptional(String optional) {
+        if(optional.isEmpty())return;
+        await(()->dialog()!=null&&dialog().isShowing(),"fresh optional password authorization");
+        runOnMainSync(()->{List<EditText> inputs=new ArrayList<>();collectInputs(dialog().getWindow().getDecorView(),inputs);inputs.get(0).setText(optional);dialog().getButton(AlertDialog.BUTTON_POSITIVE).performClick();});
+    }
+    private void maintenanceFlow(String original,String optional) throws Exception {
+        java.io.File base=activity.getNoBackupFilesDir();java.io.File originalFile=new java.io.File(base,"vault-"+original+".sqlite");
+        runOnMainSync(()->{invoke("newVault");dialog().getButton(AlertDialog.BUTTON_NEGATIVE).performClick();});
+        check(originalFile.exists(),"cancel new-vault preserves existing file");
+        runOnMainSync(()->{invoke("newVault");dialog().getButton(AlertDialog.BUTTON_POSITIVE).performClick();});
+        runOnMainSync(()->dialog().getButton(AlertDialog.BUTTON_POSITIVE).performClick());confirmPin();
+        await(()->unlocked()&&!busy(),"second independent personal vault");
+        String second=((org.json.JSONObject)field("active")).getString("slot");check(!second.equals(original)&&originalFile.exists(),"new vault retains original");
+        runOnMainSync(()->{invoke("switchVault");ListView list=dialog().getListView();int chosen=-1;for(int i=0;i<list.getAdapter().getCount();i++)if(list.getAdapter().getItem(i).toString().contains(original.substring(0,8)))chosen=i;check(chosen>=0,"original listed for switching");list.performItemClick(null,chosen,list.getAdapter().getItemId(chosen));});
+        confirmPin();enterOptional(optional);await(()->unlocked()&&!busy(),"switch unlocks original");
+        check(((org.json.JSONObject)field("active")).getString("slot").equals(original),"original selected");
+        runOnMainSync(()->invoke("deletePhoneVaults"));confirmPin();enterOptional(optional);
+        await(()->maintenanceDialog()!=null&&maintenanceDialog().isShowing(),"delete review after fresh PIN");
+        runOnMainSync(()->maintenanceDialog().getButton(AlertDialog.BUTTON_NEGATIVE).performClick());
+        check(originalFile.exists()&&new java.io.File(base,"vault-"+second+".sqlite").exists(),"delete cancellation keeps both vaults");
+        runOnMainSync(()->invoke("deletePhoneVaults"));confirmPin();enterOptional(optional);
+        await(()->maintenanceDialog()!=null&&maintenanceDialog().isShowing(),"second delete authorization");
+        runOnMainSync(()->{
+            AlertDialog review=maintenanceDialog();review.getButton(AlertDialog.BUTTON_POSITIVE).performClick();check(review.isShowing()&&originalFile.exists(),"missing DELETE cannot remove data");
+            List<EditText> inputs=new ArrayList<>();collectInputs(review.getWindow().getDecorView(),inputs);inputs.get(0).setText("DELETE");review.getButton(AlertDialog.BUTTON_POSITIVE).performClick();
+        });
+        await(()->!busy()&&findButton(root(),"Create personal vault")!=null,"reset returns to creation screen");
+        check(!originalFile.exists()&&!new java.io.File(base,"vault-"+second+".sqlite").exists()&&!new java.io.File(base,"active.json").exists(),"reset removes retained and active files");
+        for(String slot:new String[]{original,second})try{DeviceKey.cipher(slot,false,new byte[12]);throw new AssertionError("Deleted key still exists");}catch(java.lang.IllegalStateException expected){}
     }
     private void openingFeedback() throws Exception {
         ExecutorService worker=(ExecutorService)field("worker");CountDownLatch held=new CountDownLatch(1),release=new CountDownLatch(1);

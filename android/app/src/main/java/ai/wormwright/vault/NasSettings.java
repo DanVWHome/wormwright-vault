@@ -52,5 +52,5 @@ public final class NasSettings {
             Files.move(temporary.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
         } finally { temporary.delete(); }
     }
-    public void clear() throws Exception { Files.deleteIfExists(file.toPath()); }
+    public void clear() throws Exception { Files.deleteIfExists(file.toPath()); KeyStore store=KeyStore.getInstance("AndroidKeyStore");store.load(null);store.deleteEntry(ALIAS); }
 }

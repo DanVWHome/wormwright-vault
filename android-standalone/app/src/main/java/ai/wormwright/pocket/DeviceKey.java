@@ -13,6 +13,11 @@ import java.nio.charset.StandardCharsets;
  * on unlock: missing/inactivated keys require explicit portable-backup recovery. */
 final class DeviceKey {
     private static final String PREFIX = "wormwright.pocket.slot.";
+    static void deleteAll() throws Exception {
+        KeyStore store=KeyStore.getInstance("AndroidKeyStore");store.load(null);
+        java.util.List<String> aliases=java.util.Collections.list(store.aliases());
+        for(String alias:aliases)if(alias.startsWith(PREFIX))store.deleteEntry(alias);
+    }
     static void delete(String slot) throws Exception {
         KeyStore store = KeyStore.getInstance("AndroidKeyStore"); store.load(null); store.deleteEntry(PREFIX + slot);
     }

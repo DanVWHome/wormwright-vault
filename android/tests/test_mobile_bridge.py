@@ -188,5 +188,33 @@ class Interoperability(unittest.TestCase):
             mobile.unlock(str(local), 'Straße', PASSWORD)
 
 
+class PhoneMaintenance(unittest.TestCase):
+    def tearDown(self):mobile.lock()
+    def test_create_authenticate_remove_and_recreate(self):
+        with tempfile.TemporaryDirectory() as d:
+            path=Path(d)/'vault.db';unrelated=Path(d)/'keep.txt';unrelated.write_text('keep')
+            mobile.create_personal(path,PASSWORD)
+            with self.assertRaises(VaultError):mobile.create_personal(path,PASSWORD)
+            with self.assertRaises(VaultError):mobile.verify_deletion(path,'','wrong password')
+            self.assertTrue(path.exists())
+            mobile.unlock(path,'',PASSWORD,True,False)
+            self.assertTrue(json.loads(mobile.editing_info())['can_edit'])
+            mobile.save_entry(json.dumps({'description':'Invented new phone entry','password':'Invented-only!','groups':list(json.loads(mobile.editing_info())['groups'])}))
+            mobile.lock();self.assertEqual(mobile.verify_deletion(path,'',PASSWORD),'Authorized')
+            exported=Path(d)/'external-backup.sqlite';mobile.encrypted_backup(path,exported)
+            mobile.delete_phone_copy(path)
+            self.assertFalse(path.exists());self.assertFalse(Path(str(path)+'.local-only').exists())
+            self.assertTrue(exported.exists());self.assertTrue(unrelated.exists())
+            mobile.create_personal(path,PASSWORD);self.assertTrue(path.exists())
+    def test_import_clears_local_edit_permission(self):
+        with tempfile.TemporaryDirectory() as d:
+            path=Path(d)/'vault.db';mobile.create_personal(path,PASSWORD)
+            other=Path(d)/'other.sqlite';v=ManagedVault(other);v.create(PASSWORD);v.lock()
+            mobile.import_snapshot(other,path)
+            self.assertFalse(Path(str(path)+'.local-only').exists())
+            mobile.unlock(path,'',PASSWORD,True,False)
+            self.assertFalse(json.loads(mobile.editing_info())['can_edit'])
+
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)

@@ -23,6 +23,7 @@ public class UiRegressionInstrumentation extends Instrumentation {
         try {
             activity = (MainActivity)startActivitySync(new Intent(getTargetContext(),MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
             waitForIdleSync();
+            maintenanceFlow();
             openingFeedback();
             searchKeyboard();
             passwordVisibility();
@@ -30,7 +31,7 @@ public class UiRegressionInstrumentation extends Instrumentation {
             staleCompletion();
             failureFeedback();
             result.putBoolean("ui_regression_ok",true);
-            result.putString("stream","\nPASS opening spinner/duplicate taps, search keyboard/focus/latest results, new/edit password visibility, stale completion, error cleanup.\n");
+            result.putString("stream","\nPASS opening spinner/duplicate taps, new personal vault/account+PIN deletion/cancel/typed confirmation, search keyboard/focus/latest results, new/edit password visibility, stale completion, error cleanup.\n");
             runOnMainSync(() -> activity.finish()); finish(Activity.RESULT_OK,result);
         } catch (Throwable error) {
             result.putBoolean("ui_regression_ok",false); result.putString("stream",android.util.Log.getStackTraceString(error));
@@ -71,6 +72,67 @@ public class UiRegressionInstrumentation extends Instrumentation {
         return false;
     }
     private void waitLatch(CountDownLatch latch,String label) {try{check(latch.await(60,TimeUnit.SECONDS),label);}catch(InterruptedException e){throw new RuntimeException(e);} }
+    private void shell(String command) {
+        try(android.os.ParcelFileDescriptor descriptor=getUiAutomation().executeShellCommand(command);
+            java.io.InputStream input=new android.os.ParcelFileDescriptor.AutoCloseInputStream(descriptor)) {
+            byte[] bytes=new byte[4096];while(input.read(bytes)!=-1){}
+        }catch(Exception e){throw new RuntimeException(e);}
+    }
+    private android.view.accessibility.AccessibilityNodeInfo pinField(android.view.accessibility.AccessibilityNodeInfo node) {
+        if(node==null)return null;
+        if("android.widget.EditText".contentEquals(node.getClassName()==null?"":node.getClassName()))return node;
+        for(int i=0;i<node.getChildCount();i++){android.view.accessibility.AccessibilityNodeInfo found=pinField(node.getChild(i));if(found!=null)return found;}
+        return null;
+    }
+    private void appendSystemNodes(android.view.accessibility.AccessibilityNodeInfo node,StringBuilder out,int depth) {
+        if(node==null||depth>12)return;
+        out.append("\n").append(node.getClassName()).append(" ").append(node.getViewIdResourceName()).append(" text=").append(node.isPassword()?"[password field]":node.getText()).append(" desc=").append(node.getContentDescription());
+        for(int i=0;i<node.getChildCount();i++)appendSystemNodes(node.getChild(i),out,depth+1);
+    }
+    private void confirmPin() {
+        shell("input keyevent 224");
+        long limit=SystemClock.uptimeMillis()+30000;
+        android.view.accessibility.AccessibilityNodeInfo field=null,root=null;
+        while(SystemClock.uptimeMillis()<limit){
+            root=getUiAutomation().getRootInActiveWindow();
+            if(root!=null&&!root.findAccessibilityNodeInfosByText("Quickstep isn't responding").isEmpty()) {
+                java.util.List<android.view.accessibility.AccessibilityNodeInfo> close=root.findAccessibilityNodeInfosByViewId("android:id/aerr_close");
+                if(!close.isEmpty())close.get(0).performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK);
+                SystemClock.sleep(200);continue;
+            }
+            if(root!=null&&"com.android.systemui".contentEquals(root.getPackageName())){field=pinField(root);if(field!=null)break;}
+            SystemClock.sleep(100);
+        }
+        if(field==null){StringBuilder nodes=new StringBuilder();appendSystemNodes(root,nodes,0);throw new AssertionError("PIN field not found"+nodes);}
+        field.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_FOCUS);
+        Bundle value=new Bundle();value.putCharSequence(android.view.accessibility.AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,"246813");
+        boolean set=field.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_SET_TEXT,value);
+        if(!set)shell("input text 246813");
+        shell("input keyevent 66");
+    }
+    private void invoke(String name) {
+        try{Method method=MainActivity.class.getDeclaredMethod(name);method.setAccessible(true);method.invoke(activity);}catch(Exception e){throw new RuntimeException(e);}
+    }
+    private AlertDialog maintenanceDialog() {
+        try{Object owner=field("maintenance");Field f=owner.getClass().getDeclaredField("dialog");f.setAccessible(true);return (AlertDialog)f.get(owner);}catch(Exception e){throw new RuntimeException(e);}
+    }
+    private void maintenanceFlow() throws Exception {
+        final String secret="Invented-NAS-New-Vault-Only!";java.io.File file=new java.io.File(activity.getNoBackupFilesDir(),"vault.db");
+        runOnMainSync(()->invoke("createPhoneVault"));
+        runOnMainSync(()->{try{AlertDialog prompt=(AlertDialog)field("editorDialog");List<EditText> inputs=new ArrayList<>();collectInputs(prompt.getWindow().getDecorView(),inputs);check(inputs.size()==2,"new phone vault credential fields");inputs.get(0).setText(secret);inputs.get(1).setText(secret);prompt.getButton(AlertDialog.BUTTON_POSITIVE).performClick();}catch(Exception e){throw new RuntimeException(e);}});
+        await(()->!busy()&&file.exists(),"independent NAS phone vault creation");
+        runOnMainSync(()->{try{((EditText)field("password")).setText(secret);invoke("unlock");}catch(Exception e){throw new RuntimeException(e);}});
+        await(()->unlocked()&&!busy(),"new personal phone vault unlock");
+        runOnMainSync(()->{invoke("deletePhoneVault");try{((AlertDialog)field("editorDialog")).getButton(AlertDialog.BUTTON_NEGATIVE).performClick();}catch(Exception e){throw new RuntimeException(e);}});
+        check(file.exists(),"cancel credential prompt preserves phone vault");
+        for(boolean remove:new boolean[]{false,true}) {
+            runOnMainSync(()->{invoke("deletePhoneVault");try{AlertDialog prompt=(AlertDialog)field("editorDialog");List<EditText> inputs=new ArrayList<>();collectInputs(prompt.getWindow().getDecorView(),inputs);inputs.get(1).setText(secret);prompt.getButton(AlertDialog.BUTTON_POSITIVE).performClick();}catch(Exception e){throw new RuntimeException(e);}});
+            confirmPin();await(()->maintenanceDialog()!=null&&maintenanceDialog().isShowing(),"phone deletion review after fresh account password and PIN");
+            runOnMainSync(()->{AlertDialog review=maintenanceDialog();if(!remove){review.getButton(AlertDialog.BUTTON_NEGATIVE).performClick();return;}review.getButton(AlertDialog.BUTTON_POSITIVE).performClick();check(file.exists()&&review.isShowing(),"typed confirmation is required");List<EditText> inputs=new ArrayList<>();collectInputs(review.getWindow().getDecorView(),inputs);inputs.get(0).setText("DELETE");review.getButton(AlertDialog.BUTTON_POSITIVE).performClick();});
+            if(!remove)check(file.exists(),"cancel final review preserves vault");
+        }
+        await(()->!busy()&&!file.exists()&&findButton(root(),"Create new vault")!=null,"deleted NAS phone copy returns to new/import choices");
+    }
     private void openingFeedback() throws Exception {
         ExecutorService worker=(ExecutorService)field("worker");CountDownLatch held=new CountDownLatch(1),release=new CountDownLatch(1);
         worker.execute(()->{held.countDown();waitLatch(release,"release worker");});waitLatch(held,"worker held");

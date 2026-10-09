@@ -56,3 +56,9 @@ reconcile. Test both mapped drive and UNC paths, including spaces/non-ASCII.
 The Linux desktop-agent/autostart shell integration is not packaged on Windows.
 The Windows app retains same-user local UI routing through Qt named pipes.
 A successful CI build is not a substitute for these machine/NAS/device tests.
+
+## Delete a local vault or its backups
+
+Vault → Delete Local Vault removes the working file and disconnects its local sync settings. Import / Export / Backup → Delete Vault Backups lists matching local/NAS backup copies and lets you add other backup files. Select individual backups or all listed backups. Both actions require an unlocked Manager account, fresh password or YubiKey authentication, exact-file review and typing DELETE. NAS master copies and other devices remain. Deletion does not guarantee forensic erasure or removal of external snapshots.
+
+Vault → Delete Shared NAS Vault is a separate Manager-authorized action for the configured shared master. Disconnect sync on every other device first: another client can recreate the NAS master from its local copy. The command requires current NAS Manager access, refuses a busy NAS sync lock, reviews the exact path, and disconnects this computer. Local copies and backups remain.

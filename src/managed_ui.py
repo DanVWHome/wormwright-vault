@@ -24,6 +24,7 @@ from exporter import export_csv
 from importer import read_export
 from version import VERSION, RELEASE_LABEL
 import managed_locations
+import vault_cleanup
 
 
 class SyncTask(QThread):
@@ -103,10 +104,13 @@ class ManagedWindow(QMainWindow):
         for text,callback in [('Open Existing Vault…',self.open_existing),('Create New Vault…',self.new_vault),('Recent Vaults…',self.recent),('Choose Folder for New Vaults…',self.choose_folder)]:
             action=vault_menu.addAction(text);action.triggered.connect(callback);self.location_actions.append(action)
         vault_menu.addAction('Load Demo Vault…',self.load_demo)
-        vault_menu.addSeparator();vault_menu.addAction('Vault Locations Explained…',self.location_help)
+        vault_menu.addSeparator();vault_menu.addAction('Delete Local Vault…',self.delete_local_vault)
+        vault_menu.addAction('Delete Shared NAS Vault…',self.delete_shared_vault)
+        vault_menu.addAction('Vault Locations Explained…',self.location_help)
         data_menu=self.menuBar().addMenu('Import / Export / Backup')
         for text,callback in [('Import Vault CSV…',self.import_entries),('Export to CSV…',self.export),('Back Up Vault…',self.backup),('Restore Backup…',self.restore_backup)]:
             action=data_menu.addAction(text);action.triggered.connect(callback);self.controls.append(action)
+        data_menu.addAction('Delete Vault Backups…',self.delete_vault_backups)
         self.database_export_action=data_menu.addAction('Export Database…',self.export_database)
         self.management_menu=self.menuBar().addMenu('Manage');self.management_actions=[]
         for text,callback in [('Users & Groups…',self.manage),('Individual Exclusions…',self.exclusions),('Restore Selected Entry',self.restore_entry),('Permanently Delete Selected Entry…',self.purge),('Emergency Lockdown…',self.emergency_lockdown)]:
@@ -472,6 +476,89 @@ class ManagedWindow(QMainWindow):
         folder=QFileDialog.getExistingDirectory(self,'Choose local folder (dedicated folder optional)',str(managed_locations.local_folder()))
         if folder:
             managed_locations.remember(folder=folder);self.update_state()
+
+    def deletion_authorized(self):
+        if self.task or self.key_task or not self.vault.unlocked:
+            self.warning('Unlock the vault and wait for current operations to finish.');return False
+        if not self.vault.manager:
+            self.warning('Only the Manager can remove a whole vault or its backups.');return False
+        return bool(self.reauthenticate())
+
+    def review_deletion(self,title,paths,explanation):
+        dialog=QDialog(self);dialog.setWindowTitle(title);dialog.resize(680,420);layout=QVBoxLayout(dialog)
+        note=QLabel(explanation+'\n\nThis removes files; it cannot guarantee forensic erasure from storage or removal of copies elsewhere.');note.setWordWrap(True);layout.addWidget(note)
+        files=QListWidget();files.addItems([str(p) for p in paths]);layout.addWidget(files)
+        typed=QLineEdit();typed.setPlaceholderText('Type DELETE to confirm');layout.addWidget(typed)
+        buttons=QDialogButtonBox(QDialogButtonBox.StandardButton.Cancel);delete=buttons.addButton('Delete permanently',QDialogButtonBox.ButtonRole.AcceptRole);delete.setEnabled(False);layout.addWidget(buttons)
+        typed.textChanged.connect(lambda value:delete.setEnabled(value=='DELETE'))
+        delete.clicked.connect(dialog.accept);buttons.rejected.connect(dialog.reject)
+        accepted=dialog.exec()==QDialog.DialogCode.Accepted and typed.text()=='DELETE';typed.clear();dialog.deleteLater();return accepted
+
+    def delete_local_vault(self):
+        if not self.deletion_authorized():return
+        current=self.vault;path=current.path.resolve()
+        try:
+            review=vault_cleanup.plan([path],(current.meta['vault_id'],current.meta['verify']))
+            if not self.review_deletion('Delete Local Vault',[path],'Delete this working vault on this computer. Its sync settings will be removed. Backups, the NAS master and other devices are not removed. Unsynced changes will be lost.'):return
+            if self.task or not current.unlocked or self.vault is not current:return
+            self.auto_timer.stop();self.lock()
+            removed,failures=vault_cleanup.remove(review,[path.with_name(path.name+'.sync.json')])
+            if removed:self.history.forget(path)
+            self.status.setText('Local vault deleted. Create a new vault or open another copy.' if not failures else 'Some files could not be removed: '+'; '.join(failures))
+            self.update_state()
+        except Exception as error:self.warning(error)
+
+    def delete_shared_vault(self):
+        if not self.deletion_authorized():return
+        current=self.vault;config=read_settings(current)
+        if not config.get('folder'):
+            self.warning('No NAS folder is configured.');return
+        remote=Path(config['folder'])/'wormwright-vault.sqlite'
+        try:
+            candidate=ManagedVault(remote)
+            try:
+                candidate.resume(current.session())
+                if not candidate.manager:raise VaultError('Authenticate as the current NAS Manager before deleting the shared master.')
+            finally:candidate.lock()
+            review=vault_cleanup.plan([remote],(current.meta['vault_id'],current.meta['verify']),[current.path])
+            if not self.review_deletion('Delete Shared NAS Vault',[remote],'Stop and disconnect sync on EVERY device first. Other clients can recreate a deleted NAS master from their local copies. Delete only this shared master and disconnect this computer from sync. Local copies and backups remain.'):return
+            if self.task or not current.unlocked or self.vault is not current:return
+            self.auto_timer.stop()
+            removed,failures=vault_cleanup.remove_shared(review,remote.parent,[current.path.with_name(current.path.name+'.sync.json')])
+            self.sync_status.setText('NAS master deleted; sync disconnected on this computer. Other devices and backups remain.' if not failures else 'Some files could not be removed: '+'; '.join(failures))
+        except Exception as error:self.warning(error)
+
+    def delete_vault_backups(self):
+        if self.task or not self.vault.unlocked or not self.vault.manager:
+            self.warning('Unlock as Manager before deleting backups.');return
+        current=self.vault;config=read_settings(current);shared=Path(config['folder'])/'wormwright-vault.sqlite' if config.get('folder') else None
+        folders=[current.path.parent,current.path.parent/'.wormwright-sync-backups']
+        if shared:folders.extend([shared.parent,shared.parent/'.wormwright-sync-backups'])
+        excluded=[current.path]+([shared] if shared else [])
+        known=[p for p in vault_cleanup.discover(current,folders) if p.resolve() not in {x.resolve() for x in excluded}]
+        dialog=QDialog(self);dialog.setWindowTitle('Select vault backups to delete');dialog.resize(760,450);layout=QVBoxLayout(dialog)
+        note=QLabel('Select matching backups in the working and configured NAS backup folders, or add backup files from another folder. The working and shared master vaults are excluded. Offline and unlisted copies remain.');note.setWordWrap(True);layout.addWidget(note)
+        listing=QListWidget();layout.addWidget(listing);paths=[]
+        def add(paths_to_add):
+            for path in paths_to_add:
+                path=Path(path).resolve()
+                if path in paths:continue
+                paths.append(path);item=QListWidgetItem(str(path));item.setFlags(item.flags()|Qt.ItemFlag.ItemIsUserCheckable);item.setCheckState(Qt.CheckState.Unchecked);listing.addItem(item)
+        add(known)
+        add_button=QPushButton('Add backup files…');add_button.clicked.connect(lambda:add(QFileDialog.getOpenFileNames(dialog,'Choose backups to review','','All files (*)')[0]));layout.addWidget(add_button)
+        select=QPushButton('Select all listed backups');select.clicked.connect(lambda:[listing.item(i).setCheckState(Qt.CheckState.Checked) for i in range(listing.count())]);layout.addWidget(select)
+        buttons=QDialogButtonBox(QDialogButtonBox.StandardButton.Ok|QDialogButtonBox.StandardButton.Cancel);layout.addWidget(buttons);buttons.accepted.connect(dialog.accept);buttons.rejected.connect(dialog.reject)
+        if dialog.exec()!=QDialog.DialogCode.Accepted:dialog.deleteLater();return
+        selected=[paths[i] for i in range(listing.count()) if listing.item(i).checkState()==Qt.CheckState.Checked];dialog.deleteLater()
+        if not selected:return
+        try:
+            review=vault_cleanup.plan(selected,(current.meta['vault_id'],current.meta['verify']),excluded)
+            if self.vault is not current or not self.deletion_authorized():return
+            if not self.review_deletion('Delete Vault Backups',selected,'Delete only these selected backup files. The current vault and shared master are preserved. No new safety backup is made.'):return
+            if self.task or not current.unlocked or self.vault is not current:return
+            removed,failures=vault_cleanup.remove(review)
+            self.status.setText(f'Deleted {len(removed)} selected backups.'+(' Could not remove: '+'; '.join(failures) if failures else ' Other copies may remain.'))
+        except Exception as error:self.warning(error)
 
     def new_vault(self):
         if self.task:return

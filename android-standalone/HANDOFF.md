@@ -1,7 +1,7 @@
 # Submission-chat handoff — pending device acceptance
 
 Publisher: Dan Van Wormer; support: danvanwormer@pm.me.
-App: Wormwright Pocket, version 0.1.0-test.7/versionCode 7.
+App: Wormwright Pocket, version 0.1.0-test.8/versionCode 8.
 Package: ai.wormwright.vault.standalone (permanent). Existing companion:
 ai.wormwright.vault.preview. Approved pocket-and-lock mascot icon is in
 app/src/main/res/drawable-nodpi/pocket_icon.png. There are no content providers, shared

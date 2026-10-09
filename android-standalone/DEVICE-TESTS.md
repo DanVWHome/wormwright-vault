@@ -58,3 +58,7 @@ record-layout issues. Remaining checks require explicit results on the phone.
 After testing, send the completed checklist and any failures. Release publication
 requires explicit confirmation that these device tests passed. No public release or
 Play submission should be treated as approved merely because the APK installs.
+
+## Fresh vault and deletion
+
+Create a second invented personal vault, cancel once, complete creation, and switch back to the original. Verify both remain accessible. Cancel deletion at authentication and final review. Confirm wrong or missing DELETE removes nothing. Authorize Delete all phone vaults with/without optional password and verify retained copies are gone and creation becomes available. Export invented backups, select multiple files using Delete selected backups, cancel once, then authorize and confirm. Verify only selected files are removed and report any provider failures; check provider trash separately.

@@ -26,3 +26,8 @@ newer results. Background NAS sync preserves typing and the current query.
 
 Preview.7 adds Show password to new and existing entry editors. Passwords start
 hidden, and the visibility toggle preserves text and cursor position.
+
+## Vault removal and backups
+
+Help includes Create new vault, vault deletion, and Delete selected backups. Deletion requires fresh authorization and typing DELETE after reviewing its scope. Exported backups are selected explicitly in the Android Files picker, where multiple selection can select all backups in a folder. Offline copies and provider trash remain; deletion is not a guarantee of forensic storage erasure.
+Delete phone vault removes the working phone copy, private sample/temporary files and stored NAS connection and pairing. It requires account credentials again and fresh phone authentication. Create new vault is available once no working phone copy exists; it makes an independent editable personal vault, never merges into a different NAS vault. Shared managed vaults are created on desktop and imported.
