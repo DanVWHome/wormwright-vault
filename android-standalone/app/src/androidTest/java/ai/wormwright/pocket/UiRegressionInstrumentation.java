@@ -118,7 +118,7 @@ public class UiRegressionInstrumentation extends Instrumentation {
                 inputs.get(4).setText("UI regression notes "+iteration);
                 editor.getButton(iteration%2==0?AlertDialog.BUTTON_POSITIVE:AlertDialog.BUTTON_NEGATIVE).performClick();
             });
-            await(()->!busy()&&dialog()==null,"save/cancel returns safely");waitForIdleSync();
+            await(()->!busy()&&dialog()==null&&hasEntryRows(),"save/cancel returns safely");waitForIdleSync();
             runOnMainSync(()->{try{((ViewGroup)field("rows")).getChildAt(0).performClick();}catch(Exception e){throw new RuntimeException(e);}});
             await(()->dialog()!=null&&dialog().isShowing(),"saved entry reopens");
             final String expected="UI regression notes "+(pass%2==0?pass:pass-1);
@@ -140,7 +140,7 @@ public class UiRegressionInstrumentation extends Instrumentation {
         await(()->dialog()!=null&&dialog().isShowing(),"entry reopens for deletion");
         runOnMainSync(()->findButton(dialog().getWindow().getDecorView(),"Delete entry").performClick());waitForIdleSync();
         runOnMainSync(()->dialog().getButton(AlertDialog.BUTTON_POSITIVE).performClick());
-        await(()->!busy()&&dialog()==null&&findButton(root(),label[0])==null,"deleted entry immediately disappears");
+        await(()->!busy()&&dialog()==null&&hasEntryRows()&&findButton(root(),label[0])==null,"deleted entry immediately disappears");
         runOnMainSync(()->{try{check(((ViewGroup)field("rows")).getChildCount()==count[0]-1,"list shrinks after deletion");findButton(root(),"Recently deleted").performClick();}catch(Exception e){throw new RuntimeException(e);}});
         await(()->!busy()&&dialog()!=null&&dialog().isShowing(),"recently deleted opens");
         runOnMainSync(()->{Button restore=findButton(dialog().getWindow().getDecorView(),"Restore "+label[0].split("\n",2)[0]);check(restore!=null,"deleted entry is recoverable");restore.performClick();});
