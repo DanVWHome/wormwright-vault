@@ -34,6 +34,9 @@ public class MainActivity extends Activity {
     private boolean unlocked, sample, busy, resumed;
     private volatile int epoch;
     private CancellationSignal auth;
+    private int authVersion;
+    private boolean authenticating;
+    private Runnable pendingAuthentication;
     private AlertDialog dialog;
     private File base, pendingExport;
     private JSONObject active;
@@ -146,20 +149,33 @@ public class MainActivity extends Activity {
     private void authenticate(Cipher cipher, CryptoDone done) {
         KeyguardManager guard = (KeyguardManager)getSystemService(KEYGUARD_SERVICE);
         if (!guard.isDeviceSecure()) { message("Set a secure phone PIN, pattern or password before using your personal vault."); return; }
-        if (auth != null) auth.cancel(); auth = new CancellationSignal(); final int generation = epoch;
-        new BiometricPrompt.Builder(this).setTitle("Unlock Wormwright Pocket")
-            .setSubtitle("Confirm your identity")
-            .setDescription("Use strong biometrics or your phone PIN, pattern or password.")
-            .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG | BiometricManager.Authenticators.DEVICE_CREDENTIAL)
-            .build().authenticate(new BiometricPrompt.CryptoObject(cipher), auth, getMainExecutor(), new BiometricPrompt.AuthenticationCallback() {
-                @Override public void onAuthenticationSucceeded(BiometricPrompt.AuthenticationResult r) {
-                    if (generation != epoch || !resumed) return;
-                    try { if (r.getCryptoObject() == null || r.getCryptoObject().getCipher() == null) throw new IllegalStateException(); done.accept(r.getCryptoObject().getCipher()); }
-                    catch (Exception e) { message(safeError(e)); }
-                }
-                @Override public void onAuthenticationError(int code, CharSequence error) { if (generation == epoch) message("Authentication cancelled or unavailable. Vault remains locked."); }
-                @Override public void onAuthenticationFailed() { if (generation == epoch) message("Authentication failed. Try again or use the phone credential."); }
-            });
+        final int request = ++authVersion;
+        if (auth != null) auth.cancel(); auth = new CancellationSignal(); authenticating = true;
+        pendingAuthentication = null;
+        try {
+            new BiometricPrompt.Builder(this).setTitle("Unlock Wormwright Pocket")
+                .setSubtitle("Confirm your identity")
+                .setDescription("Use strong biometrics or your phone PIN, pattern or password.")
+                .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG | BiometricManager.Authenticators.DEVICE_CREDENTIAL)
+                .build().authenticate(new BiometricPrompt.CryptoObject(cipher), auth, getMainExecutor(), new BiometricPrompt.AuthenticationCallback() {
+                    @Override public void onAuthenticationSucceeded(BiometricPrompt.AuthenticationResult r) {
+                        if (request != authVersion || isFinishing()) return;
+                        pendingAuthentication = () -> {
+                            if (request != authVersion || !resumed || isFinishing()) return;
+                            authenticating = false; auth = null; pendingAuthentication = null;
+                            try { if (r.getCryptoObject() == null || r.getCryptoObject().getCipher() == null) throw new IllegalStateException(); done.accept(r.getCryptoObject().getCipher()); }
+                            catch (Exception e) { message(safeError(e)); }
+                        };
+                        if (resumed) pendingAuthentication.run();
+                    }
+                    @Override public void onAuthenticationError(int code, CharSequence error) {
+                        if (request != authVersion) return;
+                        authenticating = false; auth = null; pendingAuthentication = null;
+                        message("Authentication cancelled or unavailable. Vault remains locked.");
+                    }
+                    @Override public void onAuthenticationFailed() { if (request == authVersion) message("Authentication failed. Try again or use the phone credential."); }
+                });
+        } catch(RuntimeException e) { authenticating=false;auth=null;pendingAuthentication=null;throw e; }
     }
     private void unlockPersonal() {
         try {
@@ -382,11 +398,14 @@ public class MainActivity extends Activity {
     private void help() {
         dialog=new AlertDialog.Builder(this).setTitle("Recovery and migration").setMessage("Phone authentication unlocks only this local vault. Exported backups require their separate password or generated recovery key on a replacement phone. Keep the backup and secret separately; losing the phone and all backup secrets makes recovery impossible.\n\nExports remain wherever you save them until you delete them. Wormwright Pocket does not rotate or delete exported backups. Deleted entries remain recoverable. Uninstalling clears app-private vaults and device keys, but does not delete exported documents.\n\nExport for desktop and NAS creates a signed format-2 personal vault; use its chosen master password (Owner account). Transfer it, open it on desktop, configure SMB NAS sync, then import a copy in the existing companion and complete initial NAS pairing. The phone vault stays independent. Format 2 retains deleted entries but has no per-entry edit history.\n\nSupport: danvanwormer@pm.me").setPositiveButton("Close",null).create();dialog.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE); dialog.show();
     }
-    private void lock(String note) {
-        epoch++;unlocked=false;setBusy(false, "");if(auth!=null)auth.cancel();if(dialog!=null)dialog.dismiss();ui.removeCallbacks(idle);clearClipboard();worker.execute(()->engine().callAttr("lock"));home(note);
+    private void lock(String note) { lock(note,false); }
+    private void lock(String note,boolean keepAuthentication) {
+        epoch++;unlocked=false;setBusy(false, "");
+        if(!keepAuthentication) { ++authVersion;authenticating=false;pendingAuthentication=null;if(auth!=null)auth.cancel();auth=null; }
+        if(dialog!=null)dialog.dismiss();ui.removeCallbacks(idle);clearClipboard();worker.execute(()->engine().callAttr("lock"));home(note);
     }
     @Override public void onUserInteraction(){super.onUserInteraction();if(unlocked){ui.removeCallbacks(idle);ui.postDelayed(idle,120000);}}
-    @Override protected void onResume(){super.onResume();resumed=true;}
-    @Override protected void onPause(){resumed=false;lock("Vault locked. Authenticate to reopen.");super.onPause();}
-    @Override protected void onDestroy(){if(pendingExport!=null)pendingExport.delete();super.onDestroy();}
+    @Override protected void onResume(){super.onResume();resumed=true;if(pendingAuthentication!=null)ui.post(()->{if(pendingAuthentication!=null)pendingAuthentication.run();});}
+    @Override protected void onPause(){resumed=false;lock("Vault locked. Authenticate to reopen.",authenticating);super.onPause();}
+    @Override protected void onDestroy(){++authVersion;pendingAuthentication=null;if(auth!=null)auth.cancel();if(pendingExport!=null)pendingExport.delete();super.onDestroy();}
 }
