@@ -1,0 +1,57 @@
+name: Package and publish tested Windows installer
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  installer:
+    runs-on: windows-2022
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Download and verify tested portable release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          gh release download v0.3.2-windows-preview.2 --pattern 'wormwright-vault_0.3.2_windows_x64_preview2.zip*' --dir portable
+          $package = 'portable/wormwright-vault_0.3.2_windows_x64_preview2.zip'
+          $expected = ((Get-Content "$package.sha256").Split(' ')[0]).ToLower()
+          if ((Get-FileHash $package -Algorithm SHA256).Hash.ToLower() -ne $expected) { throw 'Portable release checksum mismatch' }
+          Expand-Archive $package installer-input
+      - name: Compile per-user installer
+        shell: pwsh
+        run: |
+          $compiler = 'C:/Program Files (x86)/Inno Setup 6/ISCC.exe'
+          if (!(Test-Path $compiler)) { choco install innosetup --yes --no-progress; if ($LASTEXITCODE -ne 0) { throw 'Inno Setup installation failed' } }
+          & $compiler packaging/windows-installer.iss
+          if ($LASTEXITCODE -ne 0) { throw 'Installer compilation failed' }
+      - name: Verify install, upgrade, runtime and uninstall
+        shell: pwsh
+        run: |
+          python -m pip install -r requirements.txt
+          if ($LASTEXITCODE -ne 0) { throw 'Test dependency installation failed' }
+          python tests/check_windows_installer.py
+          if ($LASTEXITCODE -ne 0) { throw 'Installer checks failed' }
+      - name: Prepare checksums and packaging source
+        shell: pwsh
+        run: |
+          git archive --format=zip --output=dist-installer/wormwright-vault-windows-preview2-installer-source.zip HEAD
+          if ($LASTEXITCODE -ne 0) { throw 'Source archive failed' }
+          $package = Get-Item dist-installer/*_setup.exe
+          $hash = (Get-FileHash $package -Algorithm SHA256).Hash.ToLower()
+          "$hash  $($package.Name)" | Set-Content -Encoding ascii "$($package.FullName).sha256"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wormwright-vault-windows-preview2-installer
+          path: dist-installer/*
+      - name: Add installer to existing Windows prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          gh release upload v0.3.2-windows-preview.2 dist-installer/*
+          if ($LASTEXITCODE -ne 0) { throw 'Release upload failed' }
