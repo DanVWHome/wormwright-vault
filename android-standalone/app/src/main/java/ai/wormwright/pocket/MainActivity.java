@@ -77,7 +77,7 @@ public class MainActivity extends Activity {
         else { for (java.util.Map.Entry<View, Boolean> entry : disabledControls.entrySet()) entry.getKey().setEnabled(entry.getValue()); disabledControls.clear(); }
     }
     private void disableControls(View view) {
-        if (view instanceof Button && !"Lock vault".contentEquals(((Button)view).getText()) || view instanceof EditText) {
+        if (view instanceof Button && !"Lock vault".contentEquals(((Button)view).getText()) && !"Help".contentEquals(((Button)view).getText()) || view instanceof EditText) {
             disabledControls.put(view, view.isEnabled()); view.setEnabled(false);
         }
         if (view instanceof ViewGroup) for (int i=0;i<((ViewGroup)view).getChildCount();i++) disableControls(((ViewGroup)view).getChildAt(i));
@@ -114,7 +114,16 @@ public class MainActivity extends Activity {
     private int dp(int value) { return Math.round(value * getResources().getDisplayMetrics().density); }
     private void screen(String title) {
         root = column(); root.setPadding(dp(20),dp(16),dp(20),dp(16)); root.setBackgroundColor(0xfffff9ee);
-        root.addView(text(title)); status = text(""); root.addView(status);
+        LinearLayout heading = new LinearLayout(this); heading.setGravity(Gravity.CENTER_VERTICAL);
+        heading.addView(text(title), new LinearLayout.LayoutParams(0,-2,1));
+        Button helpButton = new Button(this); helpButton.setText("Help"); helpButton.setAllCaps(false);
+        helpButton.setOnClickListener(v -> {
+            onUserInteraction(); PopupMenu menu = new PopupMenu(this,helpButton);
+            menu.getMenu().add("Backup and recovery"); menu.getMenu().add("About"); menu.getMenu().add("Wormwright Website");
+            menu.setOnMenuItemClickListener(item -> { String choice=item.getTitle().toString();
+                if (choice.equals("About")) about(); else if (choice.equals("Backup and recovery")) help(); else openWebsite(); return true; }); menu.show();
+        });
+        heading.addView(helpButton); root.addView(heading); root.addView(text("Version " + installedVersion())); status = text(""); root.addView(status);
         progressRow = column(); LinearLayout loading = new LinearLayout(this); loading.setGravity(Gravity.CENTER_VERTICAL);
         ProgressBar spinner = new ProgressBar(this); spinner.setIndeterminate(true); spinner.setContentDescription("Operation in progress");
         loading.addView(spinner, new LinearLayout.LayoutParams(dp(36),dp(36)));
@@ -394,6 +403,21 @@ public class MainActivity extends Activity {
                 if(state.optBoolean("password"))password("Current separate vault password",false,false,current);else current.accept("");
             });
         }catch(Exception e){message(safeError(e));}
+    }
+    private String installedVersion() {
+        try { return getPackageManager().getPackageInfo(getPackageName(),0).versionName; }
+        catch (android.content.pm.PackageManager.NameNotFoundException e) { return "unavailable"; }
+    }
+    private void openWebsite() {
+        try { startActivity(new Intent(Intent.ACTION_VIEW,android.net.Uri.parse("https://wormwright.com/"))); }
+        catch (ActivityNotFoundException e) { message("Open https://wormwright.com/ in your browser."); }
+    }
+    private void about() {
+        final AlertDialog about = new AlertDialog.Builder(this).setTitle("About Wormwright Pocket")
+            .setMessage("Your personal password vault\n\nVersion " + installedVersion() + "\n\nhttps://wormwright.com/")
+            .setPositiveButton("Website",(d,w) -> openWebsite()).setNegativeButton("Close",null).create();
+        dialog=about; about.setOnDismissListener(d -> { if(dialog==about) dialog=null; });
+        about.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE); about.show();
     }
     private void help() {
         dialog=new AlertDialog.Builder(this).setTitle("Recovery and migration").setMessage("Phone authentication unlocks only this local vault. Exported backups require their separate password or generated recovery key on a replacement phone. Keep the backup and secret separately; losing the phone and all backup secrets makes recovery impossible.\n\nExports remain wherever you save them until you delete them. Wormwright Pocket does not rotate or delete exported backups. Deleted entries remain recoverable. Uninstalling clears app-private vaults and device keys, but does not delete exported documents.\n\nExport for desktop and NAS creates a signed format-2 personal vault; use its chosen master password (Owner account). Transfer it, open it on desktop, configure SMB NAS sync, then import a copy in the existing companion and complete initial NAS pairing. The phone vault stays independent. Format 2 retains deleted entries but has no per-entry edit history.\n\nSupport: danvanwormer@pm.me").setPositiveButton("Close",null).create();dialog.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE); dialog.show();

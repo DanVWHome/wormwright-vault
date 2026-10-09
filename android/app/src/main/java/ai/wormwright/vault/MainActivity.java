@@ -135,12 +135,13 @@ public class MainActivity extends Activity {
         help.setOnClickListener(v -> {
             onUserInteraction();
             PopupMenu menu = new PopupMenu(this, help);
+            menu.getMenu().add("About");
             menu.getMenu().add("Wormwright Website");
-            menu.setOnMenuItemClickListener(item -> { openWebsite(); return true; });
+            menu.setOnMenuItemClickListener(item -> { if ("About".contentEquals(item.getTitle())) about(); else openWebsite(); return true; });
             menu.show();
         });
         heading.addView(help);
-        root.addView(heading); root.addView(label(subtitle, 15));
+        root.addView(heading); root.addView(label("Version " + installedVersion(), 13)); root.addView(label(subtitle, 15));
         progressRow = new LinearLayout(this); progressRow.setGravity(Gravity.CENTER_VERTICAL);
         ProgressBar spinner = new ProgressBar(this); spinner.setIndeterminate(true); spinner.setContentDescription("Operation in progress");
         progressRow.addView(spinner, new LinearLayout.LayoutParams(dp(36),dp(36)));
@@ -148,6 +149,15 @@ public class MainActivity extends Activity {
         progressLabel.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE); progressRow.addView(progressLabel);
         root.addView(progressRow); updateProgress();
         setContentView(root); root.requestApplyInsets();
+    }
+    private String installedVersion() {
+        try { return getPackageManager().getPackageInfo(getPackageName(),0).versionName; }
+        catch (android.content.pm.PackageManager.NameNotFoundException e) { return "unavailable"; }
+    }
+    private void about() {
+        new AlertDialog.Builder(this).setTitle("About Wormwright Vault")
+            .setMessage("NAS companion for Android\n\nVersion " + installedVersion() + "\n\nhttps://wormwright.com/")
+            .setPositiveButton("Website",(d,w) -> openWebsite()).setNegativeButton("Close",null).show();
     }
     private void openWebsite() {
         try {
@@ -182,7 +192,7 @@ public class MainActivity extends Activity {
         form.addView(label("Personal vault: leave account name blank.", 14));
         form.addView(label("Read and edit your encrypted vault offline. Changes sync with your NAS after unlocking, saving and while the app is open. Complete the first NAS sync before editing.", 16));
         form.addView(label("Locks when you leave the app or after two minutes idle. Screenshots and device backups are disabled. Copied values clear after 30 seconds or when you lock.", 14));
-        form.addView(label("0.1.0-preview.7 · No Google Play services needed", 13));
+        form.addView(label("No Google Play services needed", 13));
     }
     private PyObject bridge() { return Python.getInstance().getModule("mobile_bridge"); }
     private interface Job { String run() throws Exception; }

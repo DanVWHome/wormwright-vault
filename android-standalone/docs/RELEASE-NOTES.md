@@ -1,3 +1,7 @@
+# 0.1.0-test.7
+
+Version is visible on the main screens. Help offers backup and recovery guidance, About with the installed version, and the Wormwright website.
+
 # Wormwright Pocket 0.1.0-test.6 — device testing draft
 
 Your personal password vault. Standalone offline Android app by Dan Van Wormer.
