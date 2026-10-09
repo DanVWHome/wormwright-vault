@@ -66,3 +66,5 @@ Create a second invented personal vault, cancel once, complete creation, and swi
 ## Named vaults and individual deletion
 
 Reject a blank name. Create differently named vaults; close and reopen the app and verify the named chooser and current marker. Rename an older unnamed vault after inspecting its entries. Cancel at the named deletion chooser, before authentication and at the final review; verify all files remain. Delete a noncurrent vault and a current vault with/without an optional password; verify only the chosen vault and its key are gone, remaining vaults still open, and exported backups remain.
+
+Permanent deletion confirmation: DELETE, delete and DeLeTe must each work after fresh authorization. Wrong words must keep the review open without deleting anything; Cancel must preserve the selected vault.
