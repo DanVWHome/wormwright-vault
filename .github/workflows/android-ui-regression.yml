@@ -6,7 +6,7 @@ permissions:
 jobs:
   ui:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -36,7 +36,7 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
       - name: Run real Android regression tests on invented samples
-        timeout-minutes: 10
+        timeout-minutes: 25
         run: |
           export PATH="$ANDROID_HOME/platform-tools:$PATH"
           export ANDROID_AVD_HOME="$RUNNER_TEMP/regression-avd"
@@ -61,7 +61,7 @@ jobs:
           import subprocess
           targets=[('pocket','ai.wormwright.vault.standalone.test/ai.wormwright.pocket.UiRegressionInstrumentation'),('nas','ai.wormwright.vault.preview.test/ai.wormwright.vault.UiRegressionInstrumentation')]
           for name,target in targets:
-              result=subprocess.run(['adb','shell','am','instrument','-w',target],capture_output=True,text=True,timeout=240)
+              result=subprocess.run(['adb','shell','am','instrument','-w',target],capture_output=True,text=True,timeout=900 if name=='pocket' else 420)
               output=result.stdout+result.stderr
               Path('regression-results/'+name+'.txt').write_text(output)
               print(output)

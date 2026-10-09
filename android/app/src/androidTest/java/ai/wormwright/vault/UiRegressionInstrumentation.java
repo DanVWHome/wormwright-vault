@@ -124,7 +124,7 @@ public class UiRegressionInstrumentation extends Instrumentation {
                 if(!close.isEmpty())close.get(0).performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK);
                 SystemClock.sleep(200);continue;
             }
-            if(root!=null&&"com.android.systemui".contentEquals(root.getPackageName())){field=pinField(root);if(field!=null)break;}
+            if(root!=null&&"com.android.systemui".contentEquals(root.getPackageName())){field=pinField(root);if(field!=null&&field.isFocused()&&field.isVisibleToUser()&&field.getActionList().contains(android.view.accessibility.AccessibilityNodeInfo.AccessibilityAction.ACTION_IME_ENTER))break;field=null;}
             SystemClock.sleep(100);
         }
         if(field==null){StringBuilder nodes=new StringBuilder();appendSystemNodes(root,nodes,0);throw new AssertionError("PIN field not found"+nodes);}
@@ -132,7 +132,15 @@ public class UiRegressionInstrumentation extends Instrumentation {
         Bundle value=new Bundle();value.putCharSequence(android.view.accessibility.AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,"246813");
         boolean set=field.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_SET_TEXT,value);
         if(!set)shell("input text 246813");
-        shell("input keyevent 66");
+        boolean submitted=field.performAction(android.view.accessibility.AccessibilityNodeInfo.AccessibilityAction.ACTION_IME_ENTER.getId());
+        if(!submitted)shell("input keyevent 66");
+        long done=SystemClock.uptimeMillis()+10000;
+        while(SystemClock.uptimeMillis()<done){
+            root=getUiAutomation().getRootInActiveWindow();
+            if(root==null||!"com.android.systemui".contentEquals(root.getPackageName())||pinField(root)==null)return;
+            SystemClock.sleep(100);
+        }
+        StringBuilder nodes=new StringBuilder();appendSystemNodes(root,nodes,0);throw new AssertionError("Invented PIN was not accepted"+nodes);
     }
     private void invoke(String name) {
         try{Method method=MainActivity.class.getDeclaredMethod(name);method.setAccessible(true);method.invoke(activity);}catch(Exception e){throw new RuntimeException(e);}
