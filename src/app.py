@@ -1,3 +1,4 @@
+from website import add_website_action
 from key_ui import request_key_pin
 import os
 import sys
@@ -181,7 +182,7 @@ class Window(QMainWindow):
         from tutorial_window import show_tutorial
         help_menu.addAction('Watch Tutorial…',lambda:show_tutorial(self))
         from about_window import show_about
-        help_menu.addSeparator();help_menu.addAction('About Wormwright Vault…',lambda:show_about(self))
+        add_website_action(help_menu,self);help_menu.addSeparator();help_menu.addAction('About Wormwright Vault…',lambda:show_about(self))
         self.vault = Vault(path)
         self.vault_history = VaultHistory()
         self.lock_minutes = read_timeout()

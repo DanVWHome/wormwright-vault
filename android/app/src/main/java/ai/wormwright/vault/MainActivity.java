@@ -6,6 +6,7 @@ import android.content.ClipData;
 import android.content.ClipDescription;
 import android.content.ClipboardManager;
 import android.content.Intent;
+import android.content.ActivityNotFoundException;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.net.Uri;
@@ -117,22 +118,48 @@ public class MainActivity extends Activity {
         root.setPadding(dp(24), dp(16), dp(24), dp(16));
         root.setOnApplyWindowInsetsListener((view, insets) -> {
             android.graphics.Insets bars = insets.getInsets(android.view.WindowInsets.Type.systemBars() | android.view.WindowInsets.Type.displayCutout());
-            root.setPadding(dp(24) + bars.left, dp(16) + bars.top, dp(24) + bars.right, dp(16) + bars.bottom);
+            android.graphics.Insets ime = insets.getInsets(android.view.WindowInsets.Type.ime());
+            view.setPadding(dp(24) + bars.left, dp(16) + bars.top, dp(24) + bars.right, dp(16) + Math.max(bars.bottom, ime.bottom));
             return insets;
         });
         TextView title = label("Wormwright Vault", 28); title.setTypeface(null, Typeface.BOLD);
-        root.addView(title); root.addView(label(subtitle, 15));
+        LinearLayout heading = new LinearLayout(this);
+        heading.addView(title, new LinearLayout.LayoutParams(0, -2, 1));
+        Button help = button("Help", () -> {});
+        help.setOnClickListener(v -> {
+            onUserInteraction();
+            PopupMenu menu = new PopupMenu(this, help);
+            menu.getMenu().add("Wormwright Website");
+            menu.setOnMenuItemClickListener(item -> { openWebsite(); return true; });
+            menu.show();
+        });
+        heading.addView(help);
+        root.addView(heading); root.addView(label(subtitle, 15));
         setContentView(root); root.requestApplyInsets();
     }
+    private void openWebsite() {
+        try {
+            // Fixed public URL only: never attach account, search or vault data.
+            startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://wormwright.com/")));
+        } catch (ActivityNotFoundException error) {
+            new AlertDialog.Builder(this).setTitle("Cannot open website")
+                .setMessage("Open https://wormwright.com/ in your browser.")
+                .setPositiveButton("OK", null).show();
+        }
+    }
+
     private void showLogin(String message) {
         frame("ANDROID PREVIEW · PRIVATE PHONE COPY");
         ScrollView scroll = new ScrollView(this); LinearLayout form = column();
         scroll.addView(form); root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
         form.addView(label("Your vault, wherever you are", 23));
-        form.addView(label("Read and edit your encrypted vault offline. Changes sync with your NAS after unlocking, saving and while the app is open. Complete the first NAS sync before editing.", 16));
-        username = input("Account name (blank for a personal vault)", false);
+        username = input("Account name", false);
         password = input("Vault account password", true);
         form.addView(username); form.addView(password);
+        password.setOnFocusChangeListener((view, focused) -> {
+            if (focused) scroll.post(() -> password.requestRectangleOnScreen(
+                    new android.graphics.Rect(0, 0, password.getWidth(), password.getHeight()), false));
+        });
         Button unlock = button("Unlock vault", this::unlock);
         unlock.setEnabled(vaultFile.exists()); form.addView(unlock);
         form.addView(button(vaultFile.exists() ? "Replace encrypted phone copy" : "Import encrypted vault", this::chooseImport));
@@ -140,8 +167,10 @@ public class MainActivity extends Activity {
         form.addView(button("NAS connection settings", this::configureNas));
         if (vaultFile.exists()) form.addView(button("Export encrypted phone backup", this::chooseExport));
         status = label(message, 15); form.addView(status);
+        form.addView(label("Personal vault: leave account name blank.", 14));
+        form.addView(label("Read and edit your encrypted vault offline. Changes sync with your NAS after unlocking, saving and while the app is open. Complete the first NAS sync before editing.", 16));
         form.addView(label("Locks when you leave the app or after two minutes idle. Screenshots and device backups are disabled. Copied values clear after 30 seconds or when you lock.", 14));
-        form.addView(label("0.1.0-preview.3 · No Google Play services needed", 13));
+        form.addView(label("0.1.0-preview.4 · No Google Play services needed", 13));
     }
     private PyObject bridge() { return Python.getInstance().getModule("mobile_bridge"); }
     private interface Job { String run() throws Exception; }

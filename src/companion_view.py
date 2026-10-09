@@ -1,4 +1,5 @@
 """An extra view of one controller/session, with no database or sync worker."""
+from website import add_website_action
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QMainWindow,QWidget,QVBoxLayout,QHBoxLayout,QLabel,QLineEdit,QPushButton,QTableWidget,QTableWidgetItem,QAbstractItemView,QHeaderView
@@ -17,7 +18,7 @@ class CompanionView(QMainWindow):
             b=QPushButton(text);b.clicked.connect(callback);row.addWidget(b);self.buttons.append(b)
             if text=='Delete':self.delete_button=b
         layout.addLayout(row)
-        help_menu=self.menuBar().addMenu('Help');help_menu.addAction('Searchable Help…',controller.show_help);help_menu.addAction('Watch Tutorial…',controller.show_tutorial);help_menu.addSeparator();help_menu.addAction('About Wormwright Vault…',controller.show_about)
+        help_menu=self.menuBar().addMenu('Help');help_menu.addAction('Searchable Help…',controller.show_help);help_menu.addAction('Watch Tutorial…',controller.show_tutorial);add_website_action(help_menu,self);help_menu.addSeparator();help_menu.addAction('About Wormwright Vault…',controller.show_about)
         self.management=[]
         if manager:
             menu=self.menuBar().addMenu('Manage')
