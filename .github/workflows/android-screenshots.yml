@@ -31,7 +31,7 @@ jobs:
           from pathlib import Path
           import re,sys
           p=Path('android/app/src/main/java/ai/wormwright/vault/MainActivity.java')
-          p.write_text(p.read_text().replace('getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);',''))
+          p.write_text(p.read_text().replace('getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);','',1))
           p=Path('android/app/build.gradle');s=p.read_text()
           s=re.sub(r'    signingConfigs \{.*?\n    buildTypes', '    buildTypes', s, flags=re.S)
           s=s.replace('signingConfig signingConfigs.preview','signingConfig signingConfigs.debug')
