@@ -41,6 +41,9 @@ jobs:
           gradle -p android --no-daemon assembleDebug
       - name: Start emulator and capture login
         run: |
+          export PATH="$ANDROID_HOME/platform-tools:$PATH"
+          export ANDROID_AVD_HOME="$RUNNER_TEMP/vault-avd"
+          mkdir -p "$ANDROID_AVD_HOME"
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'system-images;android-35;google_apis;x86_64' >/dev/null
           echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd -n vault -k 'system-images;android-35;google_apis;x86_64' --device pixel_7
           "$ANDROID_HOME/emulator/emulator" -avd vault -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot &
