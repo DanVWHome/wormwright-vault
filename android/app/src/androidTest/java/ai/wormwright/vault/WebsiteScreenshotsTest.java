@@ -26,7 +26,7 @@ public class WebsiteScreenshotsTest {
         assertTrue(view.getWidth()>0 && view.getHeight()>0);
         Bitmap bitmap=Bitmap.createBitmap(view.getWidth(),view.getHeight(),Bitmap.Config.ARGB_8888);
         view.draw(new Canvas(bitmap));
-        File directory=new File(activity.getExternalFilesDir(null),"screenshots");directory.mkdirs();
+        File directory=new File(activity.getFilesDir(),"screenshots");directory.mkdirs();
         try(FileOutputStream stream=new FileOutputStream(new File(directory,name))){bitmap.compress(Bitmap.CompressFormat.PNG,100,stream);}
         bitmap.recycle();
     }

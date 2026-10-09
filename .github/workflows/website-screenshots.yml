@@ -52,8 +52,8 @@ jobs:
             adb install android/app/build/outputs/apk/debug/app-debug.apk
             adb install android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
             adb shell am instrument -w ai.wormwright.vault.preview.test/androidx.test.runner.AndroidJUnitRunner
-            mkdir -p screenshots
-            adb pull /sdcard/Android/data/ai.wormwright.vault.preview/files/screenshots screenshots/android
+            mkdir -p screenshots/android
+            for name in android-unlock android-entries android-entry-details; do adb exec-out run-as ai.wormwright.vault.preview cat files/screenshots/$name.png > screenshots/android/$name.png; done
       - uses: actions/upload-artifact@v4
         with:
           name: android-website-screenshots
