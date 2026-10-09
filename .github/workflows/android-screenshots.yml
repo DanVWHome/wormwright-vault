@@ -1,0 +1,61 @@
+name: Capture Android preview screenshots
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  screenshots:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Enable emulator acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+      - name: Build isolated screenshot variant
+        run: |
+          # Production still blocks screenshots. Only this discarded debug build allows capture.
+          python - <<'PYBUILD'
+          from pathlib import Path
+          import re,sys
+          p=Path('android/app/src/main/java/ai/wormwright/vault/MainActivity.java')
+          p.write_text(p.read_text().replace('getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);',''))
+          p=Path('android/app/build.gradle');s=p.read_text()
+          s=re.sub(r'    signingConfigs \{.*?\n    buildTypes', '    buildTypes', s, flags=re.S)
+          s=s.replace('signingConfig signingConfigs.preview','signingConfig signingConfigs.debug')
+          s=re.sub(r"buildPython rootProject.file\([^\n]+", "buildPython '"+sys.executable+"'", s)
+          p.write_text(s)
+          PYBUILD
+          gradle -p android --no-daemon assembleDebug
+      - name: Start emulator and capture login
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'system-images;android-35;google_apis;x86_64' >/dev/null
+          echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd -n vault -k 'system-images;android-35;google_apis;x86_64' --device pixel_7
+          "$ANDROID_HOME/emulator/emulator" -avd vault -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot &
+          adb wait-for-device
+          timeout 180 bash -c 'until [ "$(adb shell getprop sys.boot_completed | tr -d "\r")" = "1" ]; do sleep 2; done'
+          adb shell input keyevent 82
+          adb shell wm size 1080x2400
+          adb shell wm density 420
+          adb install android/app/build/outputs/apk/debug/app-debug.apk
+          adb shell am start -n ai.wormwright.vault.preview/ai.wormwright.vault.MainActivity
+          sleep 15
+          mkdir screenshots
+          adb exec-out screencap -p > screenshots/android-unlock.png
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-preview4-screenshots
+          path: screenshots/*
+          if-no-files-found: error
