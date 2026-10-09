@@ -5,7 +5,7 @@ Your personal password vault.
 Publisher: Dan Van Wormer. Support: danvanwormer@pm.me.
 Permanent application ID: **ai.wormwright.vault.standalone**.
 Coral Wormwright peeking out of a stitched blue pocket with a gold padlock. Minimum Android 11 (API 30),
-target/compile Android 16 (API 36); arm64-v8a and x86_64. Test version 0.1.0-test.8.
+target/compile Android 16 (API 36); arm64-v8a and x86_64. Test version 0.1.0-test.9.
 
 This updates previous Pocket Vault and Wormwright Pocket test builds. Keep the app installed;
 export a portable backup first, then install test.4 over it. The package and
@@ -162,4 +162,4 @@ DEVICE-TESTS.md and HANDOFF.md for remaining validation and submission requireme
 ## Vault removal and backups
 
 Help includes Create new vault, vault deletion, and Delete selected backups. Deletion requires fresh authorization and typing DELETE after reviewing its scope. Exported backups are selected explicitly in the Android Files picker, where multiple selection can select all backups in a folder. Offline copies and provider trash remain; deletion is not a guarantee of forensic storage erasure.
-Create new vault preserves the current vault; Switch personal vault reopens saved vaults after authentication. Delete all phone vaults removes active and retained private personal vaults and their device keys, plus sample and temporary data. Desktop, NAS and exported copies remain.
+A recognizable vault name is required for creation and restore. Vaults lists names, marks the current vault and reopens the chosen vault after authentication. With multiple vaults, the chooser appears when the app is reopened. Rename current vault names existing unnamed vaults. Create new vault preserves the current vault. Delete current vault removes only that vault; Delete vault… chooses one named vault. Both show Cancel before authentication and on the final typed review, and preserve other vaults and exported backups. Delete all phone vaults removes active and retained private personal vaults and their device keys, plus sample and temporary data. Desktop, NAS and exported copies remain.

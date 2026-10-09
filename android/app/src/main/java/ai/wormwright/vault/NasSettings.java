@@ -19,17 +19,22 @@ import javax.crypto.spec.GCMParameterSpec;
 public final class NasSettings {
     private static final String ALIAS = "wormwright-nas-v1";
     private final File file;
-    public NasSettings(Context context) { file = new File(context.getNoBackupFilesDir(), "nas-settings.enc"); }
+    private final String alias;
+    public NasSettings(Context context) { this(context,context.getNoBackupFilesDir()); }
+    public NasSettings(Context context,File folder) {
+        file=new File(folder,"nas-settings.enc");
+        alias=folder.equals(context.getNoBackupFilesDir())?ALIAS:ALIAS+"."+folder.getName();
+    }
     private SecretKey key() throws Exception {
         KeyStore store = KeyStore.getInstance("AndroidKeyStore"); store.load(null);
-        if (!store.containsAlias(ALIAS)) {
+        if (!store.containsAlias(alias)) {
             KeyGenerator generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore");
-            generator.init(new KeyGenParameterSpec.Builder(ALIAS, KeyProperties.PURPOSE_ENCRYPT | KeyProperties.PURPOSE_DECRYPT)
+            generator.init(new KeyGenParameterSpec.Builder(alias, KeyProperties.PURPOSE_ENCRYPT | KeyProperties.PURPOSE_DECRYPT)
                 .setBlockModes(KeyProperties.BLOCK_MODE_GCM).setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
                 .setKeySize(256).build());
             generator.generateKey();
         }
-        return (SecretKey)store.getKey(ALIAS, null);
+        return (SecretKey)store.getKey(alias, null);
     }
     public boolean exists() { return file.isFile(); }
     public JSONObject load() throws Exception {
@@ -37,12 +42,12 @@ public final class NasSettings {
         JSONObject envelope = new JSONObject(new String(Files.readAllBytes(file.toPath()), StandardCharsets.UTF_8));
         Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
         cipher.init(Cipher.DECRYPT_MODE, key(), new GCMParameterSpec(128, Base64.decode(envelope.getString("iv"), Base64.NO_WRAP)));
-        cipher.updateAAD(ALIAS.getBytes(StandardCharsets.UTF_8));
+        cipher.updateAAD(alias.getBytes(StandardCharsets.UTF_8));
         return new JSONObject(new String(cipher.doFinal(Base64.decode(envelope.getString("data"), Base64.NO_WRAP)), StandardCharsets.UTF_8));
     }
     public void save(JSONObject values) throws Exception {
         Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding"); cipher.init(Cipher.ENCRYPT_MODE, key());
-        cipher.updateAAD(ALIAS.getBytes(StandardCharsets.UTF_8));
+        cipher.updateAAD(alias.getBytes(StandardCharsets.UTF_8));
         JSONObject envelope = new JSONObject();
         envelope.put("iv", Base64.encodeToString(cipher.getIV(), Base64.NO_WRAP));
         envelope.put("data", Base64.encodeToString(cipher.doFinal(values.toString().getBytes(StandardCharsets.UTF_8)), Base64.NO_WRAP));
@@ -52,5 +57,5 @@ public final class NasSettings {
             Files.move(temporary.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
         } finally { temporary.delete(); }
     }
-    public void clear() throws Exception { Files.deleteIfExists(file.toPath()); KeyStore store=KeyStore.getInstance("AndroidKeyStore");store.load(null);store.deleteEntry(ALIAS); }
+    public void clear() throws Exception { Files.deleteIfExists(file.toPath()); KeyStore store=KeyStore.getInstance("AndroidKeyStore");store.load(null);store.deleteEntry(alias); }
 }

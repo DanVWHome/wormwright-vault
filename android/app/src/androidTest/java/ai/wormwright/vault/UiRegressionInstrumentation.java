@@ -32,7 +32,7 @@ public class UiRegressionInstrumentation extends Instrumentation {
             staleCompletion();
             failureFeedback();
             result.putBoolean("ui_regression_ok",true);
-            result.putString("stream","\nPASS opening spinner/duplicate taps, new personal vault/account+PIN deletion/cancel/typed confirmation, search keyboard/focus/latest results, new/edit password visibility, stale completion, error cleanup.\n");
+            result.putString("stream","\nPASS opening spinner/duplicate taps, required names, named list after reopening, rename persistence, independent NAS settings, selected/current account+PIN deletion preserving another vault, Cancel and typed confirmation, search keyboard/focus/latest results, new/edit password visibility, stale completion, error cleanup.\n");
             runOnMainSync(() -> activity.finish()); finish(Activity.RESULT_OK,result);
         } catch (Throwable error) {
             result.putBoolean("ui_regression_ok",false); result.putString("stream",android.util.Log.getStackTraceString(error));
@@ -162,26 +162,44 @@ public class UiRegressionInstrumentation extends Instrumentation {
     private AlertDialog maintenanceDialog() {
         try{Object owner=field("maintenance");Field f=owner.getClass().getDeclaredField("dialog");f.setAccessible(true);return (AlertDialog)f.get(owner);}catch(Exception e){throw new RuntimeException(e);}
     }
+    private boolean hasText(View view,String text) {
+        if(view instanceof TextView&&text.contentEquals(((TextView)view).getText()))return true;
+        if(view instanceof ViewGroup)for(int i=0;i<((ViewGroup)view).getChildCount();i++)if(hasText(((ViewGroup)view).getChildAt(i),text))return true;
+        return false;
+    }
+    private AlertDialog phoneDialog() {try{return (AlertDialog)field("editorDialog");}catch(Exception e){throw new RuntimeException(e);}}
+    private void createNamedPhoneVault(String name,String secret) {
+        runOnMainSync(()->invoke("createPhoneVault"));waitForIdleSync();
+        runOnMainSync(()->{AlertDialog prompt=phoneDialog();List<EditText> inputs=new ArrayList<>();collectInputs(prompt.getWindow().getDecorView(),inputs);check(inputs.size()==3,"name and two credential fields");inputs.get(1).setText(secret);inputs.get(2).setText(secret);prompt.getButton(AlertDialog.BUTTON_POSITIVE).performClick();check(prompt.isShowing(),"blank vault name rejected");inputs.get(0).setText(name);prompt.getButton(AlertDialog.BUTTON_POSITIVE).performClick();});
+        await(()->{try{return !busy()&&((java.io.File)field("vaultFile")).exists();}catch(Exception e){throw new RuntimeException(e);}},"named independent phone vault creation");
+        runOnMainSync(()->{try{((EditText)field("password")).setText(secret);invoke("unlock");}catch(Exception e){throw new RuntimeException(e);}});await(()->unlocked()&&!busy(),"named vault unlocks");
+    }
     private void maintenanceFlow() throws Exception {
-        final String secret="Invented-NAS-New-Vault-Only!";java.io.File file=new java.io.File(activity.getNoBackupFilesDir(),"vault.db");
-        runOnMainSync(()->invoke("createPhoneVault"));
-        runOnMainSync(()->{try{AlertDialog prompt=(AlertDialog)field("editorDialog");List<EditText> inputs=new ArrayList<>();collectInputs(prompt.getWindow().getDecorView(),inputs);check(inputs.size()==2,"new phone vault credential fields");inputs.get(0).setText(secret);inputs.get(1).setText(secret);prompt.getButton(AlertDialog.BUTTON_POSITIVE).performClick();}catch(Exception e){throw new RuntimeException(e);}});
-        await(()->!busy()&&file.exists(),"independent NAS phone vault creation");
-        runOnMainSync(()->{try{((EditText)field("password")).setText(secret);invoke("unlock");}catch(Exception e){throw new RuntimeException(e);}});
-        await(()->unlocked()&&!busy(),"new personal phone vault unlock");
-        runOnMainSync(()->{invoke("deletePhoneVault");try{((AlertDialog)field("editorDialog")).getButton(AlertDialog.BUTTON_NEGATIVE).performClick();}catch(Exception e){throw new RuntimeException(e);}});
-        check(file.exists(),"cancel credential prompt preserves phone vault");
+        final String secret="Invented-NAS-New-Vault-Only!";java.io.File first=new java.io.File(activity.getNoBackupFilesDir(),"vault.db");
+        createNamedPhoneVault("Family",secret);check(first.equals(field("vaultFile")),"legacy phone path preserved");
+        NasSettings firstSettings=new NasSettings(activity,first.getParentFile());firstSettings.save(new org.json.JSONObject().put("invented_label","first connection"));
+        createNamedPhoneVault("Travel",secret);java.io.File second=(java.io.File)field("vaultFile");check(!second.equals(first)&&first.exists(),"second phone vault preserves first");
+        runOnMainSync(()->invoke("renamePhoneVault"));waitForIdleSync();runOnMainSync(()->{List<EditText> inputs=new ArrayList<>();collectInputs(phoneDialog().getWindow().getDecorView(),inputs);inputs.get(0).setText("Renamed travel vault");phoneDialog().getButton(AlertDialog.BUTTON_POSITIVE).performClick();});await(()->!busy()&&hasText(root(),"Renamed travel vault · OFFLINE EDITS + NAS SYNC"),"renamed vault heading");
+        NasSettings secondSettings=new NasSettings(activity,second.getParentFile());secondSettings.save(new org.json.JSONObject().put("invented_label","second connection"));
+        runOnMainSync(()->activity.finish());waitForIdleSync();SystemClock.sleep(300);
+        activity=(MainActivity)startActivitySync(new Intent(getTargetContext(),MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));waitForIdleSync();
+        await(()->phoneDialog()!=null&&phoneDialog().isShowing()&&phoneDialog().getListView()!=null,"named chooser appears after reopening");
+        runOnMainSync(()->{android.widget.ListView list=phoneDialog().getListView();check(list.getAdapter().getCount()==2,"both named phone vaults survive reopening");boolean found=false;for(int i=0;i<list.getAdapter().getCount();i++)if(list.getAdapter().getItem(i).toString().startsWith("Renamed travel vault"))found=true;check(found,"renamed name persisted");phoneDialog().getButton(AlertDialog.BUTTON_NEGATIVE).performClick();});
+        runOnMainSync(()->{try{java.lang.reflect.Method method=MainActivity.class.getDeclaredMethod("listVaults",boolean.class);method.setAccessible(true);method.invoke(activity,true);}catch(Exception e){throw new RuntimeException(e);}});
+        await(()->phoneDialog()!=null&&phoneDialog().isShowing()&&phoneDialog().getListView()!=null,"selected deletion name list");
+        runOnMainSync(()->{android.widget.ListView list=phoneDialog().getListView();int chosen=-1;for(int i=0;i<list.getAdapter().getCount();i++)if(list.getAdapter().getItem(i).toString().startsWith("Family ·"))chosen=i;check(chosen>=0,"Family name identifies selected vault");list.performItemClick(null,chosen,list.getAdapter().getItemId(chosen));});waitForIdleSync();
+        runOnMainSync(()->phoneDialog().getButton(AlertDialog.BUTTON_NEGATIVE).performClick());check(first.exists()&&second.exists(),"Cancel before authorization preserves both vaults");
         for(boolean remove:new boolean[]{false,true}) {
-            runOnMainSync(()->invoke("deletePhoneVault"));
-            // Let the dialog's posted OnShow listener install its validation action.
-            waitForIdleSync();
-            runOnMainSync(()->{try{AlertDialog prompt=(AlertDialog)field("editorDialog");List<EditText> inputs=new ArrayList<>();collectInputs(prompt.getWindow().getDecorView(),inputs);inputs.get(1).setText(secret);prompt.getButton(AlertDialog.BUTTON_POSITIVE).performClick();}catch(Exception e){throw new RuntimeException(e);}});
-            await(()->{try{Object owner=field("maintenance");Field auth=owner.getClass().getDeclaredField("authenticating");auth.setAccessible(true);return auth.getBoolean(owner);}catch(Exception e){throw new RuntimeException(e);}},"account authorization completes before phone PIN");
-            confirmPin();await(()->maintenanceDialog()!=null&&maintenanceDialog().isShowing(),"phone deletion review after fresh account password and PIN");
-            runOnMainSync(()->{AlertDialog review=maintenanceDialog();if(!remove){review.getButton(AlertDialog.BUTTON_NEGATIVE).performClick();return;}review.getButton(AlertDialog.BUTTON_POSITIVE).performClick();check(file.exists()&&review.isShowing(),"typed confirmation is required");List<EditText> inputs=new ArrayList<>();collectInputs(review.getWindow().getDecorView(),inputs);inputs.get(0).setText("DELETE");review.getButton(AlertDialog.BUTTON_POSITIVE).performClick();});
-            if(!remove)check(file.exists(),"cancel final review preserves vault");
+            runOnMainSync(()->invoke("deletePhoneVault"));waitForIdleSync();
+            runOnMainSync(()->{AlertDialog prompt=phoneDialog();List<EditText> inputs=new ArrayList<>();collectInputs(prompt.getWindow().getDecorView(),inputs);inputs.get(1).setText(secret);prompt.getButton(AlertDialog.BUTTON_POSITIVE).performClick();});
+            await(()->{try{Object owner=field("maintenance");Field auth=owner.getClass().getDeclaredField("authenticating");auth.setAccessible(true);return auth.getBoolean(owner);}catch(Exception e){throw new RuntimeException(e);}},"fresh account authorization precedes PIN");
+            confirmPin();await(()->maintenanceDialog()!=null&&maintenanceDialog().isShowing(),"fresh account and PIN deletion review");
+            runOnMainSync(()->{AlertDialog review=maintenanceDialog();if(!remove){review.getButton(AlertDialog.BUTTON_NEGATIVE).performClick();return;}review.getButton(AlertDialog.BUTTON_POSITIVE).performClick();check(first.exists()&&review.isShowing(),"typed DELETE required");List<EditText> inputs=new ArrayList<>();collectInputs(review.getWindow().getDecorView(),inputs);inputs.get(0).setText("DELETE");review.getButton(AlertDialog.BUTTON_POSITIVE).performClick();});
+            if(!remove)check(first.exists()&&second.exists(),"Cancel final review preserves both vaults");
         }
-        await(()->!busy()&&!file.exists()&&findButton(root(),"Create new vault")!=null,"deleted NAS phone copy returns to new/import choices");
+        await(()->!busy()&&!first.exists()&&findButton(root(),"Create new vault")!=null,"deleted current vault returns to creation and chooser");
+        check(second.exists()&&"second connection".equals(secondSettings.load().getString("invented_label")),"selected deletion preserves other vault and its separate NAS key/settings");
+        check(!firstSettings.exists(),"deleted vault connection removed");
     }
     private void openingFeedback() throws Exception {
         ExecutorService worker=(ExecutorService)field("worker");CountDownLatch held=new CountDownLatch(1),release=new CountDownLatch(1);

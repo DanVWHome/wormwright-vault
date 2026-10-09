@@ -257,20 +257,20 @@ def apply_nas_snapshot(downloaded, local_path, guard=None):
         candidate.lock()
 
 
-def create_personal(path,password):
+def create_personal(path,password,vault_name):
     lock()
     path=Path(path)
     if path.exists():raise VaultError('A phone vault already exists.')
     candidate=ManagedVault(path)
     try:
-        candidate.create(password,username='Owner')
+        candidate.create(password,username='Owner',vault_name=vault_name)
         Path(str(path)+'.local-only').write_text('Independent personal phone vault\n')
     finally:candidate.lock()
 
 
 def verify_deletion(path,username,password):
     candidate=ManagedVault(path)
-    try:candidate.unlock(password,username);return 'Authorized'
+    try:candidate.unlock(password,username);return candidate.display_name
     finally:candidate.lock()
 
 
@@ -288,3 +288,23 @@ def delete_phone_copy(path):
                 item.unlink()
             except OSError:failures.append(name)
     if failures:raise VaultError('Some private phone files could not be removed.')
+
+
+def vault_name():
+    if _vault is None:raise VaultError('Unlock the vault first.')
+    return _vault.display_name
+
+
+def rename_vault(name):
+    if _vault is None:raise VaultError('Unlock the vault first.')
+    if not _sample and not Path(str(_vault.path)+'.local-only').exists():
+        raise VaultError('Rename a shared NAS vault in the desktop Manager, then sync or import it.')
+    _vault.set_display_name(name)
+
+
+def file_name(path):
+    candidate=ReadOnlyVault(path)
+    try:
+        candidate._connect()
+        return candidate.display_name
+    finally:candidate.lock()

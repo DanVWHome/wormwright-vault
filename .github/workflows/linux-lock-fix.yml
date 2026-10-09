@@ -21,6 +21,6 @@ jobs:
       - run: python packaging/build-mint.py --work-dir build-linux --output-dir dist-linux
       - uses: actions/upload-artifact@v4
         with:
-          name: wormwright-vault-linux-0.3.5
+          name: wormwright-vault-linux-0.3.6
           path: dist-linux/*
           if-no-files-found: error

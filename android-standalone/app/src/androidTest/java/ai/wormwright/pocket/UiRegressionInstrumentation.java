@@ -33,7 +33,7 @@ public class UiRegressionInstrumentation extends Instrumentation {
             staleCompletion();
             failureFeedback();
             result.putBoolean("ui_regression_ok",true);
-            result.putString("stream","\nPASS opening spinner/duplicate taps, PIN creation/re-open with/without optional password, new vault/switch preservation, freshly authorized delete/cancel/typed confirmation/reset/key removal, search keyboard/focus/latest results, new/edit password visibility, edit/save/cancel transitions, delete/restore list refresh, stale completion, error cleanup.\n");
+            result.putString("stream","\nPASS opening spinner/duplicate taps, PIN creation/re-open with/without optional password, required names, named list after reopening, current and selected deletion preserving other vaults, Cancel before/after auth, typed confirmation and key removal, search keyboard/focus/latest results, new/edit password visibility, edit/save/cancel transitions, delete/restore list refresh, stale completion, error cleanup.\n");
             runOnMainSync(() -> activity.finish()); finish(Activity.RESULT_OK,result);
         } catch (Throwable error) {
             result.putBoolean("ui_regression_ok",false); result.putString("stream",android.util.Log.getStackTraceString(error));
@@ -160,6 +160,7 @@ public class UiRegressionInstrumentation extends Instrumentation {
     private void personalCreation() throws Exception {
         for(String optional:new String[]{"","Invented-Test-Password-Only!"}) {
             runOnMainSync(()->findButton(root(),"Create personal vault").performClick());waitForIdleSync();
+            setVaultName(optional.isEmpty()?"Family":"Personal");
             runOnMainSync(()->{
                 check(hasText(dialog().getWindow().getDecorView(),"Leave blank to use phone authentication only. If you add a password, enter it in both fields (at least 12 characters)."),"optional guidance appears in wrapping body");
                 List<EditText> inputs=new ArrayList<>();collectInputs(dialog().getWindow().getDecorView(),inputs);
@@ -168,7 +169,7 @@ public class UiRegressionInstrumentation extends Instrumentation {
             confirmPin();await(()->unlocked()&&!busy(),"PIN creates personal vault with optional password="+!optional.isEmpty());
             final String slot=((org.json.JSONObject)field("active")).getString("slot");
             runOnMainSync(()->findButton(root(),"Lock vault").performClick());waitForIdleSync();
-            runOnMainSync(()->findButton(root(),"Unlock personal vault").performClick());confirmPin();
+            runOnMainSync(()->invoke("unlockPersonal"));confirmPin();
             if(!optional.isEmpty()) {
                 await(()->dialog()!=null&&dialog().isShowing(),"optional password opens after PIN");
                 runOnMainSync(()->{List<EditText> inputs=new ArrayList<>();collectInputs(dialog().getWindow().getDecorView(),inputs);inputs.get(0).setText(optional);dialog().getButton(AlertDialog.BUTTON_POSITIVE).performClick();});
@@ -189,31 +190,53 @@ public class UiRegressionInstrumentation extends Instrumentation {
         await(()->dialog()!=null&&dialog().isShowing(),"fresh optional password authorization");
         runOnMainSync(()->{List<EditText> inputs=new ArrayList<>();collectInputs(dialog().getWindow().getDecorView(),inputs);inputs.get(0).setText(optional);dialog().getButton(AlertDialog.BUTTON_POSITIVE).performClick();});
     }
+    private void setVaultName(String name) {
+        await(()->dialog()!=null&&dialog().isShowing()&&hasText(dialog().getWindow().getDecorView(),"Give this vault a recognizable name. The name is shown in your vault list."),"required vault-name field appears");
+        waitForIdleSync();runOnMainSync(()->{List<EditText> inputs=new ArrayList<>();collectInputs(dialog().getWindow().getDecorView(),inputs);check(inputs.size()==1,"one name field");dialog().getButton(AlertDialog.BUTTON_POSITIVE).performClick();check(dialog().isShowing(),"blank name is rejected");inputs.get(0).setText(name);dialog().getButton(AlertDialog.BUTTON_POSITIVE).performClick();});
+        await(()->dialog()!=null&&dialog().isShowing()&&hasText(dialog().getWindow().getDecorView(),"Leave blank to use phone authentication only. If you add a password, enter it in both fields (at least 12 characters)."),"name advances to optional password");
+    }
+    private void chooseNamedVault(String name) {
+        runOnMainSync(()->{ListView list=dialog().getListView();int chosen=-1;for(int i=0;i<list.getAdapter().getCount();i++)if(list.getAdapter().getItem(i).toString().equals(name)||list.getAdapter().getItem(i).toString().equals(name+" (current)"))chosen=i;check(chosen>=0,"human-readable vault name appears: "+name);list.performItemClick(null,chosen,list.getAdapter().getItemId(chosen));});
+    }
+    private void authorizeCurrentDeletion(String optional) {
+        runOnMainSync(()->invoke("deleteCurrentVault"));waitForIdleSync();
+        runOnMainSync(()->dialog().getButton(AlertDialog.BUTTON_POSITIVE).performClick());confirmPin();enterOptional(optional);
+        await(()->maintenanceDialog()!=null&&maintenanceDialog().isShowing(),"named deletion review after fresh authentication");
+    }
+    private void finishDeleteReview() {
+        runOnMainSync(()->{AlertDialog review=maintenanceDialog();review.getButton(AlertDialog.BUTTON_POSITIVE).performClick();check(review.isShowing(),"missing DELETE is rejected");List<EditText> inputs=new ArrayList<>();collectInputs(review.getWindow().getDecorView(),inputs);inputs.get(0).setText("DELETE");review.getButton(AlertDialog.BUTTON_POSITIVE).performClick();});
+        await(()->!busy(),"selected deletion completes");
+    }
     private void maintenanceFlow(String original,String optional) throws Exception {
-        java.io.File base=activity.getNoBackupFilesDir();java.io.File originalFile=new java.io.File(base,"vault-"+original+".sqlite");
+        java.io.File base=activity.getNoBackupFilesDir();java.io.File originalFile=new java.io.File(base,"vault-"+original+".sqlite");String originalName=optional.isEmpty()?"Family":"Personal";
         runOnMainSync(()->{invoke("newVault");dialog().getButton(AlertDialog.BUTTON_NEGATIVE).performClick();});
-        await(()->dialog()==null||!dialog().isShowing(),"new-vault confirmation cancellation");
-        check(originalFile.exists(),"cancel new-vault preserves existing file");
-        runOnMainSync(()->{invoke("newVault");dialog().getButton(AlertDialog.BUTTON_POSITIVE).performClick();});
-        await(()->dialog()!=null&&dialog().isShowing()&&hasText(dialog().getWindow().getDecorView(),"Leave blank to use phone authentication only. If you add a password, enter it in both fields (at least 12 characters)."),"optional password prompt after queued Create confirmation");
-        runOnMainSync(()->dialog().getButton(AlertDialog.BUTTON_POSITIVE).performClick());confirmPin();
-        await(()->unlocked()&&!busy(),"second independent personal vault");
-        String second=((org.json.JSONObject)field("active")).getString("slot");check(!second.equals(original)&&originalFile.exists(),"new vault retains original");
-        runOnMainSync(()->{invoke("switchVault");ListView list=dialog().getListView();int chosen=-1;for(int i=0;i<list.getAdapter().getCount();i++)if(list.getAdapter().getItem(i).toString().contains(original.substring(0,8)))chosen=i;check(chosen>=0,"original listed for switching");list.performItemClick(null,chosen,list.getAdapter().getItemId(chosen));});
-        confirmPin();enterOptional(optional);await(()->unlocked()&&!busy(),"switch unlocks original");
-        check(((org.json.JSONObject)field("active")).getString("slot").equals(original),"original selected");
-        runOnMainSync(()->invoke("deletePhoneVaults"));confirmPin();enterOptional(optional);
-        await(()->maintenanceDialog()!=null&&maintenanceDialog().isShowing(),"delete review after fresh PIN");
-        runOnMainSync(()->maintenanceDialog().getButton(AlertDialog.BUTTON_NEGATIVE).performClick());
-        check(originalFile.exists()&&new java.io.File(base,"vault-"+second+".sqlite").exists(),"delete cancellation keeps both vaults");
-        runOnMainSync(()->invoke("deletePhoneVaults"));confirmPin();enterOptional(optional);
-        await(()->maintenanceDialog()!=null&&maintenanceDialog().isShowing(),"second delete authorization");
-        runOnMainSync(()->{
-            AlertDialog review=maintenanceDialog();review.getButton(AlertDialog.BUTTON_POSITIVE).performClick();check(review.isShowing()&&originalFile.exists(),"missing DELETE cannot remove data");
-            List<EditText> inputs=new ArrayList<>();collectInputs(review.getWindow().getDecorView(),inputs);inputs.get(0).setText("DELETE");review.getButton(AlertDialog.BUTTON_POSITIVE).performClick();
-        });
-        await(()->!busy()&&findButton(root(),"Create personal vault")!=null,"reset returns to creation screen");
-        check(!originalFile.exists()&&!new java.io.File(base,"vault-"+second+".sqlite").exists()&&!new java.io.File(base,"active.json").exists(),"reset removes retained and active files");
+        await(()->dialog()==null||!dialog().isShowing(),"new-vault confirmation cancellation");check(originalFile.exists(),"cancel preserves existing vault");
+        runOnMainSync(()->invoke("newVault"));waitForIdleSync();runOnMainSync(()->dialog().getButton(AlertDialog.BUTTON_POSITIVE).performClick());
+        setVaultName("Test second vault");runOnMainSync(()->dialog().getButton(AlertDialog.BUTTON_POSITIVE).performClick());confirmPin();await(()->unlocked()&&!busy(),"second named vault created");
+        String second=((org.json.JSONObject)field("active")).getString("slot");java.io.File secondFile=new java.io.File(base,"vault-"+second+".sqlite");check(!second.equals(original)&&originalFile.exists(),"new vault keeps original");
+        runOnMainSync(()->activity.finish());waitForIdleSync();SystemClock.sleep(300);
+        activity=(MainActivity)startActivitySync(new Intent(getTargetContext(),MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));waitForIdleSync();
+        await(()->dialog()!=null&&dialog().isShowing()&&dialog().getListView()!=null,"named chooser appears after reopening multiple vaults");
+        runOnMainSync(()->{ListView list=dialog().getListView();check(list.getAdapter().getCount()==2,"both vaults survive reopening");});
+        chooseNamedVault(originalName);confirmPin();enterOptional(optional);await(()->unlocked()&&!busy(),"named original unlocks after reopening");
+        check(((org.json.JSONObject)field("active")).getString("slot").equals(original),"chosen original is current");
+        runOnMainSync(()->invoke("deleteCurrentVault"));waitForIdleSync();runOnMainSync(()->dialog().getButton(AlertDialog.BUTTON_NEGATIVE).performClick());
+        check(originalFile.exists()&&secondFile.exists(),"Cancel before authentication removes nothing");
+        runOnMainSync(()->invoke("chooseVaultForDeletion"));waitForIdleSync();runOnMainSync(()->dialog().getButton(AlertDialog.BUTTON_NEGATIVE).performClick());
+        check(originalFile.exists()&&secondFile.exists(),"Cancel named deletion chooser removes nothing");
+        authorizeCurrentDeletion(optional);runOnMainSync(()->maintenanceDialog().getButton(AlertDialog.BUTTON_NEGATIVE).performClick());check(originalFile.exists()&&secondFile.exists(),"Cancel after authentication preserves both vaults");
+        if(optional.isEmpty()) {
+            runOnMainSync(()->invoke("chooseVaultForDeletion"));waitForIdleSync();chooseNamedVault("Test second vault");waitForIdleSync();runOnMainSync(()->dialog().getButton(AlertDialog.BUTTON_POSITIVE).performClick());confirmPin();
+            await(()->maintenanceDialog()!=null&&maintenanceDialog().isShowing(),"noncurrent selected vault authorization");finishDeleteReview();
+            check(originalFile.exists()&&!secondFile.exists(),"only selected noncurrent vault is deleted");check(((org.json.JSONObject)field("active")).getString("slot").equals(original),"noncurrent deletion retains current selection");
+            authorizeCurrentDeletion(optional);finishDeleteReview();check(!originalFile.exists(),"Delete current vault removes only that vault");
+        }else {
+            authorizeCurrentDeletion(optional);finishDeleteReview();check(!originalFile.exists()&&secondFile.exists(),"password-protected current deletion preserves another vault");
+            runOnMainSync(()->invoke("deletePhoneVaults"));waitForIdleSync();runOnMainSync(()->dialog().getButton(AlertDialog.BUTTON_NEGATIVE).performClick());check(secondFile.exists(),"Cancel all-vault preflight preserves remaining vault");
+            runOnMainSync(()->invoke("deletePhoneVaults"));waitForIdleSync();runOnMainSync(()->dialog().getButton(AlertDialog.BUTTON_POSITIVE).performClick());confirmPin();
+            await(()->maintenanceDialog()!=null&&maintenanceDialog().isShowing(),"all-vault review");finishDeleteReview();check(!secondFile.exists(),"explicit all-vault deletion removes remaining vault");
+        }
+        await(()->findButton(root(),"Create personal vault")!=null,"no vaults returns to creation");
         for(String slot:new String[]{original,second})try{DeviceKey.cipher(slot,false,new byte[12]);throw new AssertionError("Deleted key still exists");}catch(java.lang.IllegalStateException expected){}
     }
     private void openingFeedback() throws Exception {

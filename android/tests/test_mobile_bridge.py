@@ -193,22 +193,32 @@ class PhoneMaintenance(unittest.TestCase):
     def test_create_authenticate_remove_and_recreate(self):
         with tempfile.TemporaryDirectory() as d:
             path=Path(d)/'vault.db';unrelated=Path(d)/'keep.txt';unrelated.write_text('keep')
-            mobile.create_personal(path,PASSWORD)
-            with self.assertRaises(VaultError):mobile.create_personal(path,PASSWORD)
+            mobile.create_personal(path,PASSWORD,"Invented phone vault")
+            with self.assertRaises(VaultError):mobile.create_personal(path,PASSWORD,"Invented phone vault")
+            self.assertEqual(mobile.file_name(path),'Invented phone vault')
             with self.assertRaises(VaultError):mobile.verify_deletion(path,'','wrong password')
             self.assertTrue(path.exists())
             mobile.unlock(path,'',PASSWORD,True,False)
             self.assertTrue(json.loads(mobile.editing_info())['can_edit'])
             mobile.save_entry(json.dumps({'description':'Invented new phone entry','password':'Invented-only!','groups':list(json.loads(mobile.editing_info())['groups'])}))
-            mobile.lock();self.assertEqual(mobile.verify_deletion(path,'',PASSWORD),'Authorized')
+            mobile.lock();self.assertEqual(mobile.verify_deletion(path,'',PASSWORD),'Invented phone vault')
             exported=Path(d)/'external-backup.sqlite';mobile.encrypted_backup(path,exported)
             mobile.delete_phone_copy(path)
             self.assertFalse(path.exists());self.assertFalse(Path(str(path)+'.local-only').exists())
             self.assertTrue(exported.exists());self.assertTrue(unrelated.exists())
-            mobile.create_personal(path,PASSWORD);self.assertTrue(path.exists())
+            mobile.create_personal(path,PASSWORD,"Invented phone vault");self.assertTrue(path.exists())
+    def test_named_copies_are_independent(self):
+        with tempfile.TemporaryDirectory() as d:
+            first=Path(d)/'first'/'vault.db';second=Path(d)/'second'/'vault.db';first.parent.mkdir();second.parent.mkdir()
+            with self.assertRaises(VaultError):mobile.create_personal(first,PASSWORD,' ')
+            self.assertFalse(first.exists())
+            mobile.create_personal(first,PASSWORD,'Family');mobile.create_personal(second,PASSWORD,'Personal')
+            mobile.unlock(first,'',PASSWORD,True,False);mobile.rename_vault('Renamed Family');mobile.lock()
+            self.assertEqual(mobile.file_name(first),'Renamed Family');self.assertEqual(mobile.file_name(second),'Personal')
+            mobile.delete_phone_copy(first);self.assertTrue(second.exists());self.assertEqual(mobile.file_name(second),'Personal')
     def test_import_clears_local_edit_permission(self):
         with tempfile.TemporaryDirectory() as d:
-            path=Path(d)/'vault.db';mobile.create_personal(path,PASSWORD)
+            path=Path(d)/'vault.db';mobile.create_personal(path,PASSWORD,"Invented phone vault")
             other=Path(d)/'other.sqlite';v=ManagedVault(other);v.create(PASSWORD);v.lock()
             mobile.import_snapshot(other,path)
             self.assertFalse(Path(str(path)+'.local-only').exists())

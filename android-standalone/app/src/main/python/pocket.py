@@ -48,12 +48,12 @@ def unprotect(document, password):
     except Exception as error:
         raise VaultError('Incorrect vault password or damaged key envelope.') from error
 
-def create(path, local_secret):
+def create(path, local_secret, vault_name):
     global _vault
     lock()
     candidate = ManagedVault(path)
     try:
-        candidate.create(local_secret, username='Owner')
+        candidate.create(local_secret, username='Owner',vault_name=vault_name)
         _vault = candidate
     except Exception:
         candidate.lock()
@@ -74,7 +74,7 @@ def unlock(path, local_secret):
 
 def sample(path):
     if not Path(path).exists():
-        create(path, 'SampleOnly-PocketVault-2026!')
+        create(path, 'SampleOnly-PocketVault-2026!', 'Invented sample vault')
         for description, username, link in [
                 ('Sample email', 'demo@example.invalid', 'https://mail.example.invalid'),
                 ('Sample bookshop', 'book-demo', 'https://books.example.invalid')]:
@@ -173,3 +173,19 @@ def restore(source, target, recovery_secret, local_secret):
     finally:
         candidate.lock()
         destination.lock()
+
+
+def vault_name():
+    return require().display_name
+
+
+def rename_vault(name):
+    require().set_display_name(name)
+
+
+def verify_deletion(path,local_secret):
+    candidate=ManagedVault(path)
+    try:
+        candidate.unlock(local_secret)
+        return candidate.display_name
+    finally:candidate.lock()

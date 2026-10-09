@@ -123,7 +123,41 @@ class ManagedVault:
     def _decode(self, value):
         return json.loads(self._admin_box().decrypt(value))
 
-    def create(self, password, username='Manager', managed=False):
+    @staticmethod
+    def validate_name(value):
+        if not isinstance(value,str):raise VaultError('Enter a vault name.')
+        value=value.strip()
+        if not value or len(value)>80 or any(ord(c)<32 or ord(c)==127 for c in value):
+            raise VaultError('Enter a vault name of 1–80 characters on one line.')
+        return value
+
+    @property
+    def display_name(self):
+        if self.meta is None:
+            if not self.path.is_file():return ''
+            with closing(sqlite3.connect(self.path.resolve().as_uri()+'?mode=ro',uri=True)) as db:
+                candidate=ManagedVault(self.path);candidate.db=db;candidate.meta=dict(db.execute('SELECT name,value FROM metadata'))
+                candidate._check_authority()
+                return candidate.display_name
+        document=self.meta.get('display_name')
+        if document is None:return ''
+        try:data=verify(self.meta['verify'].decode(),json.loads(document))
+        except Exception as error:raise VaultError('The vault name was changed or damaged.') from error
+        if data.get('vault')!=self.meta['vault_id'].decode():
+            raise VaultError('The vault name belongs to another vault.')
+        return self.validate_name(data['name'])
+
+    def set_display_name(self,value):
+        if not self.unlocked or not self.manager:
+            raise VaultError('Unlock the Manager account to name this vault.')
+        value=self.validate_name(value)
+        document=pack(sign(self._signer(),{'vault':self.meta['vault_id'].decode(),'name':value}))
+        with self.db:
+            self.db.execute("INSERT INTO metadata VALUES ('display_name',?) ON CONFLICT(name) DO UPDATE SET value=excluded.value",(document,))
+        self.meta['display_name']=document
+
+    def create(self, password, username='Manager', managed=False, vault_name=None):
+        if vault_name is not None:vault_name=self.validate_name(vault_name)
         if len(password) < 12:
             raise VaultError('Use an initial master password of at least 12 characters.')
         if not username.strip():
@@ -152,6 +186,7 @@ class ManagedVault:
                 self._insert_user(self.uid, username.strip(), password, self.material)
                 self._publish()
             self._refresh_cap()
+            if vault_name is not None:self.set_display_name(vault_name)
         except Exception:
             self.lock()
             self.path.unlink(missing_ok=True)
@@ -198,6 +233,7 @@ class ManagedVault:
         data = verify(self.meta['verify'].decode(), document)
         if data != {'vault': self.meta['vault_id'].decode(), 'hash': self._authority_hash()}:
             raise VaultError('The vault access policy was changed or damaged.')
+        if 'display_name' in self.meta:self.display_name # Authenticate optional names without changing format-2 policy signatures.
 
     def _publish(self):
         admin = self.administration()

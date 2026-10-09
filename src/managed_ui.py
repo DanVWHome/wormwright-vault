@@ -101,10 +101,10 @@ class ManagedWindow(QMainWindow):
         self.only_deleted=QCheckBox('Only deleted entries');self.only_deleted.setObjectName('only_deleted');self.only_deleted.toggled.connect(self.refresh);row.addWidget(self.only_deleted);row.addStretch();layout.addWidget(self.manager_row)
         vault_menu=self.menuBar().addMenu('Vault')
         self.location_actions=[]
-        for text,callback in [('Open Existing Vault…',self.open_existing),('Create New Vault…',self.new_vault),('Recent Vaults…',self.recent),('Choose Folder for New Vaults…',self.choose_folder)]:
+        for text,callback in [('Open Existing Vault…',self.open_existing),('Create New Vault…',self.new_vault),('Vaults…',self.recent),('Choose Folder for New Vaults…',self.choose_folder)]:
             action=vault_menu.addAction(text);action.triggered.connect(callback);self.location_actions.append(action)
         vault_menu.addAction('Load Demo Vault…',self.load_demo)
-        vault_menu.addSeparator();vault_menu.addAction('Delete Local Vault…',self.delete_local_vault)
+        vault_menu.addSeparator();vault_menu.addAction('Rename Current Vault…',self.rename_vault);vault_menu.addAction('Delete Current Local Vault…',self.delete_local_vault)
         vault_menu.addAction('Delete Shared NAS Vault…',self.delete_shared_vault)
         vault_menu.addAction('Vault Locations Explained…',self.location_help)
         data_menu=self.menuBar().addMenu('Import / Export / Backup')
@@ -184,7 +184,9 @@ class ManagedWindow(QMainWindow):
     def update_state(self):
         unlocked=self.vault.unlocked
         missing=not self.vault.path.exists();self.welcome.setVisible(missing)
-        self.status.setText(f'{"Unlocked" if unlocked else "Locked"} • Local vault: {self.vault.path}');self.status.setWordWrap(True)
+        try:vault_name=self.vault.display_name or 'Unnamed vault'
+        except Exception:vault_name='Name unavailable'
+        self.status.setText(f'{"Unlocked" if unlocked else "Locked"} • {vault_name} • Local vault: {self.vault.path}');self.status.setWordWrap(True)
         try:personal=self.vault.personal;has_key=self.vault.yubikey_settings(self.username.text()) is not None
         except Exception:personal=True;has_key=False
         self.username.setVisible(not unlocked and not personal)
@@ -271,15 +273,17 @@ class ManagedWindow(QMainWindow):
         path=Path(path) if path is not None else self.vault.path
         dialog=QDialog(self);dialog.setWindowTitle('Create New Vault');dialog.resize(640,300);dialog.setMinimumWidth(580);form=QFormLayout(dialog)
         explanation=QLabel('Choose your own Manager name and an initial master password. This account can access every group. You can add other users later in Users & Groups.');explanation.setWordWrap(True);form.addRow(explanation)
+        vault_name=QLineEdit();vault_name.setPlaceholderText('For example Personal or Family');vault_name.setMaxLength(80)
         name=QLineEdit();name.setPlaceholderText('Your name, for example Dan')
         password=QLineEdit();password.setEchoMode(QLineEdit.EchoMode.Password)
         confirm=QLineEdit();confirm.setEchoMode(QLineEdit.EchoMode.Password)
-        form.addRow('Manager username:',name);form.addRow('Master password (12+ characters):',password);form.addRow('Confirm master password:',confirm)
+        form.addRow('Vault name (required):',vault_name);form.addRow('Manager username:',name);form.addRow('Master password (12+ characters):',password);form.addRow('Confirm master password:',confirm)
         location=QLabel('Save local vault to: '+str(path));location.setWordWrap(True);form.addRow(location)
         error=QLabel();form.addRow(error)
         buttons=QDialogButtonBox(QDialogButtonBox.StandardButton.Save|QDialogButtonBox.StandardButton.Cancel);form.addRow(buttons)
         def accept():
-            if not name.text().strip():error.setText('Enter your Manager username.')
+            if not vault_name.text().strip():error.setText('Enter a vault name.')
+            elif not name.text().strip():error.setText('Enter your Manager username.')
             elif len(password.text())<12:error.setText('Enter at least 12 characters.')
             elif password.text()!=confirm.text():error.setText('Passwords do not match.')
             else:dialog.accept()
@@ -287,7 +291,7 @@ class ManagedWindow(QMainWindow):
         previous=self.dialog;self.dialog=dialog
         try:
             if dialog.exec()!=QDialog.DialogCode.Accepted:return False
-            manager_name=name.text().strip();candidate=ManagedVault(path);candidate.create(password.text(),manager_name)
+            manager_name=name.text().strip();candidate=ManagedVault(path);candidate.create(password.text(),manager_name,vault_name=vault_name.text().strip())
             self.dialog=previous;self.lock();self.vault=candidate;self.username.setText(manager_name);self.search.clear();self.password_fallback=False
             managed_locations.remember(folder=path.parent,vault=path);return True
         finally:password.clear();confirm.clear();self.dialog=previous;dialog.deleteLater()
@@ -494,12 +498,23 @@ class ManagedWindow(QMainWindow):
         delete.clicked.connect(dialog.accept);buttons.rejected.connect(dialog.reject)
         accepted=dialog.exec()==QDialog.DialogCode.Accepted and typed.text()=='DELETE';typed.clear();dialog.deleteLater();return accepted
 
+    def rename_vault(self):
+        if self.task or not self.vault.unlocked or not self.vault.manager:
+            self.warning('Unlock the Manager account to name this vault.');return
+        current=self.vault
+        value,ok=QInputDialog.getText(self,'Name current vault','Vault name (required, 1–80 characters):',text=current.display_name)
+        if not ok:return
+        try:
+            if self.vault is not current or not current.unlocked:return
+            current.set_display_name(value);self.update_state();self.auto_sync()
+        except Exception as error:self.warning(error)
+
     def delete_local_vault(self):
         if not self.deletion_authorized():return
         current=self.vault;path=current.path.resolve()
         try:
             review=vault_cleanup.plan([path],(current.meta['vault_id'],current.meta['verify']))
-            if not self.review_deletion('Delete Local Vault',[path],'Delete this working vault on this computer. Its sync settings will be removed. Backups, the NAS master and other devices are not removed. Unsynced changes will be lost.'):return
+            if not self.review_deletion('Delete Current Local Vault',[path],f'Delete “{current.display_name or path.stem}”, this working vault on this computer. Its sync settings will be removed. Backups, the NAS master and other devices are not removed. Unsynced changes will be lost.'):return
             if self.task or not current.unlocked or self.vault is not current:return
             self.auto_timer.stop();self.lock()
             removed,failures=vault_cleanup.remove(review,[path.with_name(path.name+'.sync.json')])
@@ -588,9 +603,17 @@ class ManagedWindow(QMainWindow):
         managed_locations.remember(vault=path)
         self.lock();self.lockdown_pending=False;self.vault=ManagedVault(path);self.username.clear();self.search.clear();self.password_fallback=False;self.update_state()
     def recent(self):
-        dialog=QDialog(self);dialog.setWindowTitle('Recent Vaults');layout=QVBoxLayout(dialog);items=QListWidget();items.addItems(self.history.read());layout.addWidget(items)
+        dialog=QDialog(self);dialog.setWindowTitle('Vaults — recently opened');layout=QVBoxLayout(dialog);items=QListWidget();layout.addWidget(items)
+        paths=self.history.read();current=str(self.vault.path.resolve())
+        if self.vault.path.exists() and current not in paths:paths.insert(0,current)
+        for path in paths:
+            candidate=ManagedVault(path)
+            try:candidate._connect();name=candidate.display_name or 'Unnamed vault'
+            except Exception:name='Unavailable vault'
+            finally:candidate.lock()
+            item=QListWidgetItem(f'{name}'+(' (current)' if Path(path).resolve()==self.vault.path.resolve() else '')+f'\n{path}');item.setData(Qt.ItemDataRole.UserRole,path);items.addItem(item)
         buttons=QDialogButtonBox(QDialogButtonBox.StandardButton.Open|QDialogButtonBox.StandardButton.Cancel);layout.addWidget(buttons);buttons.accepted.connect(dialog.accept);buttons.rejected.connect(dialog.reject)
-        if dialog.exec()==QDialog.DialogCode.Accepted and items.currentItem() and not self.task:self.open_path(Path(items.currentItem().text()))
+        if dialog.exec()==QDialog.DialogCode.Accepted and items.currentItem() and not self.task:self.open_path(Path(items.currentItem().data(Qt.ItemDataRole.UserRole)))
         dialog.deleteLater()
     def manage(self):
         if not self.vault.manager or self.task:return

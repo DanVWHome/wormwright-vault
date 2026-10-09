@@ -1,6 +1,8 @@
-# Wormwright Pocket 0.1.0-test.8
+# Wormwright Pocket 0.1.0-test.9
 
-Adds Create new vault and Switch personal vault without deleting existing vaults. Help → Delete all phone vaults removes active/retained private vault files and phone keys after fresh phone authentication, the optional vault password when configured, and typing DELETE. Help → Delete selected backups selects exported files for separately authorized cleanup. Other devices and provider trash remain.
+New vaults and restores require a recognizable name. Vaults shows names and the current selection; reopening with multiple vaults opens the named chooser. Rename current vault gives older vaults a name. Delete current vault and Delete vault… remove one chosen vault with fresh phone authentication, its optional password, a named scope review and typed DELETE. Cancel is visible before authentication, in the chooser and on the final review. Other vaults and exports remain. Names are signed visible metadata retained in encrypted backups.
+
+Previously: Adds Create new vault and Switch personal vault without deleting existing vaults. Help → Delete all phone vaults removes active/retained private vault files and phone keys after fresh phone authentication, the optional vault password when configured, and typing DELETE. Help → Delete selected backups selects exported files for separately authorized cleanup. Other devices and provider trash remain.
 
 # 0.1.0-test.7
 

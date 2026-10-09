@@ -62,3 +62,7 @@ Play submission should be treated as approved merely because the APK installs.
 ## Fresh vault and deletion
 
 Create a second invented personal vault, cancel once, complete creation, and switch back to the original. Verify both remain accessible. Cancel deletion at authentication and final review. Confirm wrong or missing DELETE removes nothing. Authorize Delete all phone vaults with/without optional password and verify retained copies are gone and creation becomes available. Export invented backups, select multiple files using Delete selected backups, cancel once, then authorize and confirm. Verify only selected files are removed and report any provider failures; check provider trash separately.
+
+## Named vaults and individual deletion
+
+Reject a blank name. Create differently named vaults; close and reopen the app and verify the named chooser and current marker. Rename an older unnamed vault after inspecting its entries. Cancel at the named deletion chooser, before authentication and at the final review; verify all files remain. Delete a noncurrent vault and a current vault with/without an optional password; verify only the chosen vault and its key are gone, remaining vaults still open, and exported backups remain.

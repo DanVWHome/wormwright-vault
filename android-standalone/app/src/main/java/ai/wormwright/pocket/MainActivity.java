@@ -41,6 +41,7 @@ public class MainActivity extends Activity {
     private DestructiveActions maintenance;
     private File base, pendingExport;
     private JSONObject active;
+    private boolean startupChoicePending;
     private String ownedClip;
     private final Runnable idle = () -> lock("Locked after two minutes of inactivity.");
     private final Runnable clearClip = this::clearClipboard;
@@ -54,7 +55,7 @@ public class MainActivity extends Activity {
         super.onCreate(state); maintenance=new DestructiveActions(this); getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
         getWindow().setDecorFitsSystemWindows(false);
         base = getNoBackupFilesDir();
-        try { active = readActive(); } catch (Exception e) { active = null; }
+        try { active = readActive(); startupChoicePending=savedVaults().size()>1; } catch (Exception e) { active = null; }
         home("Phone authentication unlocks this device. A separate backup secret restores exported backups.");
     }
     private JSONObject readActive() throws Exception {
@@ -126,10 +127,10 @@ public class MainActivity extends Activity {
         Button helpButton = new Button(this); helpButton.setText("Help"); helpButton.setAllCaps(false);
         helpButton.setOnClickListener(v -> {
             onUserInteraction(); PopupMenu menu = new PopupMenu(this,helpButton);
-            menu.getMenu().add("Create new vault"); menu.getMenu().add("Switch personal vault"); menu.getMenu().add("Delete all phone vaults"); menu.getMenu().add("Delete selected backups");
+            menu.getMenu().add("Create new vault"); menu.getMenu().add("Vaults"); menu.getMenu().add("Rename current vault"); menu.getMenu().add("Delete current vault"); menu.getMenu().add("Delete vault…"); menu.getMenu().add("Delete all phone vaults"); menu.getMenu().add("Delete selected backups");
             menu.getMenu().add("Backup and recovery"); menu.getMenu().add("About"); menu.getMenu().add("Wormwright Website");
             menu.setOnMenuItemClickListener(item -> { String choice=item.getTitle().toString();
-                if(choice.equals("Create new vault")) newVault(); else if(choice.equals("Switch personal vault")) switchVault(); else if(choice.equals("Delete all phone vaults")) deletePhoneVaults(); else if(choice.equals("Delete selected backups")) maintenance.chooseBackups(); else if (choice.equals("About")) about(); else if (choice.equals("Backup and recovery")) help(); else openWebsite(); return true; }); menu.show();
+                if(choice.equals("Create new vault")) newVault(); else if(choice.equals("Vaults")) switchVault(); else if(choice.equals("Rename current vault")) renameVault(); else if(choice.equals("Delete current vault")) deleteCurrentVault(); else if(choice.equals("Delete vault…")) chooseVaultForDeletion(); else if(choice.equals("Delete all phone vaults")) deletePhoneVaults(); else if(choice.equals("Delete selected backups")) maintenance.chooseBackups(); else if (choice.equals("About")) about(); else if (choice.equals("Backup and recovery")) help(); else openWebsite(); return true; }); menu.show();
         });
         heading.addView(helpButton); root.addView(heading); root.addView(text("Version " + installedVersion())); status = text(""); root.addView(status);
         progressRow = column(); LinearLayout loading = new LinearLayout(this); loading.setGravity(Gravity.CENTER_VERTICAL);
@@ -157,8 +158,9 @@ public class MainActivity extends Activity {
     private void home(String note) {
         screen("Wormwright Pocket"); root.addView(text("Your personal password vault"), 1); message(note);
         boolean stored = new File(base, "active.json").exists();
-        if (stored) { button(root, "Unlock personal vault", this::unlockPersonal); button(root,"Create new vault",this::newVault); button(root,"Switch personal vault",this::switchVault); }
-        else button(root, "Create personal vault", () -> createOrRestore(null, null));
+        if(stored)root.addView(text("Current vault: "+vaultLabel(active)));
+        if (stored) { button(root,"Choose a vault",this::switchVault); button(root, "Open “"+vaultLabel(active)+"”", this::unlockPersonal); button(root,"Create new vault",this::newVault); button(root,"Delete current vault",this::deleteCurrentVault); }
+        else {button(root, "Create personal vault", () -> createOrRestore(null, null));button(root,"Vaults",this::switchVault);}
         button(root, "Open invented sample vault", () -> { sample = true; task("Opening vault…", () -> call("sample", new File(base, "sample.sqlite").getPath()), v -> { unlocked = true; vaultScreen(); }); });
         button(root, "Restore portable encrypted backup", this::chooseRestore);
         button(root, "Backup and recovery help", this::help);
@@ -205,10 +207,15 @@ public class MainActivity extends Activity {
             });
         } catch (Exception e) { message("Device key or vault metadata unavailable. Your files were kept. Restore an exported portable backup; no replacement was created."); }
     }
-    private void openEnvelope(String slot, String envelope, String password) {
-        task("Opening vault…", () -> { String secret = call("unprotect", envelope, password); return call("unlock", slotFile(slot).getPath(), secret); }, v -> { sample = false; unlocked = true; vaultScreen(); });
+    private void openEnvelope(String slot,String envelope,String password) {
+        task("Opening vault…",()->{String secret=call("unprotect",envelope,password);String result=call("unlock",slotFile(slot).getPath(),secret);String name=call("vault_name");
+            JSONObject state=readActive();if(state!=null&&slot.equals(state.optString("slot"))&&!name.isEmpty()){state.put("name",name);publish(state);}return result;
+        },v->{sample=false;unlocked=true;vaultScreen();if(active.optString("name","").isEmpty())message("This vault has no name yet. Choose Rename current vault to identify it in the list.");});
     }
     private void createOrRestore(File imported, String recovery) {
+        namePrompt("Name the vault", "", null, name->createNamed(imported,recovery,name));
+    }
+    private void createNamed(File imported,String recovery,String name) {
         if (!((KeyguardManager)getSystemService(KEYGUARD_SERVICE)).isDeviceSecure()) { message("Set a secure phone PIN, pattern or password first."); return; }
         password("Optional vault password", true, true, p -> {
             String slot = UUID.randomUUID().toString();
@@ -217,9 +224,9 @@ public class MainActivity extends Activity {
                     String secret = call("new_secret");
                     String envelope = call("protect", secret, p);
                     byte[] wrapped = DeviceKey.finish(slot,cipher,envelope.getBytes(StandardCharsets.UTF_8));
-                    if (imported == null) call("create", slotFile(slot).getPath(), secret);
-                    else { call("restore", imported.getPath(), slotFile(slot).getPath(), recovery, secret); call("unlock", slotFile(slot).getPath(), secret); }
-                    JSONObject state = new JSONObject().put("slot", slot).put("iv", encode(cipher.getIV())).put("wrapped", encode(wrapped)).put("password", !p.isEmpty());
+                    if (imported == null) call("create", slotFile(slot).getPath(), secret,name);
+                    else { call("restore", imported.getPath(), slotFile(slot).getPath(), recovery, secret); call("unlock", slotFile(slot).getPath(), secret);call("rename_vault",name); }
+                    JSONObject state = new JSONObject().put("slot", slot).put("iv", encode(cipher.getIV())).put("wrapped", encode(wrapped)).put("password", !p.isEmpty()).put("name",name);
                     publish(state);
                     if (imported != null) imported.delete();
                     return "";
@@ -258,11 +265,12 @@ public class MainActivity extends Activity {
     }
 
     private void vaultScreen() {
-        screen(sample ? "Invented sample vault" : "Personal vault");
+        screen(sample ? "Invented sample vault" : vaultLabel(active));
         button(root, "Lock vault", () -> lock("Vault locked."));
         button(root, "Add entry", () -> edit(new JSONObject()));
         button(root, "Recently deleted", this::recentlyDeleted);
         if (!sample) {
+            button(root,"Vaults",this::switchVault); button(root,"Rename current vault",this::renameVault); button(root,"Delete current vault",this::deleteCurrentVault);
             button(root, "Export portable backup", () -> export(false));
             button(root, "Export for desktop and NAS", () -> export(true));
             button(root, "Change optional vault password", this::changePassword);
@@ -405,7 +413,7 @@ public class MainActivity extends Activity {
                     String slot=UUID.randomUUID().toString();authenticate(DeviceKey.cipher(slot,true,null),cipher->task(()->{
                         String protectedSecret=call("protect",secret,next);byte[] wrapped=DeviceKey.finish(slot,cipher,protectedSecret.getBytes(StandardCharsets.UTF_8));
                         Files.copy(slotFile(old).toPath(),slotFile(slot).toPath());
-                        publish(new JSONObject().put("slot",slot).put("iv",encode(cipher.getIV())).put("wrapped",encode(wrapped)).put("password",!next.isEmpty()));
+                        publish(new JSONObject().put("slot",slot).put("iv",encode(cipher.getIV())).put("wrapped",encode(wrapped)).put("password",!next.isEmpty()).put("name",state.optString("name", "")).put("created",state.optString("created","")));
                         DeviceKey.delete(old); slotFile(old).delete(); new File(base,"saved-"+old+".json").delete(); return "";
                     },r->home("Protection updated. Unlock again.")));
                 }));
@@ -420,23 +428,87 @@ public class MainActivity extends Activity {
             .setNegativeButton("Cancel",null).setPositiveButton("Create",(d,w)->{lock("Creating a separate new vault.");createOrRestore(null,null);}).create();
         dialog=prompt;prompt.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);prompt.show();
     }
-    private void switchVault() {
+    private String vaultLabel(JSONObject state) {
+        if(state==null)return "No selected vault";
+        String name=state.optString("name","").trim();
+        return name.isEmpty()?"Unnamed vault · "+state.optString("created","Earlier vault")+" · "+state.optString("slot","").substring(0,Math.min(8,state.optString("slot","").length())):name;
+    }
+    private java.util.List<JSONObject> savedVaults() throws Exception {
+        java.util.List<JSONObject> states=new java.util.ArrayList<>();JSONObject current=readActive();
+        if(current!=null&&slotFile(current.getString("slot")).exists())saveState(new File(base,"saved-"+current.getString("slot")+".json"),current);
+        File[] files=base.listFiles();if(files!=null)for(File file:files)if(file.getName().matches("saved-[a-f0-9-]{36}\\.json")){
+            JSONObject state=new JSONObject(new String(new AtomicFile(file).readFully(),StandardCharsets.UTF_8));String slot=state.getString("slot");
+            if(slot.matches("[a-f0-9-]{36}")&&slotFile(slot).exists())states.add(state);
+        }
+        states.sort((a,b)->vaultLabel(a).compareToIgnoreCase(vaultLabel(b)));return states;
+    }
+    private void namePrompt(String title,String initial,String exceptSlot,PasswordDone done) {
+        LinearLayout fields=column();fields.setPadding(dp(20),dp(8),dp(20),dp(8));fields.addView(text("Give this vault a recognizable name. The name is shown in your vault list."));
+        EditText name=input(fields,"Vault name (required)",false);name.setSingleLine(true);name.setText(initial);final int token=epoch;
+        final AlertDialog prompt=new AlertDialog.Builder(this).setTitle(title).setView(fields).setNegativeButton("Cancel",null).setPositiveButton("Save name",null).create();dialog=prompt;
+        prompt.setOnDismissListener(d->{name.setText("");if(dialog==prompt)dialog=null;});
+        prompt.setOnShowListener(d->prompt.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{
+            if(token!=epoch||busy)return;String value=name.getText().toString().trim();
+            if(value.isEmpty()||value.length()>80||value.matches(".*[\\p{Cntrl}].*")){name.setError("Enter a vault name of 1–80 characters.");return;}
+            try{for(JSONObject state:savedVaults())if(!state.optString("slot").equals(exceptSlot)&&value.equalsIgnoreCase(state.optString("name",""))){name.setError("That vault name is already used. Choose a different name.");return;}
+                prompt.dismiss();done.accept(value);
+            }catch(Exception e){message(safeError(e));}
+        }));prompt.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);prompt.show();
+    }
+    private void renameVault() {
         if(busy)return;
-        try{
-            java.util.List<JSONObject> states=new java.util.ArrayList<>();java.util.List<String> labels=new java.util.ArrayList<>();
-            JSONObject current=readActive();if(current!=null)saveState(new File(base,"saved-"+current.getString("slot")+".json"),current);
-            File[] files=base.listFiles();if(files!=null)java.util.Arrays.sort(files,java.util.Comparator.comparing(File::getName));
-            if(files!=null)for(File file:files)if(file.getName().matches("saved-[a-f0-9-]{36}\\.json")){
-                JSONObject state=new JSONObject(new String(new AtomicFile(file).readFully(),StandardCharsets.UTF_8));String slot=state.getString("slot");
-                if(slotFile(slot).exists()){states.add(state);labels.add(state.optString("created","Earlier vault")+" · "+slot.substring(0,8)+(current!=null&&slot.equals(current.optString("slot"))?" (current)":""));}
-            }
+        if(!unlocked||sample){message("Unlock the selected personal vault to name it.");return;}
+        final JSONObject state=active;
+        namePrompt("Rename current vault",state.optString("name",""),state.optString("slot"),name->task("Saving vault name…",()->{call("rename_vault",name);state.put("name",name);publish(state);return "";},v->vaultScreen()));
+    }
+    private void vaultChooser(boolean deleting) {
+        if(busy)return;
+        try{java.util.List<JSONObject> states=savedVaults();java.util.List<String> labels=new java.util.ArrayList<>();JSONObject current=readActive();
+            for(JSONObject state:states)labels.add(vaultLabel(state)+(current!=null&&state.getString("slot").equals(current.optString("slot"))?" (current)":""));
             if(states.isEmpty()){message("No saved personal vaults.");return;}
-            final AlertDialog chooser=new AlertDialog.Builder(this).setTitle("Switch personal vault").setItems(labels.toArray(new String[0]),(d,index)->{
-                lock("Vault switched. Authenticate to open it.");try{publish(states.get(index));home("Vault switched. Authenticate to open it.");unlockPersonal();}catch(Exception e){message(safeError(e));}
-            }).setNegativeButton("Cancel",null).create();dialog=chooser;chooser.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);chooser.show();
+            final AlertDialog chooser=new AlertDialog.Builder(this).setTitle(deleting?"Select one vault to delete":"Vaults — select to open")
+                .setItems(labels.toArray(new String[0]),(d,index)->{JSONObject chosen=states.get(index);
+                    if(deleting){deleteVault(chosen);return;}
+                    lock("Selected "+vaultLabel(chosen)+". Authenticate to open it.");try{publish(chosen);home("Selected "+vaultLabel(chosen)+". Authenticate to open it.");unlockPersonal();}catch(Exception e){message(safeError(e));}
+                }).setNegativeButton("Cancel",null).create();dialog=chooser;chooser.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);chooser.show();
         }catch(Exception e){message(safeError(e));}
     }
+    private void switchVault(){vaultChooser(false);}
+    private void chooseVaultForDeletion(){vaultChooser(true);}
+    private void deleteCurrentVault(){try{JSONObject state=readActive();if(state==null){message("No current vault to delete.");return;}deleteVault(state);}catch(Exception e){message(safeError(e));}}
+    private void deleteVault(JSONObject state) {
+        if(busy)return;
+        deletionStart("Delete “"+vaultLabel(state)+"”?","Only this selected phone vault and its device key will be deleted. Other vaults and exported backups are kept. Continue to authenticate, then review and type DELETE.",()->authorizeVaultDeletion(state));
+    }
+    private void deletionStart(String title,String scope,Runnable action) {
+        final AlertDialog prompt=new AlertDialog.Builder(this).setTitle(title).setMessage(scope).setNegativeButton("Cancel",null).setPositiveButton("Continue",(d,w)->action.run()).create();dialog=prompt;
+        prompt.setOnDismissListener(d->{if(dialog==prompt)dialog=null;});prompt.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);prompt.show();
+    }
+    private void authorizeVaultDeletion(JSONObject state) {
+        if(busy)return;
+        lock("Authenticate to delete “"+vaultLabel(state)+"”.");
+        try{String slot=state.getString("slot");if(!slot.matches("[a-f0-9-]{36}")||!slotFile(slot).exists())throw new IllegalStateException();
+            authenticate(DeviceKey.cipher(slot,false,decode(state.getString("iv"))),cipher->{
+                String envelope=new String(DeviceKey.finish(slot,cipher,decode(state.getString("wrapped"))),StandardCharsets.UTF_8);
+                PasswordDone verified=password->task("Verifying selected vault…",()->{String secret=call("unprotect",envelope,password);return call("verify_deletion",slotFile(slot).getPath(),secret);},name->{
+                    String label=name.isEmpty()?vaultLabel(state):name;
+                    maintenance.confirm("Delete one vault","Permanently delete only “"+label+"” ("+slot.substring(0,8)+") and its phone key. Other phone vaults, exported backups, desktop vaults and NAS copies are kept.",()->task("Deleting selected vault…",()->{
+                        call("lock");DeviceKey.delete(slot);java.util.List<String> failures=new java.util.ArrayList<>();
+                        for(String file:new String[]{"vault-"+slot+".sqlite","vault-"+slot+".sqlite-wal","vault-"+slot+".sqlite-shm","vault-"+slot+".sqlite-journal","saved-"+slot+".json","saved-"+slot+".json.bak","saved-"+slot+".json.new"})try{Files.deleteIfExists(new File(base,file).toPath());}catch(Exception e){failures.add(file);}
+                        JSONObject current=readActive();if(current!=null&&slot.equals(current.optString("slot"))){for(String file:new String[]{"active.json","active.json.bak","active.json.new"})try{Files.deleteIfExists(new File(base,file).toPath());}catch(Exception e){failures.add(file);}active=null;
+                            if(failures.isEmpty()){java.util.List<JSONObject> remaining=savedVaults();if(!remaining.isEmpty())publish(remaining.get(0));}
+                        }
+                        return failures.isEmpty()?"Deleted “"+label+"”. Other vaults and backups were kept.":"Deletion incomplete. Could not remove: "+String.join(", ",failures);
+                    },result->lock(result)));
+                });if(state.optBoolean("password"))password("Password for “"+vaultLabel(state)+"”",false,false,verified);else verified.accept("");
+            });
+        }catch(Exception e){message("Cannot authorize this selected vault. Nothing was deleted.");}
+    }
     private void deletePhoneVaults() {
+        if(busy)return;
+        deletionStart("Delete all phone vaults?","This removes every personal vault stored inside Pocket and their device keys. Exported backups are kept. Continue to authenticate, then review and type DELETE.",this::authorizeAllVaultDeletion);
+    }
+    private void authorizeAllVaultDeletion() {
         if(busy)return;
         lock("Authenticate to review permanent deletion.");
         try{
@@ -485,7 +557,7 @@ public class MainActivity extends Activity {
         if(dialog!=null)dialog.dismiss();ui.removeCallbacks(idle);clearClipboard();worker.execute(()->engine().callAttr("lock"));home(note);
     }
     @Override public void onUserInteraction(){super.onUserInteraction();if(unlocked){ui.removeCallbacks(idle);ui.postDelayed(idle,120000);}}
-    @Override protected void onResume(){super.onResume();resumed=true;maintenance.onResume();if(pendingAuthentication!=null)ui.post(()->{if(pendingAuthentication!=null)pendingAuthentication.run();});}
+    @Override protected void onResume(){super.onResume();resumed=true;maintenance.onResume();if(startupChoicePending){startupChoicePending=false;ui.post(()->{if(resumed&&!busy&&!authenticating)switchVault();});}if(pendingAuthentication!=null)ui.post(()->{if(pendingAuthentication!=null)pendingAuthentication.run();});}
     @Override protected void onPause(){maintenance.onPause();resumed=false;lock("Vault locked. Authenticate to reopen.",authenticating);super.onPause();}
     @Override protected void onDestroy(){maintenance.onDestroy();++authVersion;pendingAuthentication=null;if(auth!=null)auth.cancel();if(pendingExport!=null)pendingExport.delete();super.onDestroy();}
 }

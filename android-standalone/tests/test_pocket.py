@@ -20,10 +20,18 @@ class PocketTests(unittest.TestCase):
         self.root = Path(self.tmp.name)
         self.local = self.root/'local.sqlite'
         self.secret = pocket.new_secret()
-        pocket.create(self.local, self.secret)
+        pocket.create(self.local, self.secret,"Invented test vault")
     def tearDown(self):
         pocket.lock()
         self.tmp.cleanup()
+    def test_names_survive_backup_and_rename(self):
+        self.assertEqual(pocket.vault_name(),'Invented test vault')
+        pocket.rename_vault('Invented renamed vault')
+        backup=self.root/'named-backup.sqlite';pocket.export(backup,'Invented-Backup-Password!')
+        v=ManagedVault(backup);v.unlock('Invented-Backup-Password!');self.assertEqual(v.display_name,'Invented renamed vault');v.lock()
+        self.assertEqual(pocket.verify_deletion(self.local,self.secret),'Invented renamed vault')
+        with self.assertRaises(VaultError):pocket.create(self.root/'bad.sqlite',self.secret,' ')
+        self.assertFalse((self.root/'bad.sqlite').exists())
     def entry(self):
         return {'description':'Invented Café 🔒', 'user_name':'demo@example.invalid',
                 'password':'Invented-Password-Only!', 'link':'https://example.invalid/path',
