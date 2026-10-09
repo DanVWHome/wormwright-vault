@@ -21,6 +21,7 @@ public class UiRegressionInstrumentation extends Instrumentation {
     @Override public void onStart() {
         Bundle result = new Bundle();
         try {
+            unlockFixtureScreen();
             activity = (MainActivity)startActivitySync(new Intent(getTargetContext(),MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
             waitForIdleSync();
             personalCreation();
@@ -89,6 +90,29 @@ public class UiRegressionInstrumentation extends Instrumentation {
         if(node==null||depth>12)return;
         out.append("\n").append(node.getClassName()).append(" ").append(node.getViewIdResourceName()).append(" text=").append(node.isPassword()?"[password field]":node.getText()).append(" desc=").append(node.getContentDescription());
         for(int i=0;i<node.getChildCount();i++)appendSystemNodes(node.getChild(i),out,depth+1);
+    }
+    private void unlockFixtureScreen() {
+        android.app.KeyguardManager guard=(android.app.KeyguardManager)getTargetContext().getSystemService(android.content.Context.KEYGUARD_SERVICE);
+        shell("input keyevent 224");long until=SystemClock.uptimeMillis()+30000;
+        while(guard.isKeyguardLocked()&&SystemClock.uptimeMillis()<until){
+            android.view.accessibility.AccessibilityNodeInfo root=getUiAutomation().getRootInActiveWindow();
+            if(root!=null&&"com.android.systemui".contentEquals(root.getPackageName())){
+                java.util.List<android.view.accessibility.AccessibilityNodeInfo> entry=root.findAccessibilityNodeInfosByViewId("com.android.systemui:id/pinEntry");
+                if(!entry.isEmpty()) {
+                    // This is the isolated emulator's ordinary lock screen, not
+                    // the app's auth prompt. Enter only the invented fixture PIN.
+                    for(char digit:"246813".toCharArray()){
+                        java.util.List<android.view.accessibility.AccessibilityNodeInfo> keys=root.findAccessibilityNodeInfosByViewId("com.android.systemui:id/key"+digit);
+                        check(!keys.isEmpty(),"fixture PIN keypad exists");keys.get(0).performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK);
+                    }
+                    java.util.List<android.view.accessibility.AccessibilityNodeInfo> enter=root.findAccessibilityNodeInfosByViewId("com.android.systemui:id/key_enter");
+                    check(!enter.isEmpty(),"fixture PIN enter exists");enter.get(0).performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK);
+                    SystemClock.sleep(500);
+                }else {shell("input keyevent 82");shell("input swipe 540 1800 540 400 300");}
+            }
+            SystemClock.sleep(200);
+        }
+        check(!guard.isKeyguardLocked(),"isolated emulator unlocked before app tests");
     }
     private void confirmPin() {
         shell("input keyevent 224");
