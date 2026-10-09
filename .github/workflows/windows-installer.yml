@@ -59,5 +59,5 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         shell: pwsh
         run: |
-          gh release create v0.3.4-windows-preview.1 portable/* dist-installer/* --target ${{ github.sha }} --prerelease --title "Wormwright Vault 0.3.4 Windows preview 1" --notes "Adds Help → Wormwright Website in Vault and Manager. Tested portable build, installer upgrade, startup and uninstall checks passed. Existing vault format and NAS sync fixes are retained."
+          gh release create v0.3.4-windows-preview.1 portable/* dist-installer/* --target ${{ github.sha }} --prerelease --title "Wormwright Vault 0.3.4 Windows preview 1" --notes "Adds Help → Check for Updates and Update Settings in Vault and Manager, with Stable/Preview channels and optional once-daily checks. Download Update opens the official website. Automatic checking is off initially. Checks send no vault, account or search data. Tested portable build, installer upgrade, startup and uninstall checks passed. Existing vault format and NAS sync fixes are retained."
           if ($LASTEXITCODE -ne 0) { throw 'Release upload failed' }
