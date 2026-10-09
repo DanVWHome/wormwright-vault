@@ -19,3 +19,7 @@ Uploads retain an encrypted NAS backup, write to a unique temporary file, flush 
 Preview limitations: no closed-app background sync, Android autofill, hardware keys or Manager account administration. Pixel 10 / GrapheneOS acceptance confirmed: encrypted import, NAS downloads, phone-created entries appearing on Linux, and phone deletions appearing in Manager recovery view.
 
 Build with the workspace Gradle and Android SDK. `prepare_build.py` creates private persistent local signing credentials outside the packaged source. Never distribute the signing key. `package_preview.py` creates the APK, source archive, checksum and verification report. Python interoperability tests run with PyNaCl; JVM transport tests simulate cancellation, contention and interrupted uploads.
+
+Preview.6 keeps the search field enabled and focused as results update, retaining
+the keyboard. Pending results cannot be tapped, and older queries cannot replace
+newer results. Background NAS sync preserves typing and the current query.

@@ -24,12 +24,13 @@ public class UiRegressionInstrumentation extends Instrumentation {
             activity = (MainActivity)startActivitySync(new Intent(getTargetContext(),MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
             waitForIdleSync();
             openingFeedback();
+            searchKeyboard();
             editTransitions();
             deleteAndRestore();
             staleCompletion();
             failureFeedback();
             result.putBoolean("ui_regression_ok",true);
-            result.putString("stream","\nPASS opening spinner/duplicate taps, edit/save/cancel transitions, delete/restore list refresh, stale completion, error cleanup.\n");
+            result.putString("stream","\nPASS opening spinner/duplicate taps, search keyboard/focus/latest results, edit/save/cancel transitions, delete/restore list refresh, stale completion, error cleanup.\n");
             runOnMainSync(() -> activity.finish()); finish(Activity.RESULT_OK,result);
         } catch (Throwable error) {
             result.putBoolean("ui_regression_ok",false); result.putString("stream",android.util.Log.getStackTraceString(error));
@@ -78,8 +79,29 @@ public class UiRegressionInstrumentation extends Instrumentation {
             check(busy() && hasSpinner(root()),"opening immediately shows spinner");check(!opening.isEnabled(),"opening disabled until complete");
             opening.performClick();check(busy(),"duplicate tap does not finish opening");
         });}finally{release.countDown();}
-        await(()->!busy()&&unlocked(),"sample opens");waitForIdleSync();
+        await(()->!busy()&&unlocked()&&hasEntryRows(),"sample opens");waitForIdleSync();
         runOnMainSync(()->check(!hasSpinner(root()),"spinner hides on success"));
+    }
+    private boolean hasEntryRows() {
+        try { ViewGroup rows=(ViewGroup)field("rows"); return rows!=null&&rows.getChildCount()>0&&rows.getChildAt(0) instanceof Button&&rows.getChildAt(0).isEnabled(); }catch(Exception e){return false;}
+    }
+    private boolean keyboardVisible() {android.view.WindowInsets insets=activity.getWindow().getDecorView().getRootWindowInsets();return insets!=null&&insets.isVisible(android.view.WindowInsets.Type.ime());}
+    private void searchKeyboard() throws Exception {
+        final EditText input=(EditText)field("search");final String[] entry={""};
+        runOnMainSync(()->{try{entry[0]=((Button)((ViewGroup)field("rows")).getChildAt(0)).getText().toString().split("\n",2)[0];}catch(Exception e){throw new RuntimeException(e);}input.requestFocus();((android.view.inputmethod.InputMethodManager)activity.getSystemService(android.content.Context.INPUT_METHOD_SERVICE)).showSoftInput(input,android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT);});
+        await(()->keyboardVisible(),"search keyboard opens");
+        for(int length=1;length<=Math.min(3,entry[0].length());length++) {
+            final String query=entry[0].substring(0,length);
+            runOnMainSync(()->{input.setText(query);input.setSelection(query.length());});
+            await(()->hasEntryRows(),"search results update after each letter");
+            runOnMainSync(()->check(input.isEnabled()&&input.hasFocus()&&keyboardVisible(),"typing preserves enabled search, focus and keyboard"));
+        }
+        runOnMainSync(()->{input.setText("invented-no-match-938271");input.setText(entry[0]);});
+        await(()->hasEntryRows(),"latest query wins");
+        runOnMainSync(()->{try{ViewGroup rows=(ViewGroup)field("rows");check(rows.getChildCount()==1,"latest query filtered results");check(input.hasFocus()&&keyboardVisible(),"rapid typing keeps keyboard");input.setText("");}catch(Exception e){throw new RuntimeException(e);}});
+        await(()->hasEntryRows(),"clear search restores results");
+        runOnMainSync(()->((android.view.inputmethod.InputMethodManager)activity.getSystemService(android.content.Context.INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(input.getWindowToken(),0));
+        await(()->!keyboardVisible(),"test closes keyboard");
     }
     private AlertDialog dialog() {try{return (AlertDialog)field(dialogField);}catch(Exception e){throw new RuntimeException(e);} }
     private void editTransitions() {

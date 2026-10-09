@@ -25,6 +25,8 @@ public class MainActivity extends Activity {
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
     private final Handler ui = new Handler(Looper.getMainLooper());
     private LinearLayout root, rows;
+    private EditText search;
+    private int searchVersion;
     private TextView status, progressLabel;
     private LinearLayout progressRow;
     private String progressText = "Working…";
@@ -226,20 +228,32 @@ public class MainActivity extends Activity {
             button(root, "Export for desktop and NAS", () -> export(true));
             button(root, "Change optional vault password", this::changePassword);
         }
-        EditText search = input(root, "Search description, username or link", false);
+        search = input(root, "Search description, username or link", false);
         rows = column(); root.addView(rows);
         search.addTextChangedListener(new TextWatcher() {
             public void beforeTextChanged(CharSequence s,int a,int c,int f) {} public void onTextChanged(CharSequence s,int a,int b,int c) {}
-            public void afterTextChanged(Editable e) { ui.removeCallbacks(searchJob); ui.postDelayed(searchJob, 250); }
+            public void afterTextChanged(Editable e) { ++searchVersion; for(int i=0;i<rows.getChildCount();i++)rows.getChildAt(i).setEnabled(false); ui.removeCallbacks(searchJob); ui.postDelayed(searchJob, 250); }
             private final Runnable searchJob = () -> refresh(search.getText().toString());
         }); refresh(""); onUserInteraction();
     }
     private void refresh(String q) {
         if (!unlocked) return;
-        task(() -> call("listing", q), value -> {
-            rows.removeAllViews(); JSONArray records = new JSONArray(value);
-            for (int i=0;i<records.length();i++) { JSONObject r=records.getJSONObject(i); String id=r.getString("id"); button(rows,r.getString("description")+"\n"+r.optString("user_name"),()-> showEntry(id)); }
-            if (records.length()==0) rows.addView(text("No matching entries."));
+        final int token = epoch, request = ++searchVersion;
+        final LinearLayout target = rows;
+        for (int i=0;i<target.getChildCount();i++) target.getChildAt(i).setEnabled(false);
+        worker.execute(() -> {
+            String result = null, error = null;
+            try { if (token == epoch) result = call("listing",q); } catch (Exception e) { error = safeError(e); }
+            final String value = result, problem = error;
+            ui.post(() -> {
+                if (token != epoch || request != searchVersion || !unlocked || !resumed || target != rows) return;
+                if (problem != null) { for(int i=0;i<target.getChildCount();i++) target.getChildAt(i).setEnabled(true); message(problem); return; }
+                try {
+                    JSONArray records = new JSONArray(value); target.removeAllViews();
+                    for(int i=0;i<records.length();i++) { JSONObject r=records.getJSONObject(i); String id=r.getString("id"); button(target,r.getString("description")+"\n"+r.optString("user_name"),()->showEntry(id)); }
+                    if(records.length()==0)target.addView(text("No matching entries."));
+                } catch(Exception e) { message(safeError(e)); }
+            });
         });
     }
     private void showEntry(String id) {

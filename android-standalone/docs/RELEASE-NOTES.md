@@ -2,7 +2,9 @@
 
 Your personal password vault. Standalone offline Android app by Dan Van Wormer.
 
-Test.5 fixes immediate list refresh after deleting and restoring entries. Commands
+Test.5 fixes immediate list refresh after deleting and restoring entries. Search updates only the results, keeping the keyboard open and the search field
+focused. Stale results cannot replace a newer query; old rows are disabled while
+filtering so they cannot be tapped accidentally. Commands
 which return no value now complete normally, so the list refresh is always run.
 
 Test.4 fixes the editor crash reported on test.3. Delayed record-dismiss callbacks
@@ -14,7 +16,7 @@ newer work. Camera spacing, grouped record controls and the approved icon remain
 
 Package and dedicated test signing identity are unchanged. Export a portable
 backup, then install over the earlier test build without uninstalling. VersionCode
-is 5. The NAS companion receives the same opening feedback in preview.5. Real
+is 5. The NAS companion receives the same opening feedback in preview.6. Real
 Android message-loop tests cover repeated record/edit/save/cancel transitions,
 visible opening feedback, error cleanup and stale completion after locking.
 Physical biometric/PIN and actual SMB NAS acceptance remain separate checks.
@@ -45,7 +47,7 @@ wrong secrets, corruption, crypto password wrapping, CRUD/lock/sample isolation,
 and a real desktop/companion engine migration round trip with a simulated shared
 folder. Android compilation and lint passed. APK signature and all 138 nested ELF
 libraries were checked. Desktop sources and crypto engine were not changed. The companion
-receives loading feedback in preview.5. Physical biometric/PIN fallback, coinstallation/update/uninstall retention,
+receives loading feedback in preview.6. Physical biometric/PIN fallback, coinstallation/update/uninstall retention,
 16 KiB runtime and actual desktop UI + SMB NAS + companion device workflow remain
 pending. Automated protocol checks do not replace those device tests.
 

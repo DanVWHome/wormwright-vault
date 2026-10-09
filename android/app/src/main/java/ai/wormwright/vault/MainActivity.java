@@ -182,7 +182,7 @@ public class MainActivity extends Activity {
         form.addView(label("Personal vault: leave account name blank.", 14));
         form.addView(label("Read and edit your encrypted vault offline. Changes sync with your NAS after unlocking, saving and while the app is open. Complete the first NAS sync before editing.", 16));
         form.addView(label("Locks when you leave the app or after two minutes idle. Screenshots and device backups are disabled. Copied values clear after 30 seconds or when you lock.", 14));
-        form.addView(label("0.1.0-preview.5 · No Google Play services needed", 13));
+        form.addView(label("0.1.0-preview.6 · No Google Play services needed", 13));
     }
     private PyObject bridge() { return Python.getInstance().getModule("mobile_bridge"); }
     private interface Job { String run() throws Exception; }
@@ -262,14 +262,25 @@ public class MainActivity extends Activity {
             public void onTextChanged(CharSequence s, int start, int before, int count) {
                 final int request = ++searchVersion;
                 final int token = generation; final String query = s.toString();
+                for(int i=0;i<rows.getChildCount();i++) rows.getChildAt(i).setEnabled(false);
                 handler.postDelayed(() -> {
                     if (!unlocked || request != searchVersion || token != generation) return;
-                    job(() -> bridge().callAttr("list_entries", query).toString(), value -> {
-                        if (request == searchVersion) renderRows(value);
-                    }, "The vault could not be checked. Please unlock again.");
+                    filterEntries(query,request,token);
                 }, 200);
             }
             public void afterTextChanged(Editable s) {}
+        });
+    }
+    private void filterEntries(String query,int request,int token) {
+        worker.execute(() -> {
+            String result=null; boolean failed=false;
+            try { if(token==generation) result=bridge().callAttr("list_entries",query).toString(); } catch(Exception e){failed=true;}
+            final String value=result; final boolean error=failed;
+            handler.post(() -> {
+                if(token!=generation || request!=searchVersion || !unlocked || !resumed || isFinishing())return;
+                if(error){lockNow("The vault could not be checked. Please unlock again.");return;}
+                try{renderRows(value);}catch(Exception e){lockNow("Cannot read this vault. Import a valid encrypted copy.");}
+            });
         });
     }
     private void renderRows(String value) throws Exception {
@@ -590,7 +601,7 @@ public class MainActivity extends Activity {
         if(!unlocked || sampleMode || !resumed || busy || nasRunning || editorDialog!=null || conflictReview!=null) return;
         if(detailDialog!=null) { if(manual) detailDialog.dismiss(); else return; }
         nasRunning=true; updateProgress(); final int token=generation; final String query=search.getText().toString();
-        search.setEnabled(false); status.setText("Syncing encrypted vault with NAS…");
+        status.setText("Syncing encrypted vault with NAS…");
         worker.execute(()->{
             JSONObject result=new JSONObject(); File directory=null;
             java.util.function.BooleanSupplier current=()->token==generation && resumed && unlocked;
@@ -621,7 +632,6 @@ public class MainActivity extends Activity {
             final JSONObject response=result;
             handler.post(()->{
                 if(token!=generation || !resumed || isFinishing()) return; nasRunning=false; updateProgress();
-                search.setEnabled(true);
                 try {
                     if(response.has("ready") && !response.getBoolean("ready")) {
                         status.setText(response.getString("message"));
@@ -631,7 +641,7 @@ public class MainActivity extends Activity {
                     } else if(!response.optBoolean("ok")) {
                         if(!response.optBoolean("session_ready")) lockNow("Sync stopped. Unlock to continue."); else status.setText(response.getString("message"));
                     } else if(response.optBoolean("revoked")) lockNow(response.getString("message"));
-                    else { renderRows(response.getString("entries")); status.setText(response.getString("message")); }
+                    else { if(query.equals(search.getText().toString())) renderRows(response.getString("entries")); status.setText(response.getString("message")); }
                 } catch(Exception ignored) { lockNow("Please unlock your vault again."); }
             });
         });
