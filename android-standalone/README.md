@@ -1,16 +1,22 @@
-# Wormwright Pocket Vault — Android standalone test
+# Wormwright Pocket — Android standalone test
+
+Your personal password vault.
 
 Publisher: Dan Van Wormer. Support: danvanwormer@pm.me.
 Permanent application ID: **ai.wormwright.vault.standalone**.
-Separate navy/cream phone-and-coral-worm launcher icon. Minimum Android 11 (API 30),
-target/compile Android 16 (API 36); arm64-v8a and x86_64. Test version 0.1.0-test.1.
+Coral Wormwright peeking out of a stitched blue pocket with a gold padlock. Minimum Android 11 (API 30),
+target/compile Android 16 (API 36); arm64-v8a and x86_64. Test version 0.1.0-test.2.
+
+This replaces the previously named Pocket Vault test.1. Keep the app installed;
+export a portable backup first, then install test.2 over it. The package and
+dedicated test signing identity are unchanged.
 
 ## Installation and first test
 
 Use invented data until the device checklist passes. Download the APK from the
-private draft release or local handoff folder, verify SHA-256 against SHA256SUMS,
+Wormwright website, private draft release or local handoff folder, verify SHA-256 against SHA256SUMS,
 transfer it to the phone, and allow your file manager to install this one APK.
-Launch **Wormwright Pocket Vault**, leaving **Wormwright Vault Preview** installed.
+Launch **Wormwright Pocket**, leaving **Wormwright Vault Preview** installed.
 A secure device screen lock is required for personal-vault creation and access.
 The sample vault contains invented accounts and is separate from personal data.
 

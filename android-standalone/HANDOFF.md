@@ -1,10 +1,10 @@
 # Submission-chat handoff — pending device acceptance
 
 Publisher: Dan Van Wormer; support: danvanwormer@pm.me.
-App: Wormwright Pocket Vault, version 0.1.0-test.1/versionCode 1.
+App: Wormwright Pocket, version 0.1.0-test.2/versionCode 2.
 Package: ai.wormwright.vault.standalone (permanent). Existing companion:
-ai.wormwright.vault.preview. Distinct vector phone/coral-worm icon is in
-app/src/main/res/drawable/pocket_icon.xml. There are no content providers, shared
+ai.wormwright.vault.preview. Approved pocket-and-lock mascot icon is in
+app/src/main/res/drawable-nodpi/pocket_icon.png. There are no content providers, shared
 user IDs, companion paths/aliases, storage permissions or NAS connection settings.
 Only USE_BIOMETRIC is declared; no Internet permission. Application sandbox and
 Keystore aliases separate it from the companion. Installation identifiers were

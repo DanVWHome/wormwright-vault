@@ -95,7 +95,7 @@ public class MainActivity extends Activity {
     private void button(LinearLayout parent, String title, Runnable action) { Button v = new Button(this); v.setText(title); parent.addView(v); v.setOnClickListener(w -> { if (!busy) action.run(); else message("Please wait."); }); }
     private void message(String value) { if (status != null) status.setText(value); }
     private void home(String note) {
-        screen("Wormwright Pocket Vault"); message(note);
+        screen("Wormwright Pocket"); root.addView(text("Your personal password vault"), 1); message(note);
         boolean stored = new File(base, "active.json").exists();
         if (stored) button(root, "Unlock personal vault", this::unlockPersonal);
         else button(root, "Create personal vault", () -> createOrRestore(null, null));
@@ -107,7 +107,7 @@ public class MainActivity extends Activity {
         KeyguardManager guard = (KeyguardManager)getSystemService(KEYGUARD_SERVICE);
         if (!guard.isDeviceSecure()) { message("Set a secure phone PIN, pattern or password before using your personal vault."); return; }
         if (auth != null) auth.cancel(); auth = new CancellationSignal(); final int generation = epoch;
-        new BiometricPrompt.Builder(this).setTitle("Unlock Wormwright Pocket Vault")
+        new BiometricPrompt.Builder(this).setTitle("Unlock Wormwright Pocket")
             .setSubtitle("Use strong biometrics or your phone screen-lock credential")
             .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG | BiometricManager.Authenticators.DEVICE_CREDENTIAL)
             .build().authenticate(new BiometricPrompt.CryptoObject(cipher), auth, getMainExecutor(), new BiometricPrompt.AuthenticationCallback() {
@@ -225,7 +225,7 @@ public class MainActivity extends Activity {
             if(records.length()==0)list.addView(text("No deleted entries."));dialog=new AlertDialog.Builder(this).setTitle("Recently deleted").setView(list).setPositiveButton("Close",null).create();dialog.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE); dialog.show(); });
     }
     private void copy(String value) {
-        ClipboardManager c=(ClipboardManager)getSystemService(CLIPBOARD_SERVICE); ClipData clip=ClipData.newPlainText("Pocket Vault",value);
+        ClipboardManager c=(ClipboardManager)getSystemService(CLIPBOARD_SERVICE); ClipData clip=ClipData.newPlainText("Wormwright Pocket",value);
         PersistableBundle extras=new PersistableBundle();extras.putBoolean("android.content.extra.IS_SENSITIVE",true);clip.getDescription().setExtras(extras);
         c.setPrimaryClip(clip);ownedClip=value;ui.removeCallbacks(clearClip);ui.postDelayed(clearClip,30000);message("Copied. Clipboard clears in 30 seconds or when Vault locks.");
     }
@@ -271,7 +271,7 @@ public class MainActivity extends Activity {
         }catch(Exception e){message(safeError(e));}
     }
     private void help() {
-        dialog=new AlertDialog.Builder(this).setTitle("Recovery and migration").setMessage("Phone authentication unlocks only this local vault. Exported backups require their separate password or generated recovery key on a replacement phone. Keep the backup and secret separately; losing the phone and all backup secrets makes recovery impossible.\n\nExports remain wherever you save them until you delete them. Pocket Vault does not rotate or delete exported backups. Deleted entries remain recoverable. Uninstalling clears app-private vaults and device keys, but does not delete exported documents.\n\nExport for desktop and NAS creates a signed format-2 personal vault; use its chosen master password (Owner account). Transfer it, open it on desktop, configure SMB NAS sync, then import a copy in the existing companion and complete initial NAS pairing. The phone vault stays independent. Format 2 retains deleted entries but has no per-entry edit history.\n\nSupport: danvanwormer@pm.me").setPositiveButton("Close",null).create();dialog.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE); dialog.show();
+        dialog=new AlertDialog.Builder(this).setTitle("Recovery and migration").setMessage("Phone authentication unlocks only this local vault. Exported backups require their separate password or generated recovery key on a replacement phone. Keep the backup and secret separately; losing the phone and all backup secrets makes recovery impossible.\n\nExports remain wherever you save them until you delete them. Wormwright Pocket does not rotate or delete exported backups. Deleted entries remain recoverable. Uninstalling clears app-private vaults and device keys, but does not delete exported documents.\n\nExport for desktop and NAS creates a signed format-2 personal vault; use its chosen master password (Owner account). Transfer it, open it on desktop, configure SMB NAS sync, then import a copy in the existing companion and complete initial NAS pairing. The phone vault stays independent. Format 2 retains deleted entries but has no per-entry edit history.\n\nSupport: danvanwormer@pm.me").setPositiveButton("Close",null).create();dialog.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE); dialog.show();
     }
     private void lock(String note) {
         epoch++;unlocked=false;if(auth!=null)auth.cancel();if(dialog!=null)dialog.dismiss();ui.removeCallbacks(idle);clearClipboard();worker.execute(()->engine().callAttr("lock"));home(note);

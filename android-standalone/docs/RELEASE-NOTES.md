@@ -1,6 +1,11 @@
-# Wormwright Pocket Vault 0.1.0-test.1 — device testing draft
+# Wormwright Pocket 0.1.0-test.2 — device testing draft
 
-Standalone offline Android password vault by Dan Van Wormer.
+Your personal password vault. Standalone offline Android app by Dan Van Wormer.
+
+This update renames Pocket Vault to Wormwright Pocket and replaces the launcher
+icon with the approved pocket-and-lock mascot. The package and dedicated test
+signing identity are unchanged, so it installs over test.1 without uninstalling.
+Export a portable backup before updating. VersionCode is now 2.
 
 - Create a personal encrypted vault protected by phone authentication through an
   authentication-per-operation Android Keystore key. Optional separate vault

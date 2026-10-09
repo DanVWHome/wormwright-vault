@@ -1,4 +1,4 @@
-name: Android Pocket Vault
+name: Android Wormwright Pocket
 on:
   workflow_dispatch:
   push:
@@ -39,7 +39,7 @@ jobs:
         run: python android-standalone/verify_package.py android-standalone/app/build/outputs/apk/debug/app-debug.apk "$ANDROID_HOME" > package-verification.json
       - uses: actions/upload-artifact@v4
         with:
-          name: pocket-vault-ci-test-build-not-production-signed
+          name: wormwright-pocket-ci-test-build-not-production-signed
           path: |
             android-standalone/app/build/outputs/apk/debug/*.apk
             android-standalone/app/build/outputs/bundle/release/*.aab
