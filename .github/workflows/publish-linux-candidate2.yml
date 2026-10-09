@@ -1,0 +1,36 @@
+name: Publish Linux NAS sync preview 2
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+  actions: read
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Require successful candidate build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test "$(gh api repos/DanVWHome/wormwright-vault/actions/runs/37866300791 --jq .conclusion)" = success
+          test "$(gh api repos/DanVWHome/wormwright-vault/actions/runs/37866300791 --jq .head_sha)" = 0d85bb4515c4b7943c7c1514304a9f9affbbb323
+      - uses: actions/download-artifact@v4
+        with:
+          name: wormwright-vault-linux-lockfix-preview2
+          path: candidate
+          run-id: 37866300791
+          github-token: ${{ github.token }}
+      - name: Verify candidate files and package identity
+        run: |
+          cd candidate
+          sha256sum --check SHA256SUMS
+          test "$(dpkg-deb --field wormwright-vault-mint_0.3.2+lockfix.2_amd64.deb Package)" = wormwright-vault-mint
+          test "$(dpkg-deb --field wormwright-vault-mint_0.3.2+lockfix.2_amd64.deb Version)" = 0.3.2+lockfix.2
+          test "$(dpkg-deb --field wormwright-vault-mint_0.3.2+lockfix.2_amd64.deb Architecture)" = amd64
+      - name: Publish prerelease without replacing latest stable release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create v0.3.2-lockfix-preview.2 candidate/* --repo DanVWHome/wormwright-vault --target 0d85bb4515c4b7943c7c1514304a9f9affbbb323 --title "Linux Mint NAS sync preview 2" --notes-file docs/releases/linux-lockfix-preview-2.md --prerelease --latest=false

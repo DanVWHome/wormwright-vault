@@ -6,7 +6,7 @@ Keep a local working vault on each device and sync through your own NAS.
 ## Downloads
 
 - [Linux Mint 0.3.2 — stable](https://github.com/DanVWHome/wormwright-vault/releases/tag/v0.3.2)
-- [Linux NAS lock-fix preview](https://github.com/DanVWHome/wormwright-vault/releases/tag/v0.3.2-lockfix-preview.1)
+- [Linux NAS sync preview 2](https://github.com/DanVWHome/wormwright-vault/releases/tag/v0.3.2-lockfix-preview.2)
 - [Windows 0.3.2 preview 2](https://github.com/DanVWHome/wormwright-vault/releases/tag/v0.3.2-windows-preview.2)
 - [Android 0.1.0-preview.3](https://github.com/DanVWHome/wormwright-vault/releases/tag/v0.3.1)
 
@@ -27,6 +27,9 @@ Keep each device’s local working copy separate from the shared master.
 Windows preserves the existing Linux and Android vault formats and NAS sync
 protocol. It does not require a vault-format migration or re-enrolling an
 existing YubiKey. Android retains its existing preview feature limits.
+
+The Linux preview also corrects an unsupported read/write reopen on GVFS SMB
+mounts and verifies upload bytes before replacing the shared file.
 
 The NAS cleanup improvements guarantee release attempts after scratch allocation
 and cleanup failures, retry short-lived release failures, and report persistent
