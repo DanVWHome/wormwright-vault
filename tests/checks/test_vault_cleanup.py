@@ -11,7 +11,7 @@ from managed_ui import ManagedWindow
 
 app=QApplication.instance() or QApplication([])
 with tempfile.TemporaryDirectory() as d:
-    root=Path(d);path=root/'working.sqlite';v=ManagedVault(path);v.create('Invented-Deletion-Test-Password!')
+    root=Path(d).resolve();path=root/'working.sqlite';v=ManagedVault(path);v.create('Invented-Deletion-Test-Password!')
     a=root/'backup-a.sqlite';b=root/'backup-b.sqlite';v.backup(a);v.backup(b)
     other=ManagedVault(root/'unrelated.sqlite');other.create('Invented-Unrelated-Password!');other.lock()
     expected=(v.meta['vault_id'],v.meta['verify'])
