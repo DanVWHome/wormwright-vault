@@ -79,9 +79,28 @@ public class UiRegressionInstrumentation extends Instrumentation {
             byte[] bytes=new byte[4096];while(input.read(bytes)!=-1){}
         }catch(Exception e){throw new RuntimeException(e);}
     }
+    private android.view.accessibility.AccessibilityNodeInfo pinField(android.view.accessibility.AccessibilityNodeInfo node) {
+        if(node==null)return null;
+        if("android.widget.EditText".contentEquals(node.getClassName()==null?"":node.getClassName()))return node;
+        for(int i=0;i<node.getChildCount();i++){android.view.accessibility.AccessibilityNodeInfo found=pinField(node.getChild(i));if(found!=null)return found;}
+        return null;
+    }
+    private void appendSystemNodes(android.view.accessibility.AccessibilityNodeInfo node,StringBuilder out,int depth) {
+        if(node==null||depth>12)return;
+        out.append("\n").append(node.getClassName()).append(" ").append(node.getViewIdResourceName()).append(" text=").append(node.isPassword()?"[password field]":node.getText()).append(" desc=").append(node.getContentDescription());
+        for(int i=0;i<node.getChildCount();i++)appendSystemNodes(node.getChild(i),out,depth+1);
+    }
     private void confirmPin() {
-        SystemClock.sleep(1500);
-        shell("input text 246813");shell("input keyevent 66");
+        shell("input keyevent 224");
+        long limit=SystemClock.uptimeMillis()+30000;
+        android.view.accessibility.AccessibilityNodeInfo field=null,root=null;
+        while(SystemClock.uptimeMillis()<limit){root=getUiAutomation().getRootInActiveWindow();if(root!=null&&"com.android.systemui".contentEquals(root.getPackageName())){field=pinField(root);if(field!=null)break;}SystemClock.sleep(100);}
+        if(field==null){StringBuilder nodes=new StringBuilder();appendSystemNodes(root,nodes,0);throw new AssertionError("PIN field not found"+nodes);}
+        field.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_FOCUS);
+        Bundle value=new Bundle();value.putCharSequence(android.view.accessibility.AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,"246813");
+        boolean set=field.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_SET_TEXT,value);
+        if(!set)shell("input text 246813");
+        shell("input keyevent 66");
     }
     private void personalCreation() throws Exception {
         for(String optional:new String[]{"","Invented-Test-Password-Only!"}) {

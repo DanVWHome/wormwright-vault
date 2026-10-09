@@ -45,8 +45,12 @@ jobs:
           "$ANDROID_HOME/emulator/emulator" -avd regression -accel on -memory 4096 -cores 2 -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot > regression-results/emulator.txt 2>&1 &
           adb wait-for-device
           timeout 180 bash -c 'until [ "$(adb shell getprop sys.boot_completed | tr -d "\r")" = "1" ]; do sleep 2; done'
+          adb shell svc power stayon true
+          adb shell settings put system screen_off_timeout 1800000
+          adb shell input keyevent 224
           adb shell input keyevent 82
           adb shell locksettings set-pin 246813
+          adb shell input keyevent 224
           adb install android-standalone/app/build/outputs/apk/debug/app-debug.apk
           adb install android-standalone/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
           adb install android/app/build/outputs/apk/debug/app-debug.apk
