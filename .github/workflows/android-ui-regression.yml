@@ -1,6 +1,12 @@
 name: Android opening and editor UI regression
 on:
   workflow_dispatch:
+    inputs:
+      app:
+        description: Phone app to verify
+        type: choice
+        default: all
+        options: [all, pocket, nas]
 permissions:
   contents: read
 jobs:
@@ -25,10 +31,11 @@ jobs:
       - name: Compile instrumented debug builds without publisher credentials
         env:
           WORMWRIGHT_BUILD_PYTHON: python
+          TEST_APP: ${{ inputs.app || 'all' }}
         run: |
           sdkmanager 'platforms;android-35' 'platforms;android-36' 'build-tools;35.0.0' 'build-tools;36.0.0' 'emulator' 'system-images;android-36;default;x86_64'
-          gradle -p android-standalone assembleDebug assembleDebugAndroidTest lintDebug
-          gradle -p android assembleDebug assembleDebugAndroidTest lintDebug testDebugUnitTest
+          if [ "$TEST_APP" != nas ]; then gradle -p android-standalone assembleDebug assembleDebugAndroidTest lintDebug; fi
+          if [ "$TEST_APP" != pocket ]; then gradle -p android assembleDebug assembleDebugAndroidTest lintDebug testDebugUnitTest; fi
           gradle --stop
       - name: Enable isolated emulator acceleration
         run: |
@@ -37,6 +44,8 @@ jobs:
           sudo udevadm trigger --name-match=kvm
       - name: Run real Android regression tests on invented samples
         timeout-minutes: 25
+        env:
+          TEST_APP: ${{ inputs.app || 'all' }}
         run: |
           export PATH="$ANDROID_HOME/platform-tools:$PATH"
           export ANDROID_AVD_HOME="$RUNNER_TEMP/regression-avd"
@@ -51,16 +60,21 @@ jobs:
           adb shell input keyevent 82
           adb shell locksettings set-pin 246813
           adb shell input keyevent 224
-          adb install android-standalone/app/build/outputs/apk/debug/app-debug.apk
-          adb install android-standalone/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
-          adb install android/app/build/outputs/apk/debug/app-debug.apk
-          adb install android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+          if [ "$TEST_APP" != nas ]; then
+            adb install android-standalone/app/build/outputs/apk/debug/app-debug.apk
+            adb install android-standalone/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+          fi
+          if [ "$TEST_APP" != pocket ]; then
+            adb install android/app/build/outputs/apk/debug/app-debug.apk
+            adb install android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+          fi
           adb shell am force-stop com.android.launcher3
           python - <<'PYTEST'
           from pathlib import Path
-          import subprocess
+          import subprocess,os
           targets=[('pocket','ai.wormwright.vault.standalone.test/ai.wormwright.pocket.UiRegressionInstrumentation'),('nas','ai.wormwright.vault.preview.test/ai.wormwright.vault.UiRegressionInstrumentation')]
           for name,target in targets:
+              if os.environ.get('TEST_APP','all') not in ('all',name):continue
               result=subprocess.run(['adb','shell','am','instrument','-w',target],capture_output=True,text=True,timeout=900 if name=='pocket' else 420)
               output=result.stdout+result.stderr
               Path('regression-results/'+name+'.txt').write_text(output)
