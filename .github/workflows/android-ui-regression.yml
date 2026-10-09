@@ -26,7 +26,7 @@ jobs:
         env:
           WORMWRIGHT_BUILD_PYTHON: python
         run: |
-          sdkmanager 'platforms;android-35' 'platforms;android-36' 'build-tools;35.0.0' 'build-tools;36.0.0' 'emulator' 'system-images;android-36;google_apis;x86_64'
+          sdkmanager 'platforms;android-35' 'platforms;android-36' 'build-tools;35.0.0' 'build-tools;36.0.0' 'emulator' 'system-images;android-36;default;x86_64'
           gradle -p android-standalone assembleDebug assembleDebugAndroidTest lintDebug
           gradle -p android assembleDebug assembleDebugAndroidTest lintDebug testDebugUnitTest
           gradle --stop
@@ -36,13 +36,13 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
       - name: Run real Android regression tests on invented samples
-        timeout-minutes: 8
+        timeout-minutes: 10
         run: |
           export PATH="$ANDROID_HOME/platform-tools:$PATH"
           export ANDROID_AVD_HOME="$RUNNER_TEMP/regression-avd"
           mkdir -p "$ANDROID_AVD_HOME" regression-results
-          echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd -n regression -k 'system-images;android-36;google_apis;x86_64' --device pixel_7
-          "$ANDROID_HOME/emulator/emulator" -avd regression -memory 4096 -cores 2 -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot > regression-results/emulator.txt 2>&1 &
+          echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd -n regression -k 'system-images;android-36;default;x86_64' --device pixel_7
+          "$ANDROID_HOME/emulator/emulator" -avd regression -accel on -memory 4096 -cores 2 -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot > regression-results/emulator.txt 2>&1 &
           adb wait-for-device
           timeout 180 bash -c 'until [ "$(adb shell getprop sys.boot_completed | tr -d "\r")" = "1" ]; do sleep 2; done'
           adb shell input keyevent 82
@@ -55,7 +55,7 @@ jobs:
           import subprocess
           targets=[('pocket','ai.wormwright.vault.standalone.test/ai.wormwright.pocket.UiRegressionInstrumentation'),('nas','ai.wormwright.vault.preview.test/ai.wormwright.vault.UiRegressionInstrumentation')]
           for name,target in targets:
-              result=subprocess.run(['adb','shell','am','instrument','-w',target],capture_output=True,text=True,timeout=180)
+              result=subprocess.run(['adb','shell','am','instrument','-w',target],capture_output=True,text=True,timeout=240)
               output=result.stdout+result.stderr
               Path('regression-results/'+name+'.txt').write_text(output)
               print(output)

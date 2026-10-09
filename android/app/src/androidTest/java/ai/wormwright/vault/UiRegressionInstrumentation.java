@@ -38,11 +38,22 @@ public class UiRegressionInstrumentation extends Instrumentation {
     private Object field(String name) throws Exception { Field f=MainActivity.class.getDeclaredField(name); f.setAccessible(true); return f.get(activity); }
     private void check(boolean condition,String message) { if(!condition) throw new AssertionError(message); }
     private void await(java.util.function.BooleanSupplier condition,String label) {
-        long limit=SystemClock.uptimeMillis()+60000;
+        long limit=SystemClock.uptimeMillis()+120000;
         while(SystemClock.uptimeMillis()<limit) { final boolean[] ready={false}; runOnMainSync(()->ready[0]=condition.getAsBoolean()); if(ready[0])return; SystemClock.sleep(40); }
         final String[] state={""};
         runOnMainSync(()->{try{state[0]="busy="+field("busy")+", resumed="+field("resumed")+", unlocked="+field("unlocked")+", status="+((TextView)field("status")).getText();}catch(Exception e){state[0]=e.toString();}});
-        throw new AssertionError("Timed out: "+label+"; "+state[0]);
+        StringBuilder trace=new StringBuilder();
+        for(java.util.Map.Entry<Thread,StackTraceElement[]> entry:Thread.getAllStackTraces().entrySet()) {
+            if(entry.getKey().getName().startsWith("pool-")) {trace.append("\n"+entry.getKey().getName());for(StackTraceElement frame:entry.getValue())trace.append("\n  "+frame);}
+        }
+        Thread pythonTrace=new Thread(()->{
+            try {
+                com.chaquo.python.PyObject file=com.chaquo.python.Python.getInstance().getModule("builtins").callAttr("open",new java.io.File(activity.getNoBackupFilesDir(),"ui-python-trace.txt").getPath(),"w");
+                com.chaquo.python.Python.getInstance().getModule("faulthandler").callAttr("dump_traceback",file,true);file.callAttr("close");
+            }catch(Exception e){android.util.Log.e("UiRegression","Python diagnostic failed",e);}
+        });pythonTrace.setDaemon(true);pythonTrace.start();
+        try{pythonTrace.join(5000);java.io.File file=new java.io.File(activity.getNoBackupFilesDir(),"ui-python-trace.txt");if(file.exists())trace.append("\n"+new String(java.nio.file.Files.readAllBytes(file.toPath()),java.nio.charset.StandardCharsets.UTF_8));}catch(Exception ignored){}
+        throw new AssertionError("Timed out: "+label+"; "+state[0]+trace);
     }
     private boolean busy() { try{return (Boolean)field("busy");}catch(Exception e){throw new RuntimeException(e);} }
     private boolean unlocked() { try{return (Boolean)field("unlocked");}catch(Exception e){throw new RuntimeException(e);} }
