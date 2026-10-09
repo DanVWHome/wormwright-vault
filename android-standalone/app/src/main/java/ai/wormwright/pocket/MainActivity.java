@@ -307,6 +307,12 @@ public class MainActivity extends Activity {
     private void edit(JSONObject record) {
         LinearLayout fields=column(); String[] keys={"description","user_name","password","link","notes"}; EditText[] inputs=new EditText[keys.length];
         for(int i=0;i<keys.length;i++){ inputs[i]=input(fields,keys[i].replace("user_name","Username"),keys[i].equals("password")); inputs[i].setText(record.optString(keys[i])); }
+        CheckBox showPassword = new CheckBox(this); showPassword.setText("Show password");
+        showPassword.setOnCheckedChangeListener((button,show)-> {
+            int start=inputs[2].getSelectionStart(),end=inputs[2].getSelectionEnd();
+            inputs[2].setTransformationMethod(show ? null : android.text.method.PasswordTransformationMethod.getInstance());
+            if(start>=0 && end>=0)inputs[2].setSelection(start,end); onUserInteraction();
+        }); fields.addView(showPassword);
         ScrollView scroll=new ScrollView(this); scroll.addView(fields);
         final int token = epoch;
         final AlertDialog editor = new AlertDialog.Builder(this).setTitle("Save entry").setView(scroll).setNegativeButton("Cancel",null).setPositiveButton("Save",null).create();

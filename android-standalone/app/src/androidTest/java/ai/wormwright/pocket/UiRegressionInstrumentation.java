@@ -26,12 +26,13 @@ public class UiRegressionInstrumentation extends Instrumentation {
             personalCreation();
             openingFeedback();
             searchKeyboard();
+            passwordVisibility();
             editTransitions();
             deleteAndRestore();
             staleCompletion();
             failureFeedback();
             result.putBoolean("ui_regression_ok",true);
-            result.putString("stream","\nPASS opening spinner/duplicate taps, search keyboard/focus/latest results, edit/save/cancel transitions, delete/restore list refresh, stale completion, error cleanup.\n");
+            result.putString("stream","\nPASS opening spinner/duplicate taps, PIN creation/re-open with/without optional password, search keyboard/focus/latest results, new/edit password visibility, edit/save/cancel transitions, delete/restore list refresh, stale completion, error cleanup.\n");
             runOnMainSync(() -> activity.finish()); finish(Activity.RESULT_OK,result);
         } catch (Throwable error) {
             result.putBoolean("ui_regression_ok",false); result.putString("stream",android.util.Log.getStackTraceString(error));
@@ -179,6 +180,27 @@ public class UiRegressionInstrumentation extends Instrumentation {
         await(()->!busy()&&dialog()!=null&&dialog().isShowing(),"recently deleted opens");
         runOnMainSync(()->{Button restore=findButton(dialog().getWindow().getDecorView(),"Restore "+label[0].split("\n",2)[0]);check(restore!=null,"deleted entry is recoverable");restore.performClick();});
         await(()->!busy()&&findButton(root(),label[0])!=null,"restored entry immediately reappears");
+    }
+    private AlertDialog editor() {try{return (AlertDialog)field("dialog");}catch(Exception e){throw new RuntimeException(e);}}
+    private void passwordVisibility() {
+        for(boolean existing:new boolean[]{false,true}) {
+            runOnMainSync(()->{try{if(existing)((ViewGroup)field("rows")).getChildAt(0).performClick();else findButton(root(),"Add entry").performClick();}catch(Exception e){throw new RuntimeException(e);}});
+            if(existing) {
+                await(()->dialog()!=null&&dialog().isShowing(),"entry opens for visibility test");
+                runOnMainSync(()->findButton(dialog().getWindow().getDecorView(),"Edit entry").performClick());
+            }
+            await(()->editor()!=null&&editor().isShowing()&&editor().getButton(AlertDialog.BUTTON_POSITIVE)!=null,"new/edit entry editor opens");
+            runOnMainSync(()-> {
+                List<EditText> fields=new ArrayList<>();collectInputs(editor().getWindow().getDecorView(),fields);EditText password=fields.get(2);
+                CheckBox show=(CheckBox)findButton(editor().getWindow().getDecorView(),"Show password");check(show!=null&&!show.isChecked(),"password starts hidden");
+                check(password.getTransformationMethod() instanceof android.text.method.PasswordTransformationMethod,"password is masked");
+                password.setText("Invented-Visible-Password!");password.setSelection(5);show.performClick();
+                check(password.getTransformationMethod()==null&&password.getSelectionStart()==5,"reveal preserves cursor");
+                password.getText().append("Typed");String expected=password.getText().toString();show.performClick();
+                check(password.getTransformationMethod() instanceof android.text.method.PasswordTransformationMethod&&expected.equals(password.getText().toString()),"hide preserves typed password");
+                editor().getButton(AlertDialog.BUTTON_NEGATIVE).performClick();
+            });waitForIdleSync();
+        }
     }
     private boolean hasText(View view,String expected) {
         if(view instanceof TextView && expected.contentEquals(((TextView)view).getText()))return true;

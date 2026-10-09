@@ -182,7 +182,7 @@ public class MainActivity extends Activity {
         form.addView(label("Personal vault: leave account name blank.", 14));
         form.addView(label("Read and edit your encrypted vault offline. Changes sync with your NAS after unlocking, saving and while the app is open. Complete the first NAS sync before editing.", 16));
         form.addView(label("Locks when you leave the app or after two minutes idle. Screenshots and device backups are disabled. Copied values clear after 30 seconds or when you lock.", 14));
-        form.addView(label("0.1.0-preview.6 · No Google Play services needed", 13));
+        form.addView(label("0.1.0-preview.7 · No Google Play services needed", 13));
     }
     private PyObject bridge() { return Python.getInstance().getModule("mobile_bridge"); }
     private interface Job { String run() throws Exception; }
@@ -513,6 +513,12 @@ public class MainActivity extends Activity {
                 if(i==4) { fields[i].setSingleLine(false); fields[i].setMinLines(3); }
                 form.addView(fields[i]);
             }
+            CheckBox showPassword=new CheckBox(this); showPassword.setText("Show password");
+            showPassword.setOnCheckedChangeListener((button,show)-> {
+                int start=fields[3].getSelectionStart(),end=fields[3].getSelectionEnd();
+                fields[3].setTransformationMethod(show ? null : android.text.method.PasswordTransformationMethod.getInstance());
+                if(start>=0 && end>=0)fields[3].setSelection(start,end); resetIdleTimer();
+            }); form.addView(showPassword);
             JSONObject groups=info.getJSONObject("groups");
             java.util.ArrayList<String> ids=new java.util.ArrayList<>();
             java.util.Iterator<String> keys=groups.keys(); while(keys.hasNext()) ids.add(keys.next());

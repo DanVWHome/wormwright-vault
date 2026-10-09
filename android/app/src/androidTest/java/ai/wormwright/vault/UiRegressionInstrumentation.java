@@ -25,11 +25,12 @@ public class UiRegressionInstrumentation extends Instrumentation {
             waitForIdleSync();
             openingFeedback();
             searchKeyboard();
+            passwordVisibility();
             
             staleCompletion();
             failureFeedback();
             result.putBoolean("ui_regression_ok",true);
-            result.putString("stream","\nPASS opening spinner/duplicate taps, search keyboard/focus/latest results, stale completion, error cleanup.\n");
+            result.putString("stream","\nPASS opening spinner/duplicate taps, search keyboard/focus/latest results, new/edit password visibility, stale completion, error cleanup.\n");
             runOnMainSync(() -> activity.finish()); finish(Activity.RESULT_OK,result);
         } catch (Throwable error) {
             result.putBoolean("ui_regression_ok",false); result.putString("stream",android.util.Log.getStackTraceString(error));
@@ -123,6 +124,29 @@ public class UiRegressionInstrumentation extends Instrumentation {
         await(()->hasEntryRows(),"clear search restores results");
         runOnMainSync(()->((android.view.inputmethod.InputMethodManager)activity.getSystemService(android.content.Context.INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(input.getWindowToken(),0));
         await(()->!keyboardVisible(),"test closes keyboard");
+    }
+    private AlertDialog detail(){try{return (AlertDialog)field("detailDialog");}catch(Exception e){throw new RuntimeException(e);}}
+    private void collectInputs(View view,List<EditText> values){if(view instanceof EditText)values.add((EditText)view);if(view instanceof ViewGroup)for(int i=0;i<((ViewGroup)view).getChildCount();i++)collectInputs(((ViewGroup)view).getChildAt(i),values);}
+    private AlertDialog editor() {try{return (AlertDialog)field("editorDialog");}catch(Exception e){throw new RuntimeException(e);}}
+    private void passwordVisibility() {
+        for(boolean existing:new boolean[]{false,true}) {
+            runOnMainSync(()->{try{if(existing)((ViewGroup)field("rows")).getChildAt(0).performClick();else findButton(root(),"New entry").performClick();}catch(Exception e){throw new RuntimeException(e);}});
+            if(existing) {
+                await(()->detail()!=null&&detail().isShowing(),"entry opens for visibility test");
+                runOnMainSync(()->findButton(detail().getWindow().getDecorView(),"Edit entry").performClick());
+            }
+            await(()->editor()!=null&&editor().isShowing()&&editor().getButton(AlertDialog.BUTTON_POSITIVE)!=null,"new/edit entry editor opens");
+            runOnMainSync(()-> {
+                List<EditText> fields=new ArrayList<>();collectInputs(editor().getWindow().getDecorView(),fields);EditText password=fields.get(3);
+                CheckBox show=(CheckBox)findButton(editor().getWindow().getDecorView(),"Show password");check(show!=null&&!show.isChecked(),"password starts hidden");
+                check(password.getTransformationMethod() instanceof android.text.method.PasswordTransformationMethod,"password is masked");
+                password.setText("Invented-Visible-Password!");password.setSelection(5);show.performClick();
+                check(password.getTransformationMethod()==null&&password.getSelectionStart()==5,"reveal preserves cursor");
+                password.getText().append("Typed");String expected=password.getText().toString();show.performClick();
+                check(password.getTransformationMethod() instanceof android.text.method.PasswordTransformationMethod&&expected.equals(password.getText().toString()),"hide preserves typed password");
+                editor().getButton(AlertDialog.BUTTON_NEGATIVE).performClick();
+            });waitForIdleSync();
+        }
     }
     private void enqueue(String label,CountDownLatch entered,CountDownLatch release,AtomicInteger completed,boolean fail) {
         try {

@@ -23,3 +23,6 @@ Build with the workspace Gradle and Android SDK. `prepare_build.py` creates priv
 Preview.6 keeps the search field enabled and focused as results update, retaining
 the keyboard. Pending results cannot be tapped, and older queries cannot replace
 newer results. Background NAS sync preserves typing and the current query.
+
+Preview.7 adds Show password to new and existing entry editors. Passwords start
+hidden, and the visibility toggle preserves text and cursor position.

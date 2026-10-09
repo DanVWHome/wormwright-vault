@@ -7,6 +7,8 @@ strong biometric operation, including AES-GCM additional authenticated data.
 Existing per-operation Keystore authentication and encrypted metadata format are
 preserved. Optional-password guidance wraps in the dialog body, and the system
 identity prompt uses a short subtitle with a wrapping explanation.
+New and existing entry editors offer a Show password checkbox. Passwords start
+hidden; toggling visibility preserves the typed value and cursor position.
 
 Test.5 fixes immediate list refresh after deleting and restoring entries. Search updates only the results, keeping the keyboard open and the search field
 focused. Stale results cannot replace a newer query; old rows are disabled while
