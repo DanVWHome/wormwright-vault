@@ -1,4 +1,6 @@
-# Wormwright Vault Android preview 3
+# Wormwright Vault Android preview 4
+
+Preview 4 puts login fields and buttons ahead of the welcome notes, shortens the account-name placeholder, and keeps the login form scrollable above the keyboard. Help → Wormwright Website opens https://wormwright.com/ in your browser from either the locked or unlocked screen. The link contains no vault or account information.
 
 Signed local preview for Pixel 10 / GrapheneOS, Android 11 or newer. Import a format-2 encrypted SQLite vault, unlock with the existing account, and configure SMB NAS credentials on the phone. Complete the first NAS sync before editing. The phone downloads the authenticated NAS copy to establish a common starting point.
 
