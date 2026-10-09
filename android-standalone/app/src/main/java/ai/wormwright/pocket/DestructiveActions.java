@@ -45,14 +45,14 @@ final class DestructiveActions {
     void confirm(String title,String message,Runnable action) {
         final int token=generation;
         LinearLayout content=new LinearLayout(activity);content.setOrientation(LinearLayout.VERTICAL);int pad=(int)(20*activity.getResources().getDisplayMetrics().density);content.setPadding(pad,pad,pad,pad);
-        TextView explanation=new TextView(activity);explanation.setText(message+"\n\nThis cannot be undone in this app. Type DELETE to confirm.");content.addView(explanation);
+        TextView explanation=new TextView(activity);explanation.setText(message+"\n\nThis cannot be undone in this app. Type DELETE to confirm (uppercase or lowercase is accepted).");content.addView(explanation);
         EditText typed=new EditText(activity);typed.setSingleLine(true);typed.setHint("DELETE");typed.setImportantForAutofill(android.view.View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS);content.addView(typed);
         ScrollView scroll=new ScrollView(activity);scroll.addView(content);
         final AlertDialog review=new AlertDialog.Builder(activity).setTitle(title).setView(scroll).setNegativeButton("Cancel",null).setPositiveButton("Delete permanently",null).create();dialog=review;
         review.setOnDismissListener(d->{typed.setText("");if(dialog==review)dialog=null;});
         review.setOnShowListener(d->review.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{
             if(!resumed||token!=generation||!review.isShowing())return;
-            if(!"DELETE".equals(typed.getText().toString())){typed.setError("Type DELETE exactly.");return;}
+            if(!"DELETE".equalsIgnoreCase(typed.getText().toString().trim())){typed.setError("Type the word DELETE (any capitalization).");return;}
             review.dismiss();generation++;action.run();
         }));review.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);review.show();
     }

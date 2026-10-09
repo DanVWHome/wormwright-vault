@@ -13,17 +13,23 @@ import java.util.concurrent.atomic.AtomicInteger;
 /** Real Android dialog/message-loop regression checks; invented sample data only. */
 public class UiRegressionInstrumentation extends Instrumentation {
     private MainActivity activity;
+    private boolean confirmationOnly;
     private String dialogField = "dialog";
     private String lockMethod = "lock";
     private String sampleButton = "Open invented sample vault";
     private String jobMethod = "task";
-    @Override public void onCreate(Bundle args) { super.onCreate(args); start(); }
+    @Override public void onCreate(Bundle args) { super.onCreate(args); confirmationOnly=args!=null&&"true".equals(args.getString("confirmationOnly")); start(); }
     @Override public void onStart() {
         Bundle result = new Bundle();
         try {
             unlockFixtureScreen();
             activity = (MainActivity)startActivitySync(new Intent(getTargetContext(),MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
             waitForIdleSync();
+            if(confirmationOnly) {
+                confirmationCapitalization(); result.putBoolean("ui_regression_ok",true);
+                result.putString("stream","\nPASS opening spinner/confirmation focused regression: uppercase, lowercase, mixed case, surrounding whitespace, invalid text, Cancel and pause invalidation.\n");
+                runOnMainSync(()->activity.finish());finish(Activity.RESULT_OK,result);return;
+            }
             personalCreation();
             openingFeedback();
             searchKeyboard();
@@ -39,6 +45,17 @@ public class UiRegressionInstrumentation extends Instrumentation {
             result.putBoolean("ui_regression_ok",false); result.putString("stream",android.util.Log.getStackTraceString(error));
             finish(Activity.RESULT_CANCELED,result);
         }
+    }
+    private void confirmationCapitalization() throws Exception {
+        DestructiveActions helper=(DestructiveActions)field("maintenance");AtomicInteger actions=new AtomicInteger();
+        for(String word:new String[]{"DELETE","delete","DeLeTe","  delete  "}) {
+            runOnMainSync(()->helper.confirm("Invented confirmation test","No files will be deleted.",actions::incrementAndGet));waitForIdleSync();
+            int before=actions.get();runOnMainSync(()->{AlertDialog review=maintenanceDialog();List<EditText> fields=new ArrayList<>();collectInputs(review.getWindow().getDecorView(),fields);fields.get(0).setText("delete all");review.getButton(AlertDialog.BUTTON_POSITIVE).performClick();check(review.isShowing()&&actions.get()==before,"incorrect text cannot authorize deletion");fields.get(0).setText(word);review.getButton(AlertDialog.BUTTON_POSITIVE).performClick();check(!review.isShowing()&&actions.get()==before+1,"accepted capitalization: "+word);});
+        }
+        runOnMainSync(()->helper.confirm("Cancel test","Invented data only.",actions::incrementAndGet));waitForIdleSync();
+        runOnMainSync(()->{int before=actions.get();maintenanceDialog().getButton(AlertDialog.BUTTON_NEGATIVE).performClick();check(actions.get()==before,"Cancel runs no deletion");});
+        runOnMainSync(()->helper.confirm("Pause test","Invented data only.",actions::incrementAndGet));waitForIdleSync();
+        runOnMainSync(()->{AlertDialog review=maintenanceDialog();int before=actions.get();helper.onPause();review.getButton(AlertDialog.BUTTON_POSITIVE).performClick();check(actions.get()==before&&!review.isShowing(),"leaving invalidates confirmation");helper.onResume();});
     }
     private Object field(String name) throws Exception { Field f=MainActivity.class.getDeclaredField(name); f.setAccessible(true); return f.get(activity); }
     private void check(boolean condition,String message) { if(!condition) throw new AssertionError(message); }

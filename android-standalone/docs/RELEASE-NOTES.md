@@ -1,3 +1,7 @@
+# Wormwright Pocket 0.1.0-test.10
+
+Permanent-deletion confirmation accepts DELETE, delete or any mixed capitalization, with surrounding spaces ignored. The complete word is still required; incorrect text, Cancel and leaving the app never authorize deletion. Fresh phone authentication, optional vault password and the named final review are unchanged. Applies to current/selected vaults, all phone vaults and selected backups. Install over test.9 without uninstalling.
+
 # Wormwright Pocket 0.1.0-test.9
 
 New vaults and restores require a recognizable name. Vaults shows names and the current selection; reopening with multiple vaults opens the named chooser. Rename current vault gives older vaults a name. Delete current vault and Delete vault… remove one chosen vault with fresh phone authentication, its optional password, a named scope review and typed DELETE. Cancel is visible before authentication, in the chooser and on the final review. Other vaults and exports remain. Names are signed visible metadata retained in encrypted backups.
