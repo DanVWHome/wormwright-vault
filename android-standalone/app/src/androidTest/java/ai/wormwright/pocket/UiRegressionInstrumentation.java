@@ -25,10 +25,11 @@ public class UiRegressionInstrumentation extends Instrumentation {
             waitForIdleSync();
             openingFeedback();
             editTransitions();
+            deleteAndRestore();
             staleCompletion();
             failureFeedback();
             result.putBoolean("ui_regression_ok",true);
-            result.putString("stream","\nPASS opening spinner/duplicate taps, edit/save/cancel transitions, stale completion, error cleanup.\n");
+            result.putString("stream","\nPASS opening spinner/duplicate taps, edit/save/cancel transitions, delete/restore list refresh, stale completion, error cleanup.\n");
             runOnMainSync(() -> activity.finish()); finish(Activity.RESULT_OK,result);
         } catch (Throwable error) {
             result.putBoolean("ui_regression_ok",false); result.putString("stream",android.util.Log.getStackTraceString(error));
@@ -102,6 +103,26 @@ public class UiRegressionInstrumentation extends Instrumentation {
             runOnMainSync(()->{check(hasText(dialog().getWindow().getDecorView(),expected),"save persisted and cancel retained previous notes");dialog().dismiss();});
             await(()->dialog()==null,"record closes");waitForIdleSync();
         }
+    }
+    private void deleteAndRestore() {
+        final String[] label={""}; final int[] count={0};
+        runOnMainSync(()->{try{
+            ViewGroup rows=(ViewGroup)field("rows");count[0]=rows.getChildCount();
+            label[0]=((Button)rows.getChildAt(0)).getText().toString(); rows.getChildAt(0).performClick();
+        }catch(Exception e){throw new RuntimeException(e);}});
+        await(()->dialog()!=null&&dialog().isShowing(),"entry to delete opens");
+        runOnMainSync(()->findButton(dialog().getWindow().getDecorView(),"Delete entry").performClick());waitForIdleSync();
+        runOnMainSync(()->dialog().getButton(AlertDialog.BUTTON_NEGATIVE).performClick());waitForIdleSync();
+        runOnMainSync(()->check(findButton(root(),label[0])!=null,"cancel keeps entry"));
+        runOnMainSync(()->findButton(root(),label[0]).performClick());
+        await(()->dialog()!=null&&dialog().isShowing(),"entry reopens for deletion");
+        runOnMainSync(()->findButton(dialog().getWindow().getDecorView(),"Delete entry").performClick());waitForIdleSync();
+        runOnMainSync(()->dialog().getButton(AlertDialog.BUTTON_POSITIVE).performClick());
+        await(()->!busy()&&dialog()==null&&findButton(root(),label[0])==null,"deleted entry immediately disappears");
+        runOnMainSync(()->{try{check(((ViewGroup)field("rows")).getChildCount()==count[0]-1,"list shrinks after deletion");findButton(root(),"Recently deleted").performClick();}catch(Exception e){throw new RuntimeException(e);}});
+        await(()->!busy()&&dialog()!=null&&dialog().isShowing(),"recently deleted opens");
+        runOnMainSync(()->{Button restore=findButton(dialog().getWindow().getDecorView(),"Restore "+label[0].split("\n",2)[0]);check(restore!=null,"deleted entry is recoverable");restore.performClick();});
+        await(()->!busy()&&findButton(root(),label[0])!=null,"restored entry immediately reappears");
     }
     private boolean hasText(View view,String expected) {
         if(view instanceof TextView && expected.contentEquals(((TextView)view).getText()))return true;

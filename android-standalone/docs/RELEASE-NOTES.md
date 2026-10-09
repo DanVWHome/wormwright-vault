@@ -1,6 +1,9 @@
-# Wormwright Pocket 0.1.0-test.4 — device testing draft
+# Wormwright Pocket 0.1.0-test.5 — device testing draft
 
 Your personal password vault. Standalone offline Android app by Dan Van Wormer.
+
+Test.5 fixes immediate list refresh after deleting and restoring entries. Commands
+which return no value now complete normally, so the list refresh is always run.
 
 Test.4 fixes the editor crash reported on test.3. Delayed record-dismiss callbacks
 cannot clear a newer editor, and editor/password callbacks reference their own
@@ -11,7 +14,7 @@ newer work. Camera spacing, grouped record controls and the approved icon remain
 
 Package and dedicated test signing identity are unchanged. Export a portable
 backup, then install over the earlier test build without uninstalling. VersionCode
-is 4. The NAS companion receives the same opening feedback in preview.5. Real
+is 5. The NAS companion receives the same opening feedback in preview.5. Real
 Android message-loop tests cover repeated record/edit/save/cancel transitions,
 visible opening feedback, error cleanup and stale completion after locking.
 Physical biometric/PIN and actual SMB NAS acceptance remain separate checks.

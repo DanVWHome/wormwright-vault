@@ -43,7 +43,7 @@ public class MainActivity extends Activity {
     private interface PasswordDone { void accept(String value) throws Exception; }
     private interface CryptoDone { void accept(Cipher cipher) throws Exception; }
     private PyObject engine() { return Python.getInstance().getModule("pocket"); }
-    private String call(String name, Object... args) { return engine().callAttr(name, args).toString(); }
+    private String call(String name, Object... args) { PyObject result = engine().callAttr(name, args); return result == null ? "" : result.toString(); }
     @Override public void onCreate(Bundle state) {
         super.onCreate(state); getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
         getWindow().setDecorFitsSystemWindows(false);
@@ -266,13 +266,23 @@ public class MainActivity extends Activity {
             button(actions,"Copy notes",()->copy(record.optString("notes")));
             button(actions,"Copy description",()->copy(record.optString("description")));
             button(actions,"Edit entry",()-> { dialog.dismiss(); edit(record); });
-            button(actions,"Delete entry",()-> { dialog.dismiss(); new AlertDialog.Builder(this).setMessage("Move this entry to Recently deleted?").setNegativeButton("Cancel",null).setPositiveButton("Delete",(d,w)->task(()->call("delete",id),r->vaultScreen())).show(); });
+            button(actions,"Delete entry",()-> { dialog.dismiss(); confirmDelete(id); });
             ScrollView scroll = new ScrollView(this); scroll.addView(view);
             final AlertDialog detail = new AlertDialog.Builder(this).setTitle(record.optString("description")).setView(scroll).setPositiveButton("Done",null).create();
             dialog = detail;
             detail.setOnDismissListener(d -> { secret.setText(""); view.removeAllViews(); if (dialog == detail) dialog = null; });
             detail.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE); detail.show();
         });
+    }
+    private void confirmDelete(String id) {
+        final int token = epoch;
+        final AlertDialog confirmation = new AlertDialog.Builder(this).setMessage("Move this entry to Recently deleted?")
+                .setNegativeButton("Cancel",null).setPositiveButton("Delete",(d,w)-> {
+                    if (token == epoch && unlocked && !busy) task("Deleting entry…",()->call("delete",id),r->vaultScreen());
+                }).create();
+        dialog = confirmation;
+        confirmation.setOnDismissListener(d -> { if (dialog == confirmation) dialog = null; });
+        confirmation.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE); confirmation.show();
     }
     private void edit(JSONObject record) {
         LinearLayout fields=column(); String[] keys={"description","user_name","password","link","notes"}; EditText[] inputs=new EditText[keys.length];
