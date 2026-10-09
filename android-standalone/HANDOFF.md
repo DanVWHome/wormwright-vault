@@ -1,7 +1,7 @@
 # Submission-chat handoff — pending device acceptance
 
 Publisher: Dan Van Wormer; support: danvanwormer@pm.me.
-App: Wormwright Pocket, version 0.1.0-test.2/versionCode 2.
+App: Wormwright Pocket, version 0.1.0-test.3/versionCode 3.
 Package: ai.wormwright.vault.standalone (permanent). Existing companion:
 ai.wormwright.vault.preview. Approved pocket-and-lock mascot icon is in
 app/src/main/res/drawable-nodpi/pocket_icon.png. There are no content providers, shared
@@ -9,6 +9,11 @@ user IDs, companion paths/aliases, storage permissions or NAS connection setting
 Only USE_BIOMETRIC is declared; no Internet permission. Application sandbox and
 Keystore aliases separate it from the companion. Installation identifiers were
 checked statically; actual coexistence/update/uninstall testing remains pending.
+
+Test.3 fixes safe-area spacing and groups record controls to match the NAS app.
+Dan confirmed test.2 downloaded and installed; this update needs phone verification
+in portrait/landscape, with scrolling, keyboard and large text. Full device
+acceptance remains pending.
 
 Development branch: feature/android-standalone in DanVWHome/wormwright-vault.
 A draft test release and draft PR are prepared; links are provided in the chat.

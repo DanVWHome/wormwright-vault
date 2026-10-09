@@ -2,9 +2,10 @@
     <style name="VaultTheme" parent="android:style/Theme.Material.Light.NoActionBar">
         <item name="android:fontFamily">sans</item>
         <item name="android:colorAccent">#C84D3A</item>
-        <item name="android:windowLightStatusBar">false</item>
-        <item name="android:statusBarColor">#172D43</item>
-        <item name="android:navigationBarColor">#172D43</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
+        <item name="android:statusBarColor">#FFF9EE</item>
+        <item name="android:navigationBarColor">#FFF9EE</item>
         <item name="android:windowActionModeOverlay">true</item>
     </style>
 </resources>

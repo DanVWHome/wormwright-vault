@@ -1,11 +1,18 @@
-# Wormwright Pocket 0.1.0-test.2 — device testing draft
+# Wormwright Pocket 0.1.0-test.3 — device testing draft
 
 Your personal password vault. Standalone offline Android app by Dan Van Wormer.
 
-This update renames Pocket Vault to Wormwright Pocket and replaces the launcher
-icon with the approved pocket-and-lock mascot. The package and dedicated test
-signing identity are unchanged, so it installs over test.1 without uninstalling.
-Export a portable backup before updating. VersionCode is now 2.
+This update fixes the camera/status-bar overlap by respecting system-bar, display
+cutout and keyboard insets on every main screen, in portrait and landscape. The
+record dialog now uses its description as the title, shows username, website,
+masked password and notes together, and groups all action buttons below the fields.
+Show/Hide password toggles like the NAS companion. Copying each field remains
+available. Dialog contents are cleared when closed. VersionCode is now 3.
+
+The package and dedicated test signing identity are unchanged. Export a portable
+backup, then install over test.1 or test.2 without uninstalling. Dan confirmed
+test.2 downloaded and installed; physical cutout and layout verification of this
+update remains pending.
 
 - Create a personal encrypted vault protected by phone authentication through an
   authentication-per-operation Android Keystore key. Optional separate vault

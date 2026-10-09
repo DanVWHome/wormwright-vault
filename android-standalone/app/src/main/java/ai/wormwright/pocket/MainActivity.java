@@ -43,6 +43,7 @@ public class MainActivity extends Activity {
     private String call(String name, Object... args) { return engine().callAttr(name, args).toString(); }
     @Override public void onCreate(Bundle state) {
         super.onCreate(state); getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
+        getWindow().setDecorFitsSystemWindows(false);
         base = getNoBackupFilesDir();
         try { active = readActive(); } catch (Exception e) { active = null; }
         home("Phone authentication unlocks this device. A separate backup secret restores exported backups.");
@@ -87,12 +88,25 @@ public class MainActivity extends Activity {
     }
     private LinearLayout column() { LinearLayout v = new LinearLayout(this); v.setOrientation(LinearLayout.VERTICAL); return v; }
     private TextView text(String s) { TextView v = new TextView(this); v.setText(s); v.setTextSize(17); v.setPadding(12,12,12,12); v.setTextColor(0xff172d43); return v; }
+    private int dp(int value) { return Math.round(value * getResources().getDisplayMetrics().density); }
     private void screen(String title) {
-        root = column(); root.setPadding(20,24,20,20); root.setBackgroundColor(0xfffff9ee);
+        root = column(); root.setPadding(dp(20),dp(16),dp(20),dp(16)); root.setBackgroundColor(0xfffff9ee);
         root.addView(text(title)); status = text(""); root.addView(status);
-        ScrollView scroll = new ScrollView(this); scroll.addView(root); setContentView(scroll);
+        ScrollView scroll = new ScrollView(this); scroll.setBackgroundColor(0xfffff9ee);
+        // Inset the viewport so scrolling never moves content beneath a camera or system bar.
+        scroll.setOnApplyWindowInsetsListener((view, insets) -> {
+            android.graphics.Insets safe = insets.getInsets(WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
+            android.graphics.Insets keyboard = insets.getInsets(WindowInsets.Type.ime());
+            view.setPadding(safe.left, safe.top, safe.right, Math.max(safe.bottom, keyboard.bottom));
+            return insets;
+        });
+        scroll.addView(root); setContentView(scroll); scroll.requestApplyInsets();
     }
-    private void button(LinearLayout parent, String title, Runnable action) { Button v = new Button(this); v.setText(title); parent.addView(v); v.setOnClickListener(w -> { if (!busy) action.run(); else message("Please wait."); }); }
+    private Button button(LinearLayout parent, String title, Runnable action) {
+        Button v = new Button(this); v.setText(title); v.setAllCaps(false); parent.addView(v);
+        v.setOnClickListener(w -> { if (!busy) action.run(); else message("Please wait."); });
+        return v;
+    }
     private void message(String value) { if (status != null) status.setText(value); }
     private void home(String note) {
         screen("Wormwright Pocket"); root.addView(text("Your personal password vault"), 1); message(note);
@@ -201,12 +215,32 @@ public class MainActivity extends Activity {
     private void showEntry(String id) {
         task(() -> call("detail", id), v -> {
             JSONObject record = new JSONObject(v); LinearLayout view = column();
-            for (String key : new String[]{"description","user_name","link","notes"}) { view.addView(text(record.optString(key))); button(view,"Copy "+key.replace("user_name","username"),()->copy(record.optString(key))); }
-            button(view,"Copy password",()->copy(record.optString("password")));
-            TextView revealed = text("Password hidden"); view.addView(revealed); button(view,"Reveal password",()->revealed.setText(record.optString("password")));
-            button(view,"Edit entry",()-> { dialog.dismiss(); edit(record); });
-            button(view,"Delete entry",()-> { dialog.dismiss(); new AlertDialog.Builder(this).setMessage("Move this entry to Recently deleted?").setNegativeButton("Cancel",null).setPositiveButton("Delete",(d,w)->task(()->call("delete",id),r->vaultScreen())).show(); });
-            ScrollView scroll = new ScrollView(this); scroll.addView(view); dialog = new AlertDialog.Builder(this).setTitle("Entry").setView(scroll).setPositiveButton("Close",null).create(); dialog.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE); dialog.show();
+            view.setPadding(dp(24),dp(8),dp(24),dp(8));
+            view.addView(text("Username: " + record.optString("user_name")));
+            view.addView(text(record.optString("link")));
+            TextView secret = text("••••••••"); secret.setTextSize(24); view.addView(secret);
+            if (!record.optString("notes").isEmpty()) view.addView(text(record.optString("notes")));
+
+            LinearLayout actions = column(); view.addView(actions);
+            Button reveal = button(actions,"Show password",()->{});
+            final boolean[] showing = {false};
+            reveal.setOnClickListener(w -> {
+                if (busy) { message("Please wait."); return; }
+                showing[0] = !showing[0];
+                secret.setText(showing[0] ? record.optString("password") : "••••••••");
+                reveal.setText(showing[0] ? "Hide password" : "Show password");
+            });
+            button(actions,"Copy password",()->copy(record.optString("password")));
+            button(actions,"Copy username",()->copy(record.optString("user_name")));
+            button(actions,"Copy website",()->copy(record.optString("link")));
+            button(actions,"Copy notes",()->copy(record.optString("notes")));
+            button(actions,"Copy description",()->copy(record.optString("description")));
+            button(actions,"Edit entry",()-> { dialog.dismiss(); edit(record); });
+            button(actions,"Delete entry",()-> { dialog.dismiss(); new AlertDialog.Builder(this).setMessage("Move this entry to Recently deleted?").setNegativeButton("Cancel",null).setPositiveButton("Delete",(d,w)->task(()->call("delete",id),r->vaultScreen())).show(); });
+            ScrollView scroll = new ScrollView(this); scroll.addView(view);
+            dialog = new AlertDialog.Builder(this).setTitle(record.optString("description")).setView(scroll).setPositiveButton("Done",null).create();
+            dialog.setOnDismissListener(d -> { secret.setText(""); view.removeAllViews(); dialog = null; });
+            dialog.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE); dialog.show();
         });
     }
     private void edit(JSONObject record) {

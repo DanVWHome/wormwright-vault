@@ -2,8 +2,14 @@
 
 Record phone/Android version, app version and outcome beside each item. Do not
 attach personal vaults, PINs, passwords, recovery keys or NAS credentials to reports.
-No device was connected during development; every item below remains pending.
+Dan confirmed test.2 downloaded and installed, then reported camera overlap and
+record-layout issues. Remaining checks require explicit results on the phone.
 
+- Check test.3 home, list and search screens in portrait and landscape. Text
+  and controls must stay clear of the camera, status/navigation bars and keyboard,
+  including while scrolling. Open a sample record: description is the title,
+  fields appear together, all actions are grouped, Show/Hide toggles, and each
+  copy action copies its intended field. Check long notes and large text size.
 - Confirm both launcher entries: existing companion `ai.wormwright.vault.preview`
   and standalone `ai.wormwright.vault.standalone`. Install Pocket while companion
   remains installed. Do not import, read, edit or sync the existing personal vault.
