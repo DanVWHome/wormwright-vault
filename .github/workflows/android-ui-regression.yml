@@ -55,6 +55,7 @@ jobs:
           adb install android-standalone/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
           adb install android/app/build/outputs/apk/debug/app-debug.apk
           adb install android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+          adb shell am force-stop com.android.launcher3
           python - <<'PYTEST'
           from pathlib import Path
           import subprocess

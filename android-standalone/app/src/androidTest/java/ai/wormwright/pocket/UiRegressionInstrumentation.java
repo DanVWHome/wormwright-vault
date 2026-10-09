@@ -94,7 +94,16 @@ public class UiRegressionInstrumentation extends Instrumentation {
         shell("input keyevent 224");
         long limit=SystemClock.uptimeMillis()+30000;
         android.view.accessibility.AccessibilityNodeInfo field=null,root=null;
-        while(SystemClock.uptimeMillis()<limit){root=getUiAutomation().getRootInActiveWindow();if(root!=null&&"com.android.systemui".contentEquals(root.getPackageName())){field=pinField(root);if(field!=null)break;}SystemClock.sleep(100);}
+        while(SystemClock.uptimeMillis()<limit){
+            root=getUiAutomation().getRootInActiveWindow();
+            if(root!=null&&!root.findAccessibilityNodeInfosByText("Quickstep isn't responding").isEmpty()) {
+                java.util.List<android.view.accessibility.AccessibilityNodeInfo> close=root.findAccessibilityNodeInfosByViewId("android:id/aerr_close");
+                if(!close.isEmpty())close.get(0).performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK);
+                SystemClock.sleep(200);continue;
+            }
+            if(root!=null&&"com.android.systemui".contentEquals(root.getPackageName())){field=pinField(root);if(field!=null)break;}
+            SystemClock.sleep(100);
+        }
         if(field==null){StringBuilder nodes=new StringBuilder();appendSystemNodes(root,nodes,0);throw new AssertionError("PIN field not found"+nodes);}
         field.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_FOCUS);
         Bundle value=new Bundle();value.putCharSequence(android.view.accessibility.AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,"246813");
