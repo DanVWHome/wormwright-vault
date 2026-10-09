@@ -130,11 +130,21 @@ public class UiRegressionInstrumentation extends Instrumentation {
         }
         if(field==null){StringBuilder nodes=new StringBuilder();appendSystemNodes(root,nodes,0);throw new AssertionError("PIN field not found"+nodes);}
         field.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_FOCUS);
-        Bundle value=new Bundle();value.putCharSequence(android.view.accessibility.AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,"246813");
-        boolean set=field.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_SET_TEXT,value);
-        if(!set)shell("input text 246813");
-        boolean submitted=field.performAction(android.view.accessibility.AccessibilityNodeInfo.AccessibilityAction.ACTION_IME_ENTER.getId());
-        if(!submitted)shell("input keyevent 66");
+        // Wait for the system credential view and its keyboard to finish opening.
+        // Accessibility IME_ENTER can report success without submitting this view.
+        try{getUiAutomation().waitForIdle(1000,5000);}catch(java.util.concurrent.TimeoutException ignored){}
+        root=getUiAutomation().getRootInActiveWindow();
+        check(root!=null&&"com.android.systemui".contentEquals(root.getPackageName()),"fixture PIN stays in SystemUI");
+        field=pinField(root);
+        check(field!=null&&field.isFocused()&&field.isVisibleToUser(),"fixture PIN input is ready");
+        Bundle value=new Bundle();value.putCharSequence(android.view.accessibility.AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,"");
+        check(field.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_SET_TEXT,value),"fixture PIN input cleared");
+        shell("input text 246813");
+        try{getUiAutomation().waitForIdle(500,5000);}catch(java.util.concurrent.TimeoutException ignored){}
+        root=getUiAutomation().getRootInActiveWindow();field=pinField(root);
+        check(root!=null&&"com.android.systemui".contentEquals(root.getPackageName())&&field!=null&&field.isFocused(),"fixture PIN focus preserved");
+        check(field.getText()!=null&&field.getText().length()==6,"fixture PIN has six characters");
+        shell("input keyevent 66");
         long done=SystemClock.uptimeMillis()+10000;
         while(SystemClock.uptimeMillis()<done){
             root=getUiAutomation().getRootInActiveWindow();
