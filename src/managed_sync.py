@@ -78,13 +78,21 @@ def _replace(source, target):
     fd,name=tempfile.mkstemp(prefix='.wormwright-managed-',suffix='.sqlite',dir=target.parent)
     os.close(fd)
     try:
-        shutil.copyfile(source,name)
-        with open(name,'rb+') as stream:
+        # GVFS SMB mounts can reject O_RDWR even when separate reads and writes
+        # work. Flush the write handle instead of reopening in read/write mode.
+        with open(source,'rb') as origin, open(name,'wb') as stream:
+            shutil.copyfileobj(origin,stream)
+            stream.flush()
             try:os.fsync(stream.fileno())
             except OSError as error:
-                # Some mounted shares cannot offer fsync; close and atomic rename
-                # still apply. Permission, capacity and I/O errors must propagate.
+                # Preserve capacity, permission and I/O failures. Some mounted
+                # shares lack fsync; closed-file verification still applies.
                 if error.errno not in (errno.ENOTSUP,errno.ENOSYS):raise
+        def digest(path):
+            with open(path,'rb') as stream:
+                return hashlib.file_digest(stream,'sha256').digest()
+        if digest(source)!=digest(name):
+            raise VaultError('NAS upload verification failed; the existing copy was not replaced.')
         os.replace(name,target)
     finally:
         Path(name).unlink(missing_ok=True)
