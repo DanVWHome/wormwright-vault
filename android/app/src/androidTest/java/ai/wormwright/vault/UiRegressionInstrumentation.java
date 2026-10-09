@@ -100,13 +100,17 @@ public class UiRegressionInstrumentation extends Instrumentation {
                 if(!entry.isEmpty()) {
                     // This is the isolated emulator's ordinary lock screen, not
                     // the app's auth prompt. Enter only the invented fixture PIN.
+                    boolean ready=true;
+                    for(char digit:"246813".toCharArray())if(root.findAccessibilityNodeInfosByViewId("com.android.systemui:id/key"+digit).isEmpty())ready=false;
+                    if(!ready){SystemClock.sleep(200);continue;}
                     for(char digit:"246813".toCharArray()){
                         java.util.List<android.view.accessibility.AccessibilityNodeInfo> keys=root.findAccessibilityNodeInfosByViewId("com.android.systemui:id/key"+digit);
                         check(!keys.isEmpty(),"fixture PIN keypad exists");keys.get(0).performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK);
                     }
                     java.util.List<android.view.accessibility.AccessibilityNodeInfo> enter=root.findAccessibilityNodeInfosByViewId("com.android.systemui:id/key_enter");
                     check(!enter.isEmpty(),"fixture PIN enter exists");enter.get(0).performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK);
-                    SystemClock.sleep(500);
+                    long unlocked=SystemClock.uptimeMillis()+5000;
+                    while(guard.isKeyguardLocked()&&SystemClock.uptimeMillis()<unlocked)SystemClock.sleep(100);
                 }else {shell("input keyevent 82");shell("input swipe 540 1800 540 400 300");}
             }
             SystemClock.sleep(200);
