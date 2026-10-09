@@ -19,6 +19,25 @@ formats and reconciliation rules as desktop 0.3.2; there is no format migration.
 Android managed-vault support remains limited to the features of its existing
 preview; Windows does not change those capabilities.
 
+## Installer
+
+The Windows preview 2 release also provides
+`wormwright-vault_0.3.2_windows_x64_preview2_setup.exe`. Close Vault and Manager,
+run setup, then open Wormwright Vault or Wormwright Vault Manager from the
+Start menu. The optional desktop shortcut opens Vault. Setup installs per user
+in `%LOCALAPPDATA%\Programs\Wormwright Vault`; no administrator access or Python
+installation is required. The installer is unsigned. It wraps the exact tested
+portable preview 2 binaries, without changing vault formats or sync behavior.
+
+Updating and uninstalling preserve separately stored vault files and settings.
+For a previous portable installation, close the old copy and use the new Start
+menu shortcuts. The ZIP remains available for portable use.
+
+GitHub Actions verifies install, reinstall, executable identity, startup and
+uninstall against synthetic data. Physical Windows installer testing remains
+necessary. Installer packaging source is provided as a separate release archive;
+application source corresponds to the original preview 2 source archive.
+
 ## Test on the Windows computer
 
 Use synthetic vaults and a separate NAS test folder first. Check personal and
