@@ -9,6 +9,8 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: website/demo-screenshots
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -24,6 +26,8 @@ jobs:
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: website/demo-screenshots
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13'
@@ -48,9 +52,12 @@ jobs:
           profile: pixel_4
           disable-animations: true
           script: |
-            cd android && gradle connectedDebugAndroidTest
-            mkdir -p ../screenshots
-            adb pull /sdcard/Android/data/ai.wormwright.vault.preview/files/screenshots ../screenshots/android
+            cd android && gradle assembleDebug assembleDebugAndroidTest
+            adb install android/app/build/outputs/apk/debug/app-debug.apk
+            adb install android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+            adb shell am instrument -w ai.wormwright.vault.preview.test/androidx.test.runner.AndroidJUnitRunner
+            mkdir -p screenshots
+            adb pull /sdcard/Android/data/ai.wormwright.vault.preview/files/screenshots screenshots/android
       - uses: actions/upload-artifact@v4
         with:
           name: android-website-screenshots
