@@ -172,7 +172,11 @@ public class UiRegressionInstrumentation extends Instrumentation {
         runOnMainSync(()->{invoke("deletePhoneVault");try{((AlertDialog)field("editorDialog")).getButton(AlertDialog.BUTTON_NEGATIVE).performClick();}catch(Exception e){throw new RuntimeException(e);}});
         check(file.exists(),"cancel credential prompt preserves phone vault");
         for(boolean remove:new boolean[]{false,true}) {
-            runOnMainSync(()->{invoke("deletePhoneVault");try{AlertDialog prompt=(AlertDialog)field("editorDialog");List<EditText> inputs=new ArrayList<>();collectInputs(prompt.getWindow().getDecorView(),inputs);inputs.get(1).setText(secret);prompt.getButton(AlertDialog.BUTTON_POSITIVE).performClick();}catch(Exception e){throw new RuntimeException(e);}});
+            runOnMainSync(()->invoke("deletePhoneVault"));
+            // Let the dialog's posted OnShow listener install its validation action.
+            waitForIdleSync();
+            runOnMainSync(()->{try{AlertDialog prompt=(AlertDialog)field("editorDialog");List<EditText> inputs=new ArrayList<>();collectInputs(prompt.getWindow().getDecorView(),inputs);inputs.get(1).setText(secret);prompt.getButton(AlertDialog.BUTTON_POSITIVE).performClick();}catch(Exception e){throw new RuntimeException(e);}});
+            await(()->{try{Object owner=field("maintenance");Field auth=owner.getClass().getDeclaredField("authenticating");auth.setAccessible(true);return auth.getBoolean(owner);}catch(Exception e){throw new RuntimeException(e);}},"account authorization completes before phone PIN");
             confirmPin();await(()->maintenanceDialog()!=null&&maintenanceDialog().isShowing(),"phone deletion review after fresh account password and PIN");
             runOnMainSync(()->{AlertDialog review=maintenanceDialog();if(!remove){review.getButton(AlertDialog.BUTTON_NEGATIVE).performClick();return;}review.getButton(AlertDialog.BUTTON_POSITIVE).performClick();check(file.exists()&&review.isShowing(),"typed confirmation is required");List<EditText> inputs=new ArrayList<>();collectInputs(review.getWindow().getDecorView(),inputs);inputs.get(0).setText("DELETE");review.getButton(AlertDialog.BUTTON_POSITIVE).performClick();});
             if(!remove)check(file.exists(),"cancel final review preserves vault");
