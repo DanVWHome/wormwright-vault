@@ -6,8 +6,8 @@ android {
         applicationId 'ai.wormwright.vault.standalone'
         minSdk 30
         targetSdk 36
-        versionCode 5
-        versionName '0.1.0-test.5'
+        versionCode 6
+        versionName '0.1.0-test.6'
         testInstrumentationRunner 'ai.wormwright.pocket.UiRegressionInstrumentation'
         ndk { abiFilters 'arm64-v8a', 'x86_64' }
     }

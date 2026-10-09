@@ -5,7 +5,7 @@ Your personal password vault.
 Publisher: Dan Van Wormer. Support: danvanwormer@pm.me.
 Permanent application ID: **ai.wormwright.vault.standalone**.
 Coral Wormwright peeking out of a stitched blue pocket with a gold padlock. Minimum Android 11 (API 30),
-target/compile Android 16 (API 36); arm64-v8a and x86_64. Test version 0.1.0-test.5.
+target/compile Android 16 (API 36); arm64-v8a and x86_64. Test version 0.1.0-test.6.
 
 This updates previous Pocket Vault and Wormwright Pocket test builds. Keep the app installed;
 export a portable backup first, then install test.4 over it. The package and

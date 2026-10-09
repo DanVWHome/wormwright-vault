@@ -1,6 +1,12 @@
-# Wormwright Pocket 0.1.0-test.5 — device testing draft
+# Wormwright Pocket 0.1.0-test.6 — device testing draft
 
 Your personal password vault. Standalone offline Android app by Dan Van Wormer.
+
+Test.6 moves all authenticated cipher updates after Android confirms the PIN or
+strong biometric operation, including AES-GCM additional authenticated data.
+Existing per-operation Keystore authentication and encrypted metadata format are
+preserved. Optional-password guidance wraps in the dialog body, and the system
+identity prompt uses a short subtitle with a wrapping explanation.
 
 Test.5 fixes immediate list refresh after deleting and restoring entries. Search updates only the results, keeping the keyboard open and the search field
 focused. Stale results cannot replace a newer query; old rows are disabled while
@@ -16,7 +22,7 @@ newer work. Camera spacing, grouped record controls and the approved icon remain
 
 Package and dedicated test signing identity are unchanged. Export a portable
 backup, then install over the earlier test build without uninstalling. VersionCode
-is 5. The NAS companion receives the same opening feedback in preview.6. Real
+is 6. The NAS companion receives the same opening feedback in preview.6. Real
 Android message-loop tests cover repeated record/edit/save/cancel transitions,
 visible opening feedback, error cleanup and stale completion after locking.
 Physical biometric/PIN and actual SMB NAS acceptance remain separate checks.

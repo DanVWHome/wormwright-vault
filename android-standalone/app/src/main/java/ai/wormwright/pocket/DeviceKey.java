@@ -16,6 +16,12 @@ final class DeviceKey {
     static void delete(String slot) throws Exception {
         KeyStore store = KeyStore.getInstance("AndroidKeyStore"); store.load(null); store.deleteEntry(PREFIX + slot);
     }
+    /** Called only after BiometricPrompt authenticates this operation. Even AAD
+     * updates need the per-operation authentication token on KeyMint devices. */
+    static byte[] finish(String slot, Cipher cipher, byte[] input) throws Exception {
+        cipher.updateAAD(("WormwrightPocket:1:" + slot).getBytes(StandardCharsets.UTF_8));
+        return cipher.doFinal(input);
+    }
     static Cipher cipher(String slot, boolean create, byte[] iv) throws Exception {
         KeyStore store = KeyStore.getInstance("AndroidKeyStore"); store.load(null);
         String alias = PREFIX + slot;
@@ -34,7 +40,6 @@ final class DeviceKey {
         Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
         if (create) cipher.init(Cipher.ENCRYPT_MODE, key);
         else cipher.init(Cipher.DECRYPT_MODE, key, new GCMParameterSpec(128, iv));
-        cipher.updateAAD(("WormwrightPocket:1:" + slot).getBytes(StandardCharsets.UTF_8));
         return cipher;
     }
 }

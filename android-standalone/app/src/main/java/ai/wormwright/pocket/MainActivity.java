@@ -166,7 +166,7 @@ public class MainActivity extends Activity {
             active = readActive(); if (active == null) throw new IllegalStateException();
             JSONObject state = active; String slot = state.getString("slot");
             authenticate(DeviceKey.cipher(slot, false, decode(state.getString("iv"))), c -> {
-                String envelope = new String(c.doFinal(decode(state.getString("wrapped"))), StandardCharsets.UTF_8);
+                String envelope = new String(DeviceKey.finish(slot,c,decode(state.getString("wrapped"))), StandardCharsets.UTF_8);
                 if (state.optBoolean("password")) password("Separate vault password", false, false, p -> openEnvelope(slot, envelope, p));
                 else openEnvelope(slot, envelope, "");
             });
@@ -183,7 +183,7 @@ public class MainActivity extends Activity {
                 task(() -> {
                     String secret = call("new_secret");
                     String envelope = call("protect", secret, p);
-                    byte[] wrapped = cipher.doFinal(envelope.getBytes(StandardCharsets.UTF_8));
+                    byte[] wrapped = DeviceKey.finish(slot,cipher,envelope.getBytes(StandardCharsets.UTF_8));
                     if (imported == null) call("create", slotFile(slot).getPath(), secret);
                     else { call("restore", imported.getPath(), slotFile(slot).getPath(), recovery, secret); call("unlock", slotFile(slot).getPath(), secret); }
                     JSONObject state = new JSONObject().put("slot", slot).put("iv", encode(cipher.getIV())).put("wrapped", encode(wrapped)).put("password", !p.isEmpty());
@@ -360,10 +360,10 @@ public class MainActivity extends Activity {
         // envelope. Existing ciphertext and old slot remain until explicit cleanup.
         lock("Authenticate again to change the optional vault password.");
         try { JSONObject state=readActive();String old=state.getString("slot");
-            authenticate(DeviceKey.cipher(old,false,decode(state.getString("iv"))),c->{String envelope=new String(c.doFinal(decode(state.getString("wrapped"))),StandardCharsets.UTF_8);
-                PasswordDone current=p->task(()->call("unprotect",envelope,p),secret->password("New optional vault password (blank removes it)",true,true,next->{
+            authenticate(DeviceKey.cipher(old,false,decode(state.getString("iv"))),c->{String envelope=new String(DeviceKey.finish(old,c,decode(state.getString("wrapped"))),StandardCharsets.UTF_8);
+                PasswordDone current=p->task(()->call("unprotect",envelope,p),secret->password("Change vault password",true,true,next->{
                     String slot=UUID.randomUUID().toString();authenticate(DeviceKey.cipher(slot,true,null),cipher->task(()->{
-                        String protectedSecret=call("protect",secret,next);byte[] wrapped=cipher.doFinal(protectedSecret.getBytes(StandardCharsets.UTF_8));
+                        String protectedSecret=call("protect",secret,next);byte[] wrapped=DeviceKey.finish(slot,cipher,protectedSecret.getBytes(StandardCharsets.UTF_8));
                         Files.copy(slotFile(old).toPath(),slotFile(slot).toPath());
                         publish(new JSONObject().put("slot",slot).put("iv",encode(cipher.getIV())).put("wrapped",encode(wrapped)).put("password",!next.isEmpty()));
                         DeviceKey.delete(old); slotFile(old).delete(); return "";
