@@ -513,7 +513,7 @@ public class MainActivity extends Activity {
                 if(i==4) { fields[i].setSingleLine(false); fields[i].setMinLines(3); }
                 form.addView(fields[i]);
             }
-            CheckBox showPassword=new CheckBox(this); showPassword.setText("Show password");
+            android.widget.CheckBox showPassword=new android.widget.CheckBox(this); showPassword.setText("Show password");
             showPassword.setOnCheckedChangeListener((button,show)-> {
                 int start=fields[3].getSelectionStart(),end=fields[3].getSelectionEnd();
                 fields[3].setTransformationMethod(show ? null : android.text.method.PasswordTransformationMethod.getInstance());
