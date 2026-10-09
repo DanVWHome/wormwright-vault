@@ -17,8 +17,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         shell: pwsh
         run: |
-          gh release download v0.3.2-windows-preview.2 --pattern 'wormwright-vault_0.3.2_windows_x64_preview2.zip*' --dir portable
-          $package = 'portable/wormwright-vault_0.3.2_windows_x64_preview2.zip'
+          gh release download v0.3.3-windows-preview.1 --pattern 'wormwright-vault_0.3.3_windows_x64_preview1.zip*' --dir portable
+          $package = 'portable/wormwright-vault_0.3.3_windows_x64_preview1.zip'
           $expected = ((Get-Content "$package.sha256").Split(' ')[0]).ToLower()
           if ((Get-FileHash $package -Algorithm SHA256).Hash.ToLower() -ne $expected) { throw 'Portable release checksum mismatch' }
           Expand-Archive $package installer-input
@@ -39,19 +39,19 @@ jobs:
       - name: Prepare checksums and packaging source
         shell: pwsh
         run: |
-          git archive --format=zip --output=dist-installer/wormwright-vault-windows-preview2-installer-source.zip HEAD
+          git archive --format=zip --output=dist-installer/wormwright-vault-windows-preview1-installer-source.zip HEAD
           if ($LASTEXITCODE -ne 0) { throw 'Source archive failed' }
           $package = Get-Item dist-installer/*_setup.exe
           $hash = (Get-FileHash $package -Algorithm SHA256).Hash.ToLower()
           "$hash  $($package.Name)" | Set-Content -Encoding ascii "$($package.FullName).sha256"
       - uses: actions/upload-artifact@v4
         with:
-          name: wormwright-vault-windows-preview2-installer
+          name: wormwright-vault-windows-preview1-installer
           path: dist-installer/*
       - name: Add installer to existing Windows prerelease
         env:
           GH_TOKEN: ${{ github.token }}
         shell: pwsh
         run: |
-          gh release upload v0.3.2-windows-preview.2 dist-installer/*
+          gh release upload v0.3.3-windows-preview.1 dist-installer/*
           if ($LASTEXITCODE -ne 0) { throw 'Release upload failed' }
