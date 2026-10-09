@@ -1,0 +1,65 @@
+name: Publish Windows preview 2
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+  actions: read
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 5ac8a05e6ff21ad41c9b07b2a388ad8c47517514
+      - name: Verify successful Windows build source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test "$(gh api repos/DanVWHome/wormwright-vault/actions/runs/37856924330 --jq .conclusion)" = success
+          test "$(gh api repos/DanVWHome/wormwright-vault/actions/runs/37856924330 --jq .head_sha)" = c78d5a51db6bbfb828473c2b7e4b8f0a0c44cad0
+      - uses: actions/download-artifact@v4
+        with:
+          name: wormwright-vault-0.3.2-windows-x64-preview2
+          path: candidate
+          run-id: 37856924330
+          github-token: ${{ github.token }}
+      - name: Verify and prepare release files
+        run: |
+          python - <<'PYCODE'
+          from pathlib import Path
+          import hashlib, os, subprocess, zipfile
+          root = Path('candidate')
+          package = root / 'wormwright-vault_0.3.2_windows_x64_preview2.zip'
+          digest = (root / (package.name + '.sha256')).read_text().split()[0]
+          assert hashlib.sha256(package.read_bytes()).hexdigest() == digest
+          temporary = root / 'repacked.zip'
+          before = None
+          replaced = False
+          with zipfile.ZipFile(package) as old, zipfile.ZipFile(temporary, 'w') as new:
+              assert old.testzip() is None
+              assert 'WormwrightVault/docs/LICENSE' in old.namelist()
+              for info in old.infolist():
+                  data = old.read(info.filename)
+                  if info.filename == 'WormwrightVault/WormwrightVault.exe':
+                      before = hashlib.sha256(data).hexdigest()
+                  if info.filename == 'WormwrightVault/README.md':
+                      data = Path('docs/WINDOWS.md').read_bytes()
+                      replaced = True
+                  new.writestr(info, data)
+          assert replaced and before
+          with zipfile.ZipFile(temporary) as new:
+              assert new.testzip() is None
+              assert hashlib.sha256(new.read('WormwrightVault/WormwrightVault.exe')).hexdigest() == before
+          os.replace(temporary, package)
+          (root / (package.name + '.sha256')).write_text(hashlib.sha256(package.read_bytes()).hexdigest() + '  ' + package.name + '\n')
+          with zipfile.ZipFile(root / 'wormwright-vault-windows-preview2-source.zip', 'w', zipfile.ZIP_DEFLATED) as source:
+              for name in subprocess.check_output(['git', 'ls-files'], text=True).splitlines():
+                  if Path(name).is_file(): source.write(name, name)
+          (root / 'SHA256SUMS').write_text(''.join(hashlib.sha256(p.read_bytes()).hexdigest() + '  ' + p.name + '\n' for p in sorted(root.iterdir()) if p.is_file()))
+          PYCODE
+      - name: Publish Windows prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create v0.3.2-windows-preview.2 candidate/* --repo DanVWHome/wormwright-vault --target 5ac8a05e6ff21ad41c9b07b2a388ad8c47517514 --title "Windows 0.3.2 preview 2" --notes-file docs/releases/windows-preview-2.md --prerelease --latest=false
