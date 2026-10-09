@@ -97,6 +97,8 @@ public class MainActivity extends Activity {
         });
     }
     private String safeError(Exception e) {
+        StackTraceElement[] trace=e.getStackTrace();
+        android.util.Log.e("PocketFailure",e.getClass().getSimpleName()+(trace.length==0?"":" at "+trace[0].toString()));
         if (e instanceof PyException) {
             String value = e.getMessage();
             if (value != null && value.startsWith("VaultError: ")) return value.substring(12);
@@ -146,7 +148,8 @@ public class MainActivity extends Activity {
         if (!guard.isDeviceSecure()) { message("Set a secure phone PIN, pattern or password before using your personal vault."); return; }
         if (auth != null) auth.cancel(); auth = new CancellationSignal(); final int generation = epoch;
         new BiometricPrompt.Builder(this).setTitle("Unlock Wormwright Pocket")
-            .setSubtitle("Use strong biometrics or your phone screen-lock credential")
+            .setSubtitle("Confirm your identity")
+            .setDescription("Use strong biometrics or your phone PIN, pattern or password.")
             .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG | BiometricManager.Authenticators.DEVICE_CREDENTIAL)
             .build().authenticate(new BiometricPrompt.CryptoObject(cipher), auth, getMainExecutor(), new BiometricPrompt.AuthenticationCallback() {
                 @Override public void onAuthenticationSucceeded(BiometricPrompt.AuthenticationResult r) {
@@ -174,7 +177,7 @@ public class MainActivity extends Activity {
     }
     private void createOrRestore(File imported, String recovery) {
         if (!((KeyguardManager)getSystemService(KEYGUARD_SERVICE)).isDeviceSecure()) { message("Set a secure phone PIN, pattern or password first."); return; }
-        password("Optional separate vault password (leave blank for phone authentication only)", true, true, p -> {
+        password("Optional vault password", true, true, p -> {
             String slot = UUID.randomUUID().toString();
             authenticate(DeviceKey.cipher(slot, true, null), cipher -> {
                 task(() -> {
@@ -198,11 +201,14 @@ public class MainActivity extends Activity {
         parent.addView(field); return field;
     }
     private void password(String title, boolean confirmation, boolean optional, PasswordDone done) {
-        LinearLayout fields = column(); EditText first = input(fields, "Password or recovery key", true);
+        LinearLayout fields = column(); fields.setPadding(dp(20),dp(8),dp(20),dp(8));
+        if(optional) fields.addView(text("Leave blank to use phone authentication only. If you add a password, enter it in both fields (at least 12 characters)."));
+        EditText first = input(fields, "Password or recovery key", true);
         EditText second = confirmation ? input(fields, "Confirm password", true) : null;
         if (confirmation && !optional) button(fields, "Generate recovery key", () -> { String key = UUID.randomUUID().toString() + UUID.randomUUID().toString(); first.setText(key); second.setText(key); first.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD); });
         final int token = epoch;
-        final AlertDialog prompt = new AlertDialog.Builder(this).setTitle(title).setView(fields).setNegativeButton("Cancel", null).setPositiveButton("Continue", null).create();
+        ScrollView passwordScroll = new ScrollView(this); passwordScroll.addView(fields);
+        final AlertDialog prompt = new AlertDialog.Builder(this).setTitle(title).setView(passwordScroll).setNegativeButton("Cancel", null).setPositiveButton("Continue", null).create();
         dialog = prompt;
         prompt.setOnDismissListener(d -> { first.setText(""); if (second != null) second.setText(""); if (dialog == prompt) dialog = null; });
         prompt.setOnShowListener(d -> {

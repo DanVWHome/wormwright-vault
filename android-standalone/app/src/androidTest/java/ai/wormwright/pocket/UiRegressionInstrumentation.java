@@ -23,6 +23,7 @@ public class UiRegressionInstrumentation extends Instrumentation {
         try {
             activity = (MainActivity)startActivitySync(new Intent(getTargetContext(),MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
             waitForIdleSync();
+            personalCreation();
             openingFeedback();
             searchKeyboard();
             editTransitions();
@@ -71,6 +72,39 @@ public class UiRegressionInstrumentation extends Instrumentation {
         return false;
     }
     private void waitLatch(CountDownLatch latch,String label) {try{check(latch.await(60,TimeUnit.SECONDS),label);}catch(InterruptedException e){throw new RuntimeException(e);} }
+    private void shell(String command) {
+        try(android.os.ParcelFileDescriptor descriptor=getUiAutomation().executeShellCommand(command);
+            java.io.InputStream input=new android.os.ParcelFileDescriptor.AutoCloseInputStream(descriptor)) {
+            byte[] bytes=new byte[4096];while(input.read(bytes)!=-1){}
+        }catch(Exception e){throw new RuntimeException(e);}
+    }
+    private void confirmPin() {
+        SystemClock.sleep(1500);
+        shell("input text 246813");shell("input keyevent 66");
+    }
+    private void personalCreation() throws Exception {
+        for(String optional:new String[]{"","Invented-Test-Password-Only!"}) {
+            runOnMainSync(()->findButton(root(),"Create personal vault").performClick());waitForIdleSync();
+            runOnMainSync(()->{
+                check(hasText(dialog().getWindow().getDecorView(),"Leave blank to use phone authentication only. If you add a password, enter it in both fields (at least 12 characters)."),"optional guidance appears in wrapping body");
+                List<EditText> inputs=new ArrayList<>();collectInputs(dialog().getWindow().getDecorView(),inputs);
+                check(inputs.size()==2,"optional password fields");inputs.get(0).setText(optional);inputs.get(1).setText(optional);dialog().getButton(AlertDialog.BUTTON_POSITIVE).performClick();
+            });
+            confirmPin();await(()->unlocked()&&!busy(),"PIN creates personal vault with optional password="+!optional.isEmpty());
+            final String slot=((org.json.JSONObject)field("active")).getString("slot");
+            runOnMainSync(()->findButton(root(),"Lock vault").performClick());waitForIdleSync();
+            runOnMainSync(()->findButton(root(),"Unlock personal vault").performClick());confirmPin();
+            if(!optional.isEmpty()) {
+                await(()->dialog()!=null&&dialog().isShowing(),"optional password opens after PIN");
+                runOnMainSync(()->{List<EditText> inputs=new ArrayList<>();collectInputs(dialog().getWindow().getDecorView(),inputs);inputs.get(0).setText(optional);dialog().getButton(AlertDialog.BUTTON_POSITIVE).performClick();});
+            }
+            await(()->unlocked()&&!busy(),"created vault unlocks again");
+            runOnMainSync(()->findButton(root(),"Lock vault").performClick());
+            ExecutorService worker=(ExecutorService)field("worker");
+            worker.submit(()->{DeviceKey.delete(slot);java.io.File base=activity.getNoBackupFilesDir();new java.io.File(base,"active.json").delete();new java.io.File(base,"vault-"+slot+".sqlite").delete();return null;}).get(60,TimeUnit.SECONDS);
+            runOnMainSync(()->{try{Field active=MainActivity.class.getDeclaredField("active");active.setAccessible(true);active.set(activity,null);Method home=MainActivity.class.getDeclaredMethod("home",String.class);home.setAccessible(true);home.invoke(activity,"Invented authentication regression complete.");}catch(Exception e){throw new RuntimeException(e);}});
+        }
+    }
     private void openingFeedback() throws Exception {
         ExecutorService worker=(ExecutorService)field("worker");CountDownLatch held=new CountDownLatch(1),release=new CountDownLatch(1);
         worker.execute(()->{held.countDown();waitLatch(release,"release worker");});waitLatch(held,"worker held");
