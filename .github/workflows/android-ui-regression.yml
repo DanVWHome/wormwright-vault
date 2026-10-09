@@ -59,7 +59,7 @@ jobs:
               output=result.stdout+result.stderr
               Path('regression-results/'+name+'.txt').write_text(output)
               print(output)
-              assert result.returncode==0 and 'ui_regression_ok=true' in output, name+' UI regression failed'
+              assert result.returncode==0 and 'PASS opening spinner/' in output, name+' UI regression failed'
           PYTEST
       - name: Capture diagnostics without disabling screenshot protection
         if: always()
