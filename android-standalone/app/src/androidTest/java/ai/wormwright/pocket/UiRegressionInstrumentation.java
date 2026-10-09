@@ -146,8 +146,10 @@ public class UiRegressionInstrumentation extends Instrumentation {
     private void maintenanceFlow(String original,String optional) throws Exception {
         java.io.File base=activity.getNoBackupFilesDir();java.io.File originalFile=new java.io.File(base,"vault-"+original+".sqlite");
         runOnMainSync(()->{invoke("newVault");dialog().getButton(AlertDialog.BUTTON_NEGATIVE).performClick();});
+        await(()->dialog()==null||!dialog().isShowing(),"new-vault confirmation cancellation");
         check(originalFile.exists(),"cancel new-vault preserves existing file");
         runOnMainSync(()->{invoke("newVault");dialog().getButton(AlertDialog.BUTTON_POSITIVE).performClick();});
+        await(()->dialog()!=null&&dialog().isShowing()&&hasText(dialog().getWindow().getDecorView(),"Leave blank to use phone authentication only. If you add a password, enter it in both fields (at least 12 characters)."),"optional password prompt after queued Create confirmation");
         runOnMainSync(()->dialog().getButton(AlertDialog.BUTTON_POSITIVE).performClick());confirmPin();
         await(()->unlocked()&&!busy(),"second independent personal vault");
         String second=((org.json.JSONObject)field("active")).getString("slot");check(!second.equals(original)&&originalFile.exists(),"new vault retains original");
