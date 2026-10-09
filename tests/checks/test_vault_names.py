@@ -26,6 +26,7 @@ with tempfile.TemporaryDirectory() as d:
     with sqlite3.connect(backup) as db:
         name=json.loads(db.execute("SELECT value FROM metadata WHERE name='display_name'").fetchone()[0]);name['data']['name']='Tampered'
         db.execute("UPDATE metadata SET value=? WHERE name='display_name'",(json.dumps(name).encode(),))
+    db.close() # SQLite's transaction context commits but does not close the handle.
     try:ManagedVault(backup).unlock('Invented-Name-Test-Password!');raise AssertionError('Tampered name accepted')
     except VaultError:pass
     # Existing unnamed files are still readable; no inferred name is silently saved.
