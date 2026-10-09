@@ -11,8 +11,6 @@ jobs:
       QT_QPA_PLATFORM: offscreen
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: c78d5a51db6bbfb828473c2b7e4b8f0a0c44cad0
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -30,8 +28,8 @@ jobs:
           python - <<'PY'
           from pathlib import Path
           p = Path('src/version.py')
-          s = p.read_text().replace("VERSION = '0.3.2'", "VERSION = '0.3.2+lockfix.1'")
-          s = s.replace("else 'Linux Mint release'", "else 'Linux Mint lock-fix preview'")
+          s = p.read_text().replace("VERSION = '0.3.2'", "VERSION = '0.3.2+lockfix.2'")
+          s = s.replace("else 'Linux Mint release'", "else 'Linux Mint NAS sync preview 2'")
           p.write_text(s)
           PY
       - name: Build Mint preview
@@ -42,14 +40,14 @@ jobs:
           from pathlib import Path
           import hashlib, subprocess, zipfile
           output = Path('dist-linux')
-          with zipfile.ZipFile(output / 'wormwright-vault-lockfix-source.zip', 'w', zipfile.ZIP_DEFLATED) as z:
+          with zipfile.ZipFile(output / 'wormwright-vault-lockfix-preview2-source.zip', 'w', zipfile.ZIP_DEFLATED) as z:
               for name in subprocess.check_output(['git', 'ls-files'], text=True).splitlines():
                   if Path(name).is_file(): z.write(name, name)
           (output / 'SHA256SUMS').write_text(''.join(hashlib.sha256(p.read_bytes()).hexdigest() + '  ' + p.name + '\n' for p in sorted(output.iterdir()) if p.is_file()))
           PY
       - uses: actions/upload-artifact@v4
         with:
-          name: wormwright-vault-linux-lockfix-preview
+          name: wormwright-vault-linux-lockfix-preview2
           path: dist-linux/*
           retention-days: 14
           if-no-files-found: error
