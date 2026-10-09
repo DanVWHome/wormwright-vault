@@ -6,7 +6,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'src'))
 from history import VaultHistory, MAX_RECENT
 
 with tempfile.TemporaryDirectory() as directory:
-    root = Path(directory)
+    root = Path(directory).resolve()
     history = VaultHistory(root / 'history.json')
     assert history.read() == []
     for index in range(MAX_RECENT + 5):
@@ -15,7 +15,8 @@ with tempfile.TemporaryDirectory() as directory:
     newest = history.read()[0]
     history.remember(newest)
     assert history.read()[0] == newest and len(history.read()) == MAX_RECENT
-    assert history.path.stat().st_mode & 0o777 == 0o600
+    if sys.platform != "win32":
+        assert history.path.stat().st_mode & 0o777 == 0o600
     vault = root / 'keep.sqlite'; vault.write_bytes(b'dummy-file')
     history.remember(vault)
     history.forget(str(vault))

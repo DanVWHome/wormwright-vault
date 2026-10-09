@@ -19,7 +19,7 @@ with tempfile.TemporaryDirectory() as folder:
  assert len(matching_ids(records,'gMaIl'))==2
  assert len(matching_ids(records,'google'))==1
  assert len(matching_ids(records,'recovery'))==1
- assert matching_ids(records,'username-only-term')==set()
+ assert len(matching_ids(records,'username-only-term'))==2
  assert len(matching_ids(records,'Gm_il'))==2
  assert len(matching_ids(records,"' OR 1=1 --"))==0
  try:w.vault.create('short');raise AssertionError()
@@ -53,4 +53,4 @@ with tempfile.TemporaryDirectory() as folder:
   assert json.loads(client.recv(1024))['accepted'] is False
   client.close()
  service.close();w.lock()
-print('PASS: SQL LIKE search, excludes usernames/passwords, short fallback, hidden selection, queued locked lookup, private IPC acknowledgment, single instance, unsupported secret commands rejected')
+print('PASS: SQL LIKE search, includes usernames, excludes passwords, short fallback, hidden selection, queued locked lookup, private IPC acknowledgment, single instance, unsupported secret commands rejected')

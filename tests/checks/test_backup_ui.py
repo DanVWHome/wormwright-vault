@@ -22,7 +22,7 @@ with tempfile.TemporaryDirectory() as folder:
     window.vault.save({**record,'id':entry_id,'description':'New edit'})
     with patch('app.QFileDialog.getOpenFileName',return_value=(backup,'')), patch('app.QMessageBox.question',return_value=QMessageBox.StandardButton.Yes), patch('PySide6.QtWidgets.QInputDialog.getText',return_value=('test-master-passphrase',True)), patch('app.QMessageBox.information'):
         window.restore()
-    assert not window.vault.unlocked and window.table.rowCount()==0
+    assert window.vault.unlocked and window.table.rowCount()>0
     assert list(Path(folder).glob('*-before-restore-*.sqlite'))
     window.master.setText('test-master-passphrase')
     window.unlock()

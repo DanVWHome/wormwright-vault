@@ -8,6 +8,8 @@ import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / 'src'))
+from version import VERSION
 
 
 def main():
@@ -15,6 +17,7 @@ def main():
     parser.add_argument('--work-dir', type=Path, default=ROOT / 'build')
     parser.add_argument('--output-dir', type=Path, default=ROOT / 'dist')
     parser.add_argument('--glibc-min', default='2.39')
+    parser.add_argument('--stage-only', action='store_true', help='Prepare package files without compression')
     args = parser.parse_args()
     work = args.work_dir.resolve()
     output = args.output_dir.resolve()
@@ -73,7 +76,7 @@ printf '%s\\n' 'Desktop launcher enabled for this login and future logins.'
     notices = docs / 'third-party'
     for license_name in ('LICENSE', 'LICENSING.md'):
         shutil.copy2(ROOT / license_name, docs / license_name)
-    for name in ['PySide6-Essentials', 'shiboken6', 'PyNaCl', 'cryptography', 'fido2', 'cffi', 'pycparser', 'pyinstaller']:
+    for name in ['PySide6-Essentials', 'PySide6-Addons', 'shiboken6', 'PyNaCl', 'cryptography', 'fido2', 'cffi', 'pycparser', 'pyinstaller']:
         distribution = importlib.metadata.distribution(name)
         for entry in distribution.files or []:
             if 'license' in str(entry).lower() or 'copying' in str(entry).lower():
@@ -88,7 +91,7 @@ printf '%s\\n' 'Desktop launcher enabled for this login and future logins.'
     metadata.mkdir()
     size = sum(path.stat().st_size for path in stage.rglob('*') if path.is_file()) // 1024
     (metadata / 'control').write_text(f'''Package: vanwormai-vault
-Version: 0.1.9
+Version: {VERSION}
 Section: utils
 Priority: optional
 Architecture: amd64
@@ -98,7 +101,9 @@ Depends: libc6 (>= {args.glibc_min}), python3, libxcb-cursor0, libxkbcommon-x11-
 Description: Offline encrypted password vault with optional YubiKey unlock
  Prototype desktop vault with local UI-only assistant hooks.
 ''')
-    result = output / 'wormwright-vault_0.1.9_amd64.deb'
+    if args.stage_only:
+        return
+    result = output / f'wormwright-vault_{VERSION}_amd64.deb'
     subprocess.run(['dpkg-deb', '--root-owner-group', '-Zxz', '--build', str(stage), str(result)], check=True)
     print(result)
 

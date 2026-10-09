@@ -1,199 +1,55 @@
 # Wormwright Vault
 
-An offline Linux password-vault prototype by Dan Van Wormer with AI assistance.
-Built for Linux Mint Cinnamon and XFCE. Entry passwords and metadata are
-locally encrypted; optional YubiKey PIN plus touch and a separate password
-fallback unlock the vault.
+An offline encrypted password and code manager by Dan Van Wormer with AI assistance.
+Keep a local working vault on each device and sync through your own NAS.
 
-## Install the prototype
+## Downloads
 
-The supplied `wormwright-vault_0.1.9_amd64.deb` targets **Linux Mint 22.x on
-Intel/AMD 64-bit computers** (glibc 2.39 or newer). It bundles Python, Qt,
-and encryption libraries. It does not download Python packages at launch.
-APT may download the Linux display and FIDO-permission prerequisites during
-installation. Mint 21 needs a build made on its older base; this particular
-binary is not claimed compatible with it.
+- [Linux Mint 0.3.2 — stable](https://github.com/DanVWHome/wormwright-vault/releases/tag/v0.3.2)
+- [Linux NAS lock-fix preview](https://github.com/DanVWHome/wormwright-vault/releases/tag/v0.3.2-lockfix-preview.1)
+- [Windows 0.3.2 preview 2](https://github.com/DanVWHome/wormwright-vault/releases/tag/v0.3.2-windows-preview.2)
+- [Android 0.1.0-preview.3](https://github.com/DanVWHome/wormwright-vault/releases/tag/v0.3.1)
 
-```sh
-sudo apt install ./wormwright-vault_0.1.9_amd64.deb
-```
+For setup and platform limits, see [the website](https://wormwright.com/vault.html),
+[Windows setup](docs/WINDOWS.md), [Linux setup](docs/MINT-RELEASE.md), and
+[Android setup](android/README.md). Windows includes Vault and optional Manager.
+Extract the whole portable ZIP into a local folder; no Python installation is needed.
 
-Open **Wormwright Vault** from the application menu. If the key is not detected
-immediately after installation, unplug and reconnect it to apply the installed
-FIDO device permissions. Run the app as your normal user.
+The Windows preview has been tested on one Windows laptop: password and enrolled
+YubiKey unlock, remembered vault and sync settings, and window sizing worked.
+Other Windows machines and all NAS scenarios have not been verified.
 
-Existing prototype vaults under `~/.local/share/atlas-portable` are reused.
-New vaults default to `~/.local/share/vanwormai-vault`. Installing or removing
-the package does not import, replace, or delete a user's vault.
+## NAS sync and compatibility
 
-## Assistant lookup
+Use **SMB**. FTP-mounted shares have shown intermittent sync failures and incorrect
+file-lock messages; switching the affected computer to SMB resolved that failure.
+Keep each device’s local working copy separate from the shared master.
+Windows preserves the existing Linux and Android vault formats and NAS sync
+protocol. It does not require a vault-format migration or re-enrolling an
+existing YubiKey. Android retains its existing preview feature limits.
 
-```sh
-wormwright-control lookup Gmail
-wormwright-control open
-wormwright-control lock
-```
+The NAS cleanup improvements guarantee release attempts after scratch allocation
+and cleanup failures, retry short-lived release failures, and report persistent
+failures. They never clear another device’s existing lock automatically. The
+intermittent NAS-lock issue still needs testing over time. Locked desktop apps
+may continue automatic sync; fully exit other apps for an isolated test.
 
-These commands select masked entries or show the unlock screen. They return
-only acknowledgments, not passwords, records, or match counts.
+## Build and validation
 
-An assistant-launched subprocess can inherit the assistant's USB restrictions.
-For voice requests to start the GUI in your ordinary desktop session, enable
-this **optional** fixed-action launcher from your own terminal after installing:
+GitHub Actions builds the Windows portable ZIP and Linux preview. Synthetic
+checks cover encryption, signed FIDO2 assertions, sync/merge/conflict behavior,
+settings retention, lock cleanup, backups, UI behavior and package startup.
+See `.github/workflows/`, `packaging/`, and `tests/`. Hardware and real NAS tests
+complement these automated checks.
 
-```sh
-wormwright-enable-desktop-launcher
-```
+## License and support
 
-It starts a small local launcher now and on future logins. It runs as your user,
-accepts only the versioned UI-request allowlist, and cannot unlock or reveal
-passwords. It has no network listener or administrator privileges. Close any
-previous sandbox-launched instance before trying the desktop launcher. Normal
-menu launches do not require this option. Actual host-session USB behavior
-must be tested on each machine; packaging alone does not remove an outer sandbox.
+Application code is [GNU GPLv3 only](LICENSE). See [LICENSING.md](LICENSING.md)
+for third-party notices and branding exclusions. Music and other Wormwright
+projects are outside this software license.
 
-To disable future autostart, remove
-`~/.config/autostart/vanwormai-vault-agent.desktop` and log out and back in.
-Full UI/backup/import instructions are in [docs/README.txt](docs/README.txt),
-and the hook contract is in [docs/INTEGRATION.txt](docs/INTEGRATION.txt).
-
-## Develop from source
-
-Python 3.10+ is required. On Mint, install `python3-venv`, `libxcb-cursor0`,
-and `libxkbcommon-x11-0` if needed, then run:
-
-```sh
-chmod +x start.sh control.sh
-./start.sh
-```
-
-The first source launch downloads dependencies into `.venv`.
-Initial master passwords require twelve characters; subsequent fallback
-passwords can be any non-empty length. Reusing your Linux password is a
-choice of value, not authentication against sudo/PAM.
-
-## Tests and packaging
-
-```sh
-python3 -m venv .venv
-.venv/bin/python -m pip install -r requirements-build.txt
-.venv/bin/python tests/run_checks.py
-.venv/bin/python packaging/build-deb.py
-```
-
-The test suite uses temporary dummy vaults and synthetic FIDO assertions.
-It covers encryption/tamper handling, edits, backups/restores, migration
-validation, PIN/touch verification flags, password fallback, masked lookup,
-private local IPC and single-instance handling. It never loads real vaults.
-
-The build script stages an explicit source allowlist and produces a bundled
-`.deb` under `dist/`. Build on the oldest supported target distribution, and
-set `--glibc-min` to the minimum supported libc version for that build.
-The build tool is pinned; this is not yet a bit-for-bit reproducible release.
-
-## Repository boundary
-
-Only application source, dummy-data tests, documentation, and packaging files
-belong in Git. Vault databases, CSV exports, backups, keys, environments, build
-outputs and crash dumps are excluded. Installer artifacts are delivered
-separately. No uploaded Atlas files or personal export is part of this repository.
-
-This remains a prototype. Forgotten-password recovery is not implemented. Shared-folder sync is manual
-and stops on conflicting edits; it does not merge records. Physical YubiKey enrollment/unlock and installer behavior
-must be checked on each target laptop/desktop before using real credentials.
-Wormwright Vault is licensed under [GNU GPLv3](LICENSE), version 3 only.
-See [licensing scope](LICENSING.md) for branding exclusions and dependencies.
-Third-party licenses and notices remain applicable.
-Use the structured bug-report form for ordinary bugs and [SECURITY.md](SECURITY.md)
-for private security reporting. Never attach real vault data or credentials.
-
-## Wormwright AI branding
-
-The approved family reference is `assets/wormwright-mascot-reference.png`.
-Use the same coral cartoon worm, broad curled pose, head tilt, navy outlines,
-and cream AI badge with sparkle for future app variants. Maintain a complete,
-readable body silhouette. Main and Email poses are approved; place Vault and
-Notes props beside the worm. Avoid circuit traces, hook-shaped poses and cut-off limbs.
-The Vault icon is `assets/wormwright-vault.png`.
-
-Version 0.1.2 changes the display branding and icon. The installed package keeps
-its original `vanwormai-vault` identity to upgrade existing installations.
-Old command names, data paths, local-control endpoint and FIDO relying-party
-identity are retained for compatibility. The `wormwright-*` commands are the
-preferred aliases. No vault or key reenrollment is required.
-
-## Shared-folder sync
-
-Keep a separate local working vault on each machine. Mount a dedicated home-server
-folder using your normal network-share tools (over any VPN that allows access).
-Unlock the vault, open **Sync Settings**, choose that mounted folder, then click
-**Sync Now**. The shared copy is named `wormwright-vault.sqlite`. Never open that
-shared copy directly for editing. Do not use a cloud-mirrored folder.
-
-The first device uploads its vault. Copy that shared vault to a local file on the
-next device, unlock the local copy, choose the same shared folder, and sync once
-to pair it. Thereafter local-only changes upload and server-only changes download.
-A download locks the app; unlock using the credentials in the updated copy.
-Fallback-password and YubiKey changes travel with the vault. Old backups retain
-their old credentials. When both copies changed, sync stops without overwriting;
-keep both files and reconcile the entries manually. There is no force-overwrite
-button or automatic merge.
-
-Automatic sync backups default to **10 per working/shared copy**. Change the limit
-in Sync Settings (1–1000). Each successful transfer backs up the copy it replaces;
-uploads also back up the local working copy. Successful syncs prune only older
-files belonging to that copy inside `.wormwright-sync-backups`. Manual backups
-and import/restore/authentication safety backups are not pruned. Syncs with no
-changes create no new backups but apply the current limit.
-
-Local pairing/settings live beside the local vault in `<vault>.sync.json`; keep
-that file on its originating device. Do not copy it to pair another machine.
-A missing shared copy after pairing is treated as a conflict, not recreated.
-Mount the share before syncing. All devices must use Sync Now; other programs
-editing the shared database do not participate in the sync lock. A crashed sync
-may leave `.wormwright-sync-lock` in the share: verify no device is syncing
-before removing that empty lock directory. Server backups remain advisable;
-automatic retained versions are not forgotten-password recovery.
-
-## CSV import and export
-
-**Import Vault CSV** previews plain-text vault exports. No legacy
-encryption format, encryption key, or initialization vector is requested. **Export to CSV** exports every
-entry, including passwords and notes, regardless of the current search.
-Export requires an explicit plain-text warning confirmation, creates a new
-file with owner-only permissions, and never overwrites an existing file.
-Columns are `description,link,user_name,pw,notes`, matching the importer.
-CSV preserves field values exactly; use it for transfer rather than opening
-untrusted entries in spreadsheet software, which can interpret formulas.
-Use **Back Up Vault** when you want an encrypted backup.
-
-Every CSV export requires fresh authentication: the enrolled YubiKey with PIN
-and touch, or the current fallback/master password. Being unlocked alone is
-not sufficient. Cancelled or failed authentication creates no export file.
-
-Creating a new vault opens one dialog with New master password and Confirm
-master password fields. Both must match and contain at least 12 characters.
-Cancelling creates no vault; existing vault unlock uses its current password.
-
-Each main-table Show button opens a separate, resizable window with 32-point
-monospace password text. The table stays masked. Closing, switching entries,
-searching/refreshing, or locking clears and closes the password display.
-
-## Recent vault locations
-
-**Recent Vaults** remembers the last 20 successfully created or unlocked vaults
-on this device, newest first, with full paths. Open a selected vault or
-double-click its location, then authenticate normally. Unavailable locations
-stay listed so removable or network drives can be reconnected. **Forget selected**
-removes only the history entry, never the vault. Locations are stored in an
-owner-only file at `$XDG_DATA_HOME/vanwormai-vault/recent-vaults.json` (normally
-`~/.local/share/vanwormai-vault/recent-vaults.json`). Passwords and entries are
-not included. History is local to each device and is not synced.
-
-Sync inspects and builds encrypted SQLite snapshots locally. The shared folder is used only for file transfers, lock directories, and atomic replacement; SQLite does not open databases on the share. The share must support those filesystem operations.
-
-### Resolve sync differences
-
-When both copies changed or a new device is not paired, Sync Now opens an in-app comparison after requesting the shared vault’s master/fallback password. Select each row to compare description, link, username, notes, and masked passwords. Password differences are flagged; revealing is an explicit checkbox inside the app. Choose Local, Shared, or Omit for every differing entry, or use all entries from one copy. An absent-side choice removes that entry from the result. Entries with different IDs remain separate even if their descriptions match.
-
-Apply confirms the operation, checks that neither copy changed during review, and keeps encrypted `.conflict-*.sqlite` safety backups of both originals. These backups are not automatically pruned. The resolved result uses the shared vault’s encryption and password/YubiKey settings so a separately created desktop vault can join it. Both files receive the same result and the local vault locks. If a transfer fails midway, keep the safety backups and both copies; file replacement across two devices is not one atomic transaction. There is no three-way deletion inference: missing entries require explicit review. Cancelling leaves both vaults unchanged.
+[Report an ordinary bug](https://github.com/DanVWHome/wormwright-vault/issues/new?template=bug-report.yml).
+For security issues, see [SECURITY.md](SECURITY.md). Never attach real vaults,
+password exports, credentials, recovery codes or YubiKey PINs to public reports.
+Only source, packaging, documentation, branding and synthetic fixtures belong
+in this repository; real vaults, backups, credentials and signing keys do not.

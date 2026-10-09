@@ -1,14 +1,17 @@
+from key_ui import request_key_pin
 import os
 import sys
+import secrets
+import string
 import threading
 from collections import Counter
 from pathlib import Path
 from PySide6.QtGui import QIcon, QPixmap, QFont
-from PySide6.QtCore import Qt, QTimer, QThread, QEventLoop
+from PySide6.QtCore import Qt, QTimer, QThread, QEventLoop, QEvent
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QPushButton, QLineEdit, QTableWidget, QTableWidgetItem, QAbstractItemView,
     QHeaderView, QMessageBox, QDialog, QFormLayout, QTextEdit, QDialogButtonBox, QFileDialog,
-    QListWidget, QListWidgetItem, QCheckBox, QProgressDialog, QInputDialog, QSpinBox)
+    QListWidget, QListWidgetItem, QCheckBox, QProgressDialog, QInputDialog, QSpinBox, QMenu)
 from vault import Vault, VaultError
 from importer import read_export
 from exporter import export_csv
@@ -18,6 +21,12 @@ from history import VaultHistory
 from sync import configure, read_settings, synchronize, DEFAULT_LIMIT, SyncConflict
 from conflicts import Comparison
 from conflict_dialog import ConflictDialog
+from preferences import read_timeout, save_timeout
+from auto_sync import AutoSyncTask, finish_sync
+from version import VERSION
+
+COPY_FIELDS = [('description', 'Description'), ('link', 'Link'),
+               ('user_name', 'User Name'), ('password', 'Password'), ('notes', 'Notes')]
 
 
 class KeyTask(QThread):
@@ -87,24 +96,45 @@ class EntryDialog(QDialog):
         for key, label in [('description', 'Description'), ('link', 'Link'), ('user_name', 'User Name'), ('password', 'Password')]:
             field = QLineEdit(self.record.get(key, ''))
             self.fields[key] = field
+            row = QHBoxLayout()
+            row.addWidget(field)
             if key == 'password':
                 field.setEchoMode(QLineEdit.EchoMode.Password)
-                row = QHBoxLayout()
-                row.addWidget(field)
                 show = QPushButton('Show')
                 show.setCheckable(True)
                 show.toggled.connect(lambda checked: (field.setEchoMode(QLineEdit.EchoMode.Normal if checked else QLineEdit.EchoMode.Password), show.setText('Hide' if checked else 'Show')))
                 row.addWidget(show)
-                form.addRow(label, row)
-            else:
-                form.addRow(label, field)
+                generate = QPushButton('Generate')
+                generate.setObjectName('generate_password')
+                generate.setToolTip('Generate a 24-character random password without commas, quotes or line breaks')
+                generate.clicked.connect(self.generate_password)
+                row.addWidget(generate)
+            copy_button = QPushButton('Copy')
+            copy_button.setObjectName('copy_' + key)
+            copy_button.setToolTip('Copy ' + label.lower() + '; clipboard clears after 30 seconds')
+            copy_button.clicked.connect(lambda checked=False, f=field: parent.copy_text(f.text()))
+            row.addWidget(copy_button)
+            form.addRow(label, row)
         self.notes = QTextEdit(self.record.get('notes', ''))
-        form.addRow('Notes', self.notes)
+        notes_row = QHBoxLayout()
+        notes_row.addWidget(self.notes)
+        copy_notes = QPushButton('Copy')
+        copy_notes.setObjectName('copy_notes')
+        copy_notes.setToolTip('Copy notes; clipboard clears after 30 seconds')
+        copy_notes.clicked.connect(lambda: parent.copy_text(self.notes.toPlainText()))
+        notes_row.addWidget(copy_notes)
+        form.addRow('Notes', notes_row)
         layout.addLayout(form)
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
         buttons.accepted.connect(self.validate)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
+
+    def generate_password(self):
+        # secrets uses the operating system's cryptographic random source.
+        alphabet = string.ascii_letters + string.digits + '!@#$%&*+-_=?.'
+        password = ''.join(secrets.choice(alphabet) for _ in range(24))
+        self.fields['password'].setText(password)
 
     def validate(self):
         if not self.fields['description'].text().strip():
@@ -146,8 +176,15 @@ class PasswordDisplay(QDialog):
 class Window(QMainWindow):
     def __init__(self, path):
         super().__init__()
+        from help_window import show_help
+        help_menu=self.menuBar().addMenu('Help');help_menu.addAction('Searchable Help…',lambda:show_help(self))
+        from tutorial_window import show_tutorial
+        help_menu.addAction('Watch Tutorial…',lambda:show_tutorial(self))
+        from about_window import show_about
+        help_menu.addSeparator();help_menu.addAction('About Wormwright Vault…',lambda:show_about(self))
         self.vault = Vault(path)
         self.vault_history = VaultHistory()
+        self.lock_minutes = read_timeout()
         self.records = []
         self.dialog = None
         self.password_display = None
@@ -155,7 +192,10 @@ class Window(QMainWindow):
         self.password_fallback = False
         self.key_task = None
         self.pending_lookup = None
-        self.setWindowTitle('Wormwright Vault — Offline Prototype')
+        self.sync_task = None
+        self.closing_after_sync = False
+        self.close_ready = False
+        self.setWindowTitle(f'Wormwright Vault {VERSION} — Offline Prototype')
         asset = Path(__file__).resolve().parent.parent / 'assets/wormwright-vault.png'
         if getattr(sys, 'frozen', False):
             asset = Path(sys._MEIPASS) / 'assets/wormwright-vault.png'
@@ -175,6 +215,9 @@ class Window(QMainWindow):
         brand.addWidget(title)
         brand.addStretch()
         layout.addLayout(brand)
+        version_label = QLabel(f'Version {VERSION} • Offline prototype')
+        version_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(version_label)
         self.status = QLabel()
         layout.addWidget(self.status)
         unlock = QHBoxLayout()
@@ -201,13 +244,21 @@ class Window(QMainWindow):
         layout.addLayout(unlock)
         actions = QHBoxLayout()
         self.search = QLineEdit()
-        self.search.setPlaceholderText('Search description, link, or notes')
+        self.search.setPlaceholderText('Search description, username, link, or notes')
         self.search.textChanged.connect(self.refresh)
         actions.addWidget(self.search)
         self.controls = []
-        for text, method in [('Add Password', self.add), ('Edit', self.edit), ('Clone', self.clone), ('Copy Password', self.copy), ('Delete', self.delete), ('Lock', self.lock)]:
+        for text, method in [('Add Password', self.add), ('Edit', self.edit), ('Clone', self.clone), ('Copy Field', self.copy), ('Delete', self.delete), ('Lock', self.lock)]:
             button = QPushButton(text)
-            button.clicked.connect(method)
+            if text == 'Copy Field':
+                self.copy_menu = QMenu(button)
+                for field, label in COPY_FIELDS:
+                    action = self.copy_menu.addAction(label)
+                    action.triggered.connect(lambda checked=False, key=field: self.copy_field(key))
+                button.setMenu(self.copy_menu)
+                button.setToolTip('Select an entry, then copy a field without revealing its password')
+            else:
+                button.clicked.connect(method)
             actions.addWidget(button)
             self.controls.append(button)
         layout.addLayout(actions)
@@ -238,14 +289,73 @@ class Window(QMainWindow):
         self.table.setStyleSheet('QTableWidget { alternate-background-color: #c9eaf5; background-color: white; color: #202020; } QHeaderView::section { background: silver; color: black; padding: 6px; }')
         self.table.cellDoubleClicked.connect(lambda *_: self.edit())
         layout.addWidget(self.table)
-        layout.addWidget(QLabel('Offline prototype • Clipboard clears after 30 seconds • Vault locks after 5 minutes'))
+        timeout_button = QPushButton('Lock Settings…')
+        timeout_button.clicked.connect(self.lock_settings)
+        layout.addWidget(timeout_button)
+        self.lock_status = QLabel()
+        self.lock_status.setWordWrap(True)
+        layout.addWidget(self.lock_status)
+        self.sync_status = QLabel('Automatic sync: configure the shared folder to start')
+        self.sync_status.setWordWrap(True)
+        layout.addWidget(self.sync_status)
+        self.auto_timer = QTimer(self)
+        self.auto_timer.timeout.connect(self.auto_sync)
+        self.auto_timer.start(30000)
+        QTimer.singleShot(0, self.auto_sync)
         self.lock_timer = QTimer(self)
         self.lock_timer.setSingleShot(True)
         self.lock_timer.timeout.connect(self.lock)
         self.clipboard_timer = QTimer(self)
         self.clipboard_timer.setSingleShot(True)
         self.clipboard_timer.timeout.connect(self.clear_clipboard)
+        QApplication.instance().installEventFilter(self)
+        self.restart_lock_timer()
         self.update_state()
+        from window_geometry import fit_to_screen
+        QTimer.singleShot(0, lambda: fit_to_screen(self, 1100, 640))
+
+    def restart_lock_timer(self):
+        self.lock_timer.stop()
+        label = f'Auto-lock after {self.lock_minutes} minutes of inactivity' if self.lock_minutes else 'Auto-lock: Unlimited — remember to lock manually'
+        self.lock_status.setText('Clipboard clears after 30 seconds • ' + label)
+        if self.vault.unlocked and self.lock_minutes:
+            self.lock_timer.start(self.lock_minutes * 60 * 1000)
+
+    def eventFilter(self, watched, event):
+        if hasattr(self, 'lock_timer') and self.vault.unlocked and event.type() in (
+                QEvent.Type.KeyPress, QEvent.Type.MouseButtonPress, QEvent.Type.Wheel):
+            self.restart_lock_timer()
+        return super().eventFilter(watched, event)
+
+    def lock_settings(self):
+        dialog = QDialog(self)
+        dialog.setWindowTitle('Automatic vault locking')
+        form = QFormLayout(dialog)
+        minutes = QSpinBox()
+        minutes.setRange(0, 10080)
+        minutes.setSpecialValueText('Unlimited')
+        minutes.setValue(self.lock_minutes)
+        form.addRow('Minutes of inactivity (0 = Unlimited):', minutes)
+        warning = QLabel('Unlimited leaves passwords accessible until you lock or close the app. Use it only on a trusted device and remember to lock manually.')
+        warning.setWordWrap(True)
+        form.addRow(warning)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
+        buttons.accepted.connect(dialog.accept); buttons.rejected.connect(dialog.reject)
+        form.addRow(buttons)
+        try:
+            if dialog.exec() != QDialog.DialogCode.Accepted:
+                return
+            if minutes.value() == 0 and QMessageBox.warning(self, 'Disable automatic locking?',
+                    warning.text(), QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.No) != QMessageBox.StandardButton.Yes:
+                return
+            save_timeout(minutes.value())
+            self.lock_minutes = minutes.value()
+            self.restart_lock_timer()
+        except Exception as error:
+            QMessageBox.warning(self, 'Lock settings not saved', str(error))
+        finally:
+            dialog.deleteLater()
 
     def update_state(self):
         unlocked = self.vault.unlocked
@@ -336,11 +446,11 @@ class Window(QMainWindow):
         return result
 
     def unlock_key(self):
-        pin, ok = QInputDialog.getText(self, 'YubiKey unlock', 'YubiKey FIDO2 PIN:', QLineEdit.EchoMode.Password)
+        pin, ok = request_key_pin(self, 'YubiKey unlock', 'YubiKey FIDO2 PIN:')
         if not ok:
             return
         try:
-            if not pin:
+            if not pin and sys.platform != 'win32':
                 raise VaultError('Enter your YubiKey PIN.')
             from yubikey_auth import unlock
             settings = self.vault.yubikey_settings()
@@ -350,10 +460,11 @@ class Window(QMainWindow):
             self.vault.unlock_yubikey(settings, response)
             response = None
             self.remember_vault()
-            self.lock_timer.start(5 * 60 * 1000)
+            self.restart_lock_timer()
             self.update_state()
             self.refresh()
             self.complete_pending_lookup()
+            QTimer.singleShot(0, self.auto_sync)
         except Exception as error:
             self.lock()
             QMessageBox.warning(self, 'YubiKey unlock failed', str(error))
@@ -371,17 +482,17 @@ class Window(QMainWindow):
                 answer = QMessageBox.question(self, 'Replace enrolled key?', 'This replaces the key enrolled for this vault. The fallback password will continue to work. Continue?', QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
                 if answer != QMessageBox.StandardButton.Yes:
                     return
-            pin, ok = QInputDialog.getText(self, 'Set up YubiKey', 'Existing YubiKey FIDO2 PIN:', QLineEdit.EchoMode.Password)
+            pin, ok = request_key_pin(self, 'Set up YubiKey', 'Existing YubiKey FIDO2 PIN:')
             if not ok:
                 return
-            if not pin:
+            if not pin and sys.platform != 'win32':
                 raise VaultError('Enter your YubiKey PIN.')
             from yubikey_auth import enroll
             credential, salt, response = self.key_request(lambda event: enroll(pin, event))
             pin = None
             safety = self.vault.enroll_yubikey(credential, salt, response)
             response = None
-            self.lock()
+            self.update_state()
             QMessageBox.information(self, 'YubiKey enrolled', 'Your YubiKey is now the primary unlock option. Try PIN + touch.\n\nYour existing vault password remains the fallback.\nSafety backup:\n' + str(safety))
         except Exception as error:
             QMessageBox.warning(self, 'YubiKey not enrolled', str(error))
@@ -410,7 +521,7 @@ class Window(QMainWindow):
             if fields[1].text() != fields[2].text():
                 raise VaultError('New passwords do not match.')
             safety = self.vault.change_password(fields[0].text(), fields[1].text())
-            self.lock()
+            self.update_state()
             QMessageBox.information(self, 'Fallback password changed', 'The new fallback password is ready. YubiKey enrollment is preserved.\n\nThe safety backup still uses the previous password:\n' + str(safety))
         except Exception as error:
             QMessageBox.warning(self, 'Password not changed', str(error))
@@ -433,10 +544,11 @@ class Window(QMainWindow):
                 for description, link, username, secret in [('Demo Mail', 'https://mail.example.com', 'demo@example.com', 'Demo-only-password!'), ('Demo Router', 'https://router.example.com', 'admin', 'Another-demo-password!'), ('Demo Account', 'https://account.example.com', 'demo', 'Demo-only-password!')]:
                     self.vault.save({'description': description, 'link': link, 'user_name': username, 'password': secret, 'notes': 'Dummy entry. No real credentials.'})
             self.remember_vault()
-            self.lock_timer.start(5 * 60 * 1000)
+            self.restart_lock_timer()
             self.update_state()
             self.refresh()
             self.complete_pending_lookup()
+            QTimer.singleShot(0, self.auto_sync)
         except Exception as error:
             self.vault.lock()
             self.update_state()
@@ -481,10 +593,15 @@ class Window(QMainWindow):
     def remember_vault(self):
         try:
             self.vault_history.remember(self.vault.path)
+            if sys.platform == 'win32':
+                from managed_locations import remember
+                remember(vault=self.vault.path)
         except OSError:
             QMessageBox.warning(self, 'History not saved', 'The vault is unlocked, but its location could not be added to recent history.')
 
     def recent_vaults(self):
+        if self.sync_busy():
+            return
         dialog = QDialog(self)
         dialog.setWindowTitle('Recent Vaults')
         dialog.resize(760, 340)
@@ -514,6 +631,9 @@ class Window(QMainWindow):
             if not Path(path).is_file():
                 QMessageBox.warning(dialog, 'Vault unavailable', 'This vault is missing or its drive is not mounted. Its location stays in history.\n\n' + path)
                 return
+            if Path(path).resolve() == self.vault.path.resolve():
+                dialog.accept()
+                return
             self.lock()
             self.vault = Vault(path)
             self.update_state()
@@ -536,13 +656,87 @@ class Window(QMainWindow):
             dialog.deleteLater()
 
     def choose(self):
+        if self.sync_busy():
+            return
         filename, _ = QFileDialog.getOpenFileName(self, 'Open Wormwright AI vault', str(self.vault.path.parent), 'SQLite vault (*.sqlite);;All files (*)')
-        if filename:
+        if filename and Path(filename).resolve() != self.vault.path.resolve():
+            from managed_vault import is_managed
+            if is_managed(filename):
+                import subprocess
+                command = [sys.executable] + ([] if getattr(sys, 'frozen', False) else [str(Path(__file__).resolve())]) + [filename]
+                subprocess.Popen(command, start_new_session=True)
+                return
             self.lock()
             self.vault = Vault(filename)
             self.update_state()
 
+    def sync_busy(self):
+        if self.sync_task is not None:
+            QMessageBox.information(self, 'Sync in progress', 'Background sync is finishing. Try this operation again shortly.')
+            return True
+        return False
+
+    def auto_sync(self, force=False):
+        if self.sync_task is not None or not self.vault.path.is_file():
+            return False
+        if QApplication.activeModalWidget() is not None or self.dialog is not None:
+            return False
+        try:
+            settings = read_settings(self.vault)
+            self.auto_timer.setInterval(settings.get('interval', 30) * 1000)
+            if not settings.get('folder') or not settings.get('automatic', True):
+                return False
+            self.sync_task = AutoSyncTask(self.vault, settings, self)
+            self.sync_task.finished.connect(self.auto_sync_finished)
+            self.sync_status.setText('Syncing in the background…')
+            self.sync_task.start()
+            return True
+        except Exception as error:
+            self.sync_status.setText('Automatic sync paused: ' + str(error))
+            return False
+
+    def auto_sync_finished(self):
+        task = self.sync_task
+        if task is None:
+            return
+        if QApplication.activeModalWidget() is not None or self.dialog is not None:
+            QTimer.singleShot(250, self.auto_sync_finished)
+            return
+        changed = False
+        error = None
+        try:
+            selected_id = self.table.item(self.table.currentRow(), 0).data(Qt.ItemDataRole.UserRole) if self.table.currentRow() >= 0 else None
+            changed = finish_sync(self.vault, task)
+            self.sync_status.setText(task.result)
+            if task.result.startswith(('Downloaded', 'Merged')):
+                self.update_state()
+                self.refresh()
+                for row in range(self.table.rowCount()):
+                    if self.table.item(row, 0).data(Qt.ItemDataRole.UserRole) == selected_id:
+                        self.table.selectRow(row)
+                        break
+        except Exception as failure:
+            error = str(failure)
+            needs_review = task.conflict or isinstance(failure, SyncConflict)
+            self.sync_status.setText(('Sync needs review — click Sync Now: ' if needs_review else 'Sync will retry: ') + error)
+        finally:
+            task.cleanup()
+            task.deleteLater()
+            self.sync_task = None
+        if self.closing_after_sync:
+            if changed and error is None and self.auto_sync():
+                return
+            if error:
+                QMessageBox.warning(self, 'Closing with local changes saved',
+                    'The final sync did not complete. Your local vault is saved. Retry Sync Now when you reopen.\n\n' + error)
+            self.close_ready = True
+            self.close()
+        elif changed and error is None:
+            QTimer.singleShot(0, self.auto_sync)
+
     def sync_settings(self):
+        if self.sync_busy():
+            return
         dialog = QDialog(self)
         dialog.setWindowTitle('Shared-folder sync')
         form = QFormLayout(dialog)
@@ -560,7 +754,14 @@ class Window(QMainWindow):
         limit.setRange(1, 1000)
         limit.setValue(settings.get('limit', DEFAULT_LIMIT))
         form.addRow('Maximum automatic sync backups per copy:', limit)
-        note = QLabel('Use a dedicated folder for this vault. Each device keeps a local copy.\nSync runs only when you click Sync Now. Conflicting edits are never overwritten.\nOnly automatic sync backups are pruned after successful sync; manual backups are kept.\nUse a mounted network share, not a folder mirrored by another sync program.')
+        automatic = QCheckBox('Automatically sync at startup, before closing, and on the interval (including while locked)')
+        automatic.setChecked(settings.get('automatic', True))
+        form.addRow(automatic)
+        interval = QSpinBox()
+        interval.setRange(5, 86400)
+        interval.setValue(settings.get('interval', 30))
+        form.addRow('Background sync interval (seconds):', interval)
+        note = QLabel('Use a dedicated folder for this vault. Each device keeps a local copy.\nBackground sync needs the NAS connection; locked sync transfers encrypted files only. Conflicts require Sync Now review. Conflicting edits are never overwritten.\nOnly automatic sync backups are pruned after successful sync; manual backups are kept.\nUse a mounted network share, not a folder mirrored by another sync program.')
         note.setWordWrap(True)
         form.addRow(note)
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
@@ -569,16 +770,21 @@ class Window(QMainWindow):
         form.addRow(buttons)
         if dialog.exec() == QDialog.DialogCode.Accepted:
             try:
-                configure(self.vault, folder.text(), limit.value())
+                configure(self.vault, folder.text(), limit.value(), automatic.isChecked(), interval.value())
+                self.auto_timer.setInterval(interval.value() * 1000)
+                QTimer.singleShot(0, self.auto_sync)
             except Exception as error:
                 QMessageBox.warning(self, 'Sync settings', str(error))
 
     def sync_now(self):
+        if self.sync_busy():
+            return
         try:
             result = synchronize(self.vault)
             if not self.vault.unlocked:
                 self.lock()
             self.update_state()
+            self.refresh()
             QMessageBox.information(self, 'Sync complete', result)
         except SyncConflict:
             self.resolve_sync_conflict()
@@ -609,9 +815,10 @@ class Window(QMainWindow):
             if answer != QMessageBox.StandardButton.Yes:
                 return
             safety = comparison.apply(choices)
-            self.lock()
+            self.update_state()
+            self.refresh()
             QMessageBox.information(self, 'Differences resolved',
-                'Both copies now contain your selected entries. Unlock using the shared vault’s credentials.\n\nSafety backups:\n' + '\n'.join(map(str, safety)))
+                'Both copies now contain your selected entries. Your vault remains open; future unlocks use the shared vault’s credentials.\n\nSafety backups:\n' + '\n'.join(map(str, safety)))
         except Exception as error:
             QMessageBox.warning(self, 'Resolution stopped', str(error))
         finally:
@@ -646,11 +853,11 @@ class Window(QMainWindow):
             if not ok:
                 return None
         if method == 'YubiKey PIN + Touch':
-            pin, ok = QInputDialog.getText(self, 'Authorize CSV export', 'YubiKey FIDO2 PIN:', QLineEdit.EchoMode.Password)
+            pin, ok = request_key_pin(self, 'Authorize CSV export', 'YubiKey FIDO2 PIN:')
             if not ok:
                 return None
             try:
-                if not pin:
+                if not pin and sys.platform != 'win32':
                     raise VaultError('Enter your YubiKey PIN.')
                 from yubikey_auth import unlock
                 response = self.key_request(lambda event: unlock(settings, pin, event))
@@ -715,6 +922,8 @@ class Window(QMainWindow):
             records.clear()
 
     def restore(self):
+        if self.sync_busy():
+            return
         from PySide6.QtWidgets import QInputDialog
         filename, _ = QFileDialog.getOpenFileName(self, 'Choose encrypted backup to restore', str(self.vault.path.parent), 'SQLite vault (*.sqlite);;All files (*)')
         if not filename:
@@ -727,8 +936,9 @@ class Window(QMainWindow):
             return
         try:
             safety = self.vault.restore(filename, password)
-            self.lock()
-            QMessageBox.information(self, 'Backup restored', 'Restore complete. Unlock with the backup’s master password.\n\nYour previous vault was saved to:\n' + str(safety))
+            self.update_state()
+            self.refresh()
+            QMessageBox.information(self, 'Backup restored', 'Restore complete. The vault remains open. Future unlocks use the backup’s master password.\n\nYour previous vault was saved to:\n' + str(safety))
         except Exception as error:
             if not self.vault.unlocked:
                 self.lock()
@@ -767,6 +977,11 @@ class Window(QMainWindow):
             reveal.setFixedWidth(54)
             reveal.clicked.connect(lambda checked=False, entry_id=record['id']: self.show_password(entry_id))
             password_layout.addWidget(reveal)
+            copy_password = QPushButton('Copy')
+            copy_password.setFixedWidth(54)
+            copy_password.setToolTip('Copy password without showing it; clipboard clears after 30 seconds')
+            copy_password.clicked.connect(lambda checked=False, entry_id=record['id']: self.copy_field('password', entry_id))
+            password_layout.addWidget(copy_password)
             self.table.setCellWidget(row, 4, password_cell)
         self.table.resizeRowsToContents()
 
@@ -800,6 +1015,7 @@ class Window(QMainWindow):
             if self.dialog.exec() == QDialog.DialogCode.Accepted and self.vault.unlocked:
                 self.vault.save(self.dialog.value())
                 self.refresh()
+                QTimer.singleShot(0, self.auto_sync)
         except Exception as error:
             QMessageBox.warning(self, 'Cannot save', str(error))
         finally:
@@ -823,11 +1039,21 @@ class Window(QMainWindow):
             self.save_dialog(record)
 
     def copy(self):
-        record = self.selected()
+        self.copy_field('password')
+
+    def copy_field(self, field, entry_id=None):
+        if not self.vault.unlocked or field not in dict(COPY_FIELDS):
+            return
+        record = self.selected() if entry_id is None else next((r for r in self.records if r['id'] == entry_id), None)
         if record:
-            self.clipboard_value = record['password']
-            QApplication.clipboard().setText(self.clipboard_value)
-            self.clipboard_timer.start(30000)
+            self.copy_text(record.get(field, ''))
+
+    def copy_text(self, value):
+        if not self.vault.unlocked:
+            return
+        self.clipboard_value = value
+        QApplication.clipboard().setText(value)
+        self.clipboard_timer.start(30000)
 
     def clear_clipboard(self):
         if self.clipboard_value is not None and QApplication.clipboard().text() == self.clipboard_value:
@@ -839,6 +1065,7 @@ class Window(QMainWindow):
         if record and QMessageBox.question(self, 'Delete password', f"Delete {record['description']}?", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No) == QMessageBox.StandardButton.Yes and self.vault.unlocked:
             self.vault.delete(record['id'])
             self.refresh()
+            QTimer.singleShot(0, self.auto_sync)
 
     def lock(self):
         self.close_password_display()
@@ -865,6 +1092,14 @@ class Window(QMainWindow):
         self.update_state()
 
     def closeEvent(self, event):
+        if not self.close_ready:
+            self.closing_after_sync = True
+            if self.sync_task is not None or self.auto_sync():
+                self.centralWidget().setEnabled(False)
+                self.sync_status.setText('Finishing sync before closing…')
+                event.ignore()
+                return
+        self.auto_timer.stop()
         self.lock()
         event.accept()
 
@@ -873,8 +1108,10 @@ def main():
     import argparse
     os.umask(0o077)
     parser = argparse.ArgumentParser(description='Wormwright Vault')
-    parser.add_argument('vault', nargs='?', type=Path, default=default_vault())
+    parser.add_argument('vault', nargs='?', type=Path)
     parser.add_argument('--lookup')
+    parser.add_argument('--beta', action='store_true', help=argparse.SUPPRESS)
+    parser.add_argument('--manager', action='store_true', help='Open the optional Vault Manager interface')
     parser.add_argument('--check-yubikey-runtime', action='store_true', help=argparse.SUPPRESS)
     args = parser.parse_args()
     if args.check_yubikey_runtime:
@@ -882,24 +1119,43 @@ def main():
         DefaultClientDataCollector(ORIGIN).verify_rp_id(RP_ID, ORIGIN)
         print('YubiKey runtime data loaded successfully.')
         return
-    path = args.vault
+    from managed_locations import initial_vault
+    path = initial_vault(args.vault, args.beta)
     request = {'version': 1, 'action': 'lookup', 'query': args.lookup} if args.lookup is not None else {'version': 1, 'action': 'open'}
     try:
-        send(path, request)
+        launch_request=request if args.lookup is not None else {'version':1,'action':'open_manager_view' if args.manager else 'open_vault_view'}
+        send(path, launch_request)
         return
     except (FileNotFoundError, ConnectionRefusedError):
         pass
     app = QApplication([sys.argv[0]])
-    window = Window(path)
+    from managed_vault import is_managed
+    if args.manager or is_managed(path) or not path.exists():
+        from managed_ui import ManagedWindow
+        window = ManagedWindow(path, manager_app=args.manager)
+    else:
+        window = Window(path)
     try:
         control = LocalControl(path, window.handle_control)
     except Exception as error:
         QMessageBox.warning(window, 'Cannot open vault', str(error))
         return
     timer = QTimer(window)
-    timer.timeout.connect(control.poll)
+    path_holder = [path.resolve()]
+    # Rebind UI-only requests when the user chooses another local vault.
+    def poll_current():
+        nonlocal control
+        if window.vault.path.resolve() != path_holder[0]:
+            control.close()
+            try:control = LocalControl(window.vault.path, window.handle_control)
+            except Exception as error:
+                QMessageBox.warning(window, 'Cannot open vault', str(error))
+                window.lock();return
+            path_holder[0] = window.vault.path.resolve()
+        control.poll()
+    timer.timeout.connect(poll_current)
     timer.start(100)
-    app.aboutToQuit.connect(control.close)
+    app.aboutToQuit.connect(lambda: control.close())
     window.show()
     window.handle_control(request)
     sys.exit(app.exec())

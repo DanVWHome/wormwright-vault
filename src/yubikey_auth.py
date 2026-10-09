@@ -2,7 +2,10 @@
 No OTP slots, device PINs, or existing credentials are modified.
 """
 import os
-from contextlib import closing
+import sys
+import threading
+import time
+from contextlib import closing, contextmanager
 from fido2.client import DefaultClientDataCollector, Fido2Client, UserInteraction
 from fido2.ctap2.extensions import HmacSecretExtension
 from fido2.hid import CtapHidDevice
@@ -48,6 +51,8 @@ def open_device():
         for device in devices:
             device.close()
         if not devices:
+            if sys.platform == 'win32':
+                raise ValueError('No accessible FIDO2 key found. Plug in your YubiKey and use the Windows security-key prompt.')
             raise ValueError('No accessible FIDO2 key found. Plug in your YubiKey. If it is connected, check Linux device permissions; do not run VanWormAI with sudo.')
         raise ValueError('Connect only the YubiKey you want to use, then try again.')
     return devices[0]
@@ -65,9 +70,61 @@ def client_for(device, pin, cancelled):
     return client, interaction
 
 
+class WindowsCancellation:
+    """Keep native WebAuthn completion separate from user cancellation."""
+    def __init__(self, cancelled):
+        self.cancelled = cancelled
+        self.completed = threading.Event()
+
+    def set(self):
+        self.completed.set()
+
+    def wait(self, timeout=None):
+        deadline = None if timeout is None else time.monotonic() + timeout
+        while not self.cancelled.is_set() and not self.completed.is_set():
+            if deadline is not None and time.monotonic() >= deadline:
+                return False
+            self.completed.wait(.05)
+        return True
+
+
+class NativeWindowsClient:
+    def __init__(self, client):
+        self.client = client
+
+    def make_credential(self, options, event):
+        native_event = WindowsCancellation(event)
+        try:
+            return self.client.make_credential(options, event=native_event)
+        finally:
+            native_event.set()
+
+    def get_assertion(self, options, event):
+        native_event = WindowsCancellation(event)
+        try:
+            return self.client.get_assertion(options, event=native_event)
+        finally:
+            native_event.set()
+
+
+@contextmanager
+def client_session(pin, cancelled):
+    if sys.platform == 'win32':
+        from fido2.client.windows import WindowsClient
+        if not WindowsClient.is_available():
+            raise ValueError('Windows security-key support is unavailable. Update Windows or use your vault password.')
+        # Native WebAuthn handles PIN/touch without administrator access. Use
+        # raw hmac-secret salts, retaining compatibility with enrolled keys.
+        client = NativeWindowsClient(WindowsClient(DefaultClientDataCollector(ORIGIN), allow_hmac_secret=True))
+        yield client, KeyInteraction(None, cancelled)
+    else:
+        with closing(open_device()) as device:
+            yield client_for(device, pin, cancelled)
+
+
 def authenticate(client, service, credential, salt, cancelled):
     options, state = service.authenticate_begin([credential], user_verification='required')
-    options = {**options['publicKey'], 'extensions': {'hmacGetSecret': {'salt1': salt}}}
+    options = {**options['publicKey'], 'hints': ['security-key'], 'extensions': {'hmacGetSecret': {'salt1': salt}}}
     assertion = client.get_assertion(options, event=cancelled).get_response(0)
     service.authenticate_complete(state, [credential], assertion)
     output = assertion.client_extension_results.hmac_get_secret
@@ -77,8 +134,7 @@ def authenticate(client, service, credential, salt, cancelled):
 
 
 def enroll(pin, cancelled):
-    with closing(open_device()) as device:
-        client, interaction = client_for(device, pin, cancelled)
+    with client_session(pin, cancelled) as (client, interaction):
         service = server()
         options, state = service.register_begin(
             {'id': os.urandom(32), 'name': 'VanWormAI vault', 'displayName': 'VanWormAI vault'},
@@ -105,8 +161,7 @@ def enroll(pin, cancelled):
 
 def unlock(settings, pin, cancelled):
     credential = AttestedCredentialData(settings['credential'])
-    with closing(open_device()) as device:
-        client, interaction = client_for(device, pin, cancelled)
+    with client_session(pin, cancelled) as (client, interaction):
         try:
             return authenticate(client, server(), credential, settings['salt'], cancelled)
         finally:

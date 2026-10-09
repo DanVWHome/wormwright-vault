@@ -4,12 +4,14 @@ import os
 from pathlib import Path
 import tempfile
 
+from platform_paths import data_home
+
 MAX_RECENT = 20
 
 
 class VaultHistory:
     def __init__(self, path=None):
-        data = Path(os.environ.get('XDG_DATA_HOME', str(Path.home() / '.local/share')))
+        data = data_home()
         self.path = Path(path) if path else data / 'vanwormai-vault/recent-vaults.json'
 
     def read(self):
@@ -38,4 +40,5 @@ class VaultHistory:
         self.write([path] + [p for p in self.read() if p != path])
 
     def forget(self, path):
+        path = str(Path(path).resolve())
         self.write([p for p in self.read() if p != path])

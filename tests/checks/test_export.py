@@ -18,7 +18,8 @@ with tempfile.TemporaryDirectory() as folder:
     destination = root / 'export.csv'
     export_csv(vault, destination, password='disposable-master-password')
     assert read_export(destination) == [record]
-    assert destination.stat().st_mode & 0o777 == 0o600
+    if sys.platform != "win32":
+        assert destination.stat().st_mode & 0o777 == 0o600
     before = destination.read_bytes()
     try:
         export_csv(vault, destination, password='disposable-master-password')

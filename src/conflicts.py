@@ -1,4 +1,5 @@
 """Local encrypted snapshots for explicit two-way conflict resolution."""
+from sync_lock import release_lock
 from pathlib import Path
 import os
 import shutil
@@ -7,6 +8,7 @@ import tempfile
 from nacl.secret import SecretBox
 from sync import fingerprint, read_settings, atomic_json
 from vault import Vault, VaultError
+from merge import state, decisions
 
 class Comparison:
     def __init__(self, local):
@@ -17,6 +19,7 @@ class Comparison:
         self.root = Path(self.temporary.name)
         self.shared = Vault(self.root / 'shared.sqlite')
         self.rows = []
+        self.suggestions = {}
         self.local_hash = fingerprint(local.path)
         try:
             self._check_remote()
@@ -42,6 +45,7 @@ class Comparison:
         ours = {r['id']: r for r in self.local.entries()}
         theirs = {r['id']: r for r in self.shared.entries()}
         self.rows = [(key, ours.get(key), theirs.get(key)) for key in sorted(ours.keys() | theirs.keys(), key=lambda k: (ours.get(k) or theirs[k]).get('description', '').casefold())]
+        self.suggestions = decisions(self.config.get('entry_history'), state(self.local.path), state(self.shared.path)) or {}
         return self.rows
 
     def apply(self, choices):
@@ -101,14 +105,18 @@ class Comparison:
             os.replace(transfer, self.remote)
             self.local.lock()
             os.replace(local_stage, self.local.path)
+            self.local.reopen_unlocked(self.shared.data_key)
             self.config['baseline'] = fingerprint(self.local.path)
+            self.config['entry_history'] = state(self.local.path)
             atomic_json(self.local.path.with_name(self.local.path.name + '.sync.json'), self.config)
             return safety_local, safety_shared
         finally:
-            for path in (transfer, local_stage):
-                if path:
-                    path.unlink(missing_ok=True)
-            lock.rmdir()
+            try:
+                for path in (transfer, local_stage):
+                    if path:
+                        path.unlink(missing_ok=True)
+            finally:
+                release_lock(lock)
 
     def close(self):
         self.rows.clear()

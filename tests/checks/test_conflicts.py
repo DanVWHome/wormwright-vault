@@ -20,6 +20,7 @@ with tempfile.TemporaryDirectory() as name:
     c = Comparison(local); c.unlock_shared('shared-dummy-password'); rows = c.compare()
     choices = ['local' if ours else 'shared' for _, ours, theirs in rows]
     safety = c.apply(choices); c.close()
+    assert local.unlocked
     assert all(p.is_file() for p in safety)
     local.unlock('shared-dummy-password'); assert len(local.entries()) == 2
     assert synchronize(local).startswith('Already')
