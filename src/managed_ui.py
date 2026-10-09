@@ -1,5 +1,6 @@
 """Managed-format UI shared by Vault and the optional Vault Manager launcher."""
 from website import add_website_action
+from update_check import add_update_actions
 from key_ui import request_key_pin
 from pathlib import Path
 import sys
@@ -117,7 +118,7 @@ class ManagedWindow(QMainWindow):
         settings_menu.addSeparator()
         for text,callback in [('Set Up YubiKey…',self.enroll),('Change Account Password…',self.change_password)]:
             action=settings_menu.addAction(text);action.triggered.connect(callback);self.controls.append(action)
-        help_menu=self.menuBar().addMenu('Help');help_menu.addAction('Searchable Help…',self.show_help);help_menu.addAction('Watch Tutorial…',self.show_tutorial);add_website_action(help_menu,self);help_menu.addSeparator();help_menu.addAction('About Wormwright Vault…',self.show_about)
+        help_menu=self.menuBar().addMenu('Help');help_menu.addAction('Searchable Help…',self.show_help);help_menu.addAction('Watch Tutorial…',self.show_tutorial);add_website_action(help_menu,self);add_update_actions(help_menu,self);help_menu.addSeparator();help_menu.addAction('About Wormwright Vault…',self.show_about)
         self.table=QTableWidget(0,6);self.table.setHorizontalHeaderLabels(['Description','Link','User Name','Password','Groups','Duplicate Password'])
         self.table.horizontalHeaderItem(3).setToolTip('Password sorting is disabled to protect password privacy.')
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows);self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
