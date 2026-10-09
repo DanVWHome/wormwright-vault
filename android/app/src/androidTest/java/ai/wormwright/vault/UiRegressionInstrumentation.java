@@ -126,7 +126,6 @@ public class UiRegressionInstrumentation extends Instrumentation {
         await(()->!keyboardVisible(),"test closes keyboard");
     }
     private AlertDialog detail(){try{return (AlertDialog)field("detailDialog");}catch(Exception e){throw new RuntimeException(e);}}
-    private void collectInputs(View view,List<EditText> values){if(view instanceof EditText)values.add((EditText)view);if(view instanceof ViewGroup)for(int i=0;i<((ViewGroup)view).getChildCount();i++)collectInputs(((ViewGroup)view).getChildAt(i),values);}
     private AlertDialog editor() {try{return (AlertDialog)field("editorDialog");}catch(Exception e){throw new RuntimeException(e);}}
     private void passwordVisibility() {
         for(boolean existing:new boolean[]{false,true}) {
