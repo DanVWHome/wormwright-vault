@@ -93,7 +93,7 @@ def lock():
 def editing_info():
     if not session_ready(): raise VaultError('Unlock first.')
     paired = mobile_sync.read_config(_vault.path)
-    return json.dumps({'can_edit': not isinstance(_vault, ReadOnlyVault) and (_sample or bool(paired and paired.get('paired'))),
+    return json.dumps({'can_edit': not isinstance(_vault, ReadOnlyVault) and (_sample or Path(str(_vault.path)+'.local-only').is_file() or bool(paired and paired.get('paired'))),
                        'manager': _vault.manager, 'groups': _vault.available_groups()})
 
 
@@ -169,6 +169,7 @@ def import_snapshot(source, destination):
         raise VaultError('Sync pending phone edits before replacing this copy. Export an encrypted backup for Manager review if needed.')
     os.replace(source, destination)
     mobile_sync.config_path(destination).unlink(missing_ok=True)
+    Path(str(destination)+'.local-only').unlink(missing_ok=True)
 
 
 def encrypted_backup(source, destination):
@@ -254,3 +255,56 @@ def apply_nas_snapshot(downloaded, local_path, guard=None):
                            'revoked': revoked})
     finally:
         candidate.lock()
+
+
+def create_personal(path,password,vault_name):
+    lock()
+    path=Path(path)
+    if path.exists():raise VaultError('A phone vault already exists.')
+    candidate=ManagedVault(path)
+    try:
+        candidate.create(password,username='Owner',vault_name=vault_name)
+        Path(str(path)+'.local-only').write_text('Independent personal phone vault\n')
+    finally:candidate.lock()
+
+
+def verify_deletion(path,username,password):
+    candidate=ManagedVault(path)
+    try:candidate.unlock(password,username);return candidate.display_name
+    finally:candidate.lock()
+
+
+def delete_phone_copy(path):
+    lock()
+    path=Path(path)
+    if path.name!='vault.db':raise VaultError('Unsupported phone copy.')
+    # Only app-private files in this copy's directory, never a NAS or selected document.
+    failures=[]
+    for item in path.parent.iterdir():
+        name=item.name
+        if name.startswith(('vault.db','sample.db','import-','export-','nas-settings-')) or name=='nas-settings.enc':
+            try:
+                if item.is_symlink() or not item.is_file():raise OSError()
+                item.unlink()
+            except OSError:failures.append(name)
+    if failures:raise VaultError('Some private phone files could not be removed.')
+
+
+def vault_name():
+    if _vault is None:raise VaultError('Unlock the vault first.')
+    return _vault.display_name
+
+
+def rename_vault(name):
+    if _vault is None:raise VaultError('Unlock the vault first.')
+    if not _sample and not Path(str(_vault.path)+'.local-only').exists():
+        raise VaultError('Rename a shared NAS vault in the desktop Manager, then sync or import it.')
+    _vault.set_display_name(name)
+
+
+def file_name(path):
+    candidate=ReadOnlyVault(path)
+    try:
+        candidate._connect()
+        return candidate.display_name
+    finally:candidate.lock()

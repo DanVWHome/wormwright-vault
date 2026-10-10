@@ -23,6 +23,7 @@ def main():
     work.mkdir(parents=True, exist_ok=True); output.mkdir(parents=True, exist_ok=True)
     subprocess.run([sys.executable, '-m', 'PyInstaller', '--noconfirm', '--clean',
                     '--name', 'WormwrightVault', '--onedir', '--windowed', '--noupx',
+                    '--icon', str(ROOT / 'assets/wormwright-vault.ico'),
                     '--add-data', str(ROOT / 'assets') + ';assets',
                     '--collect-submodules', 'fido2', '--collect-data', 'fido2',
                     '--distpath', str(work / 'bundle'), '--workpath', str(work / 'freeze'),
@@ -33,7 +34,7 @@ def main():
     for license_name in ('LICENSE', 'LICENSING.md'):
         shutil.copy2(ROOT / license_name, docs / license_name)
     shutil.copy2(ROOT / 'docs/WINDOWS.md', bundle / 'README.md')
-    shutil.copy2(ROOT / 'docs/RELEASE-0.3.4.md', docs)
+    shutil.copy2(ROOT / 'docs/RELEASE-0.3.7.md', docs)
     shutil.copytree(ROOT / 'docs/third-party', docs / 'third-party', dirs_exist_ok=True)
     for name in ['PySide6-Essentials', 'PySide6-Addons', 'shiboken6', 'PyNaCl',
                  'cryptography', 'fido2', 'cffi', 'pycparser', 'pyinstaller']:

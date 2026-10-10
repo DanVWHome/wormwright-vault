@@ -18,9 +18,12 @@ import android.text.Editable;
 import android.text.InputType;
 import android.text.TextWatcher;
 import android.view.View;
+import android.view.ViewGroup;
+import android.view.Gravity;
 import android.view.WindowManager;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.Button;
+import android.widget.ProgressBar;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
@@ -49,13 +52,19 @@ public class MainActivity extends Activity {
     private final Handler handler = new Handler(Looper.getMainLooper());
     private LinearLayout root, rows;
     private EditText username, password, search;
-    private TextView status;
+    private TextView status, progressLabel;
+    private LinearLayout progressRow;
+    private String progressText = "Working…";
+    private final java.util.Map<View, Boolean> disabledControls = new java.util.IdentityHashMap<>();
     private AlertDialog detailDialog;
     private AlertDialog nasDialog;
     private AlertDialog editorDialog;
     private AlertDialog conflictDialog;
     private NasSettings nasSettings;
+    private DestructiveActions maintenance;
     private File vaultFile;
+    private String selectedVaultName="";
+    private boolean startupChoicePending;
     private volatile boolean unlocked = false, resumed = false;
     private boolean busy = false, sampleMode = false, nasRunning = false;
     private volatile int generation = 0;
@@ -73,10 +82,16 @@ public class MainActivity extends Activity {
     };
 
     @Override public void onCreate(Bundle state) {
-        super.onCreate(state);
+        super.onCreate(state); maintenance=new DestructiveActions(this);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
         vaultFile = new File(getNoBackupFilesDir(), "vault.db");
-        nasSettings = new NasSettings(this);
+        try{android.util.AtomicFile pointer=new android.util.AtomicFile(new File(getNoBackupFilesDir(),"selected-vault.json"));
+            if(pointer.getBaseFile().exists()){JSONObject saved=new JSONObject(new String(pointer.readFully(),java.nio.charset.StandardCharsets.UTF_8));String slot=saved.getString("slot");
+                if(slot.matches("[a-f0-9-]{36}"))vaultFile=new File(new File(new File(getNoBackupFilesDir(),"vaults"),slot),"vault.db");
+                selectedVaultName=saved.optString("name","");}
+        }catch(Exception ignored){}
+        nasSettings = new NasSettings(this,vaultFile.getParentFile());
+        int count=new File(getNoBackupFilesDir(),"vault.db").isFile()?1:0;File[] stored=new File(getNoBackupFilesDir(),"vaults").listFiles();if(stored!=null)for(File folder:stored)if(folder.getName().matches("[a-f0-9-]{36}")&&new File(folder,"vault.db").isFile())count++;startupChoicePending=count>1;
         showLogin(vaultFile.exists() ? "Your encrypted phone copy is ready." : "Bring an encrypted vault copy from your computer.");
     }
 
@@ -129,13 +144,103 @@ public class MainActivity extends Activity {
         help.setOnClickListener(v -> {
             onUserInteraction();
             PopupMenu menu = new PopupMenu(this, help);
+            menu.getMenu().add("Create new vault"); menu.getMenu().add("Vaults"); menu.getMenu().add("Delete selected vault…"); menu.getMenu().add("Rename current vault"); menu.getMenu().add("Delete current vault"); menu.getMenu().add("Delete selected backups");
+            menu.getMenu().add("About");
             menu.getMenu().add("Wormwright Website");
-            menu.setOnMenuItemClickListener(item -> { openWebsite(); return true; });
+            menu.setOnMenuItemClickListener(item -> { String choice=item.getTitle().toString(); if(choice.equals("Create new vault")) createPhoneVault(); else if(choice.equals("Vaults")) listVaults(false); else if(choice.equals("Delete selected vault…")) listVaults(true); else if(choice.equals("Rename current vault")) renamePhoneVault(); else if(choice.equals("Delete current vault")) deletePhoneVault(); else if(choice.equals("Delete selected backups")) maintenance.chooseBackups(); else if (choice.equals("About")) about(); else openWebsite(); return true; });
             menu.show();
         });
         heading.addView(help);
-        root.addView(heading); root.addView(label(subtitle, 15));
+        root.addView(heading); root.addView(label("Version " + installedVersion(), 13)); root.addView(label(subtitle, 15));
+        progressRow = new LinearLayout(this); progressRow.setGravity(Gravity.CENTER_VERTICAL);
+        ProgressBar spinner = new ProgressBar(this); spinner.setIndeterminate(true); spinner.setContentDescription("Operation in progress");
+        progressRow.addView(spinner, new LinearLayout.LayoutParams(dp(36),dp(36)));
+        progressLabel = label(progressText, 16); progressLabel.setPadding(dp(12),dp(8),0,dp(8));
+        progressLabel.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE); progressRow.addView(progressLabel);
+        root.addView(progressRow); updateProgress();
         setContentView(root); root.requestApplyInsets();
+    }
+    private void saveSelectedVault(File file,String name) throws Exception {
+        String slot=file.getParentFile().equals(getNoBackupFilesDir())?"legacy":file.getParentFile().getName();
+        android.util.AtomicFile pointer=new android.util.AtomicFile(new File(getNoBackupFilesDir(),"selected-vault.json"));FileOutputStream output=null;
+        try{output=pointer.startWrite();output.write(new JSONObject().put("slot",slot).put("name",name).toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));pointer.finishWrite(output);}
+        catch(Exception e){if(output!=null)pointer.failWrite(output);throw e;}
+    }
+    private void selectPhoneVault(File file,String name,String note) throws Exception {
+        if(busy||nasRunning)return;
+        saveSelectedVault(file,name);lockNow("Switching vault. Unlock the selected vault to continue.");vaultFile=file;selectedVaultName=name;nasSettings=new NasSettings(this,file.getParentFile());showLogin(note);
+    }
+    private void listVaults(boolean deleting) {
+        if(busy||nasRunning)return;
+        job("Reading vault names…",()->{
+            java.util.List<File> files=new java.util.ArrayList<>();File legacy=new File(getNoBackupFilesDir(),"vault.db");if(legacy.isFile())files.add(legacy);
+            File folder=new File(getNoBackupFilesDir(),"vaults");File[] slots=folder.listFiles();if(slots!=null)for(File slot:slots)if(slot.getName().matches("[a-f0-9-]{36}")&&!Files.isSymbolicLink(slot.toPath())){File file=new File(slot,"vault.db");if(file.isFile()&&!Files.isSymbolicLink(file.toPath()))files.add(file);}
+            JSONArray result=new JSONArray();for(File file:files){String name=bridge().callAttr("file_name",file.getAbsolutePath()).toString();String id=file.getParentFile().equals(getNoBackupFilesDir())?"Earlier phone vault":file.getParentFile().getName().substring(0,8);
+                result.put(new JSONObject().put("path",file.getAbsolutePath()).put("name",name).put("label",(name.isEmpty()?"Unnamed vault":name)+" · "+id+(file.equals(vaultFile)?" (current)":"")));}
+            return result.toString();
+        },value->{JSONArray result=new JSONArray(value);if(result.length()==0){maintenance.notice("No stored phone vaults. Create a named vault or import an encrypted copy.");return;}
+            String[] labels=new String[result.length()];for(int i=0;i<labels.length;i++)labels[i]=result.getJSONObject(i).getString("label");
+            final AlertDialog chooser=new AlertDialog.Builder(this).setTitle(deleting?"Select one vault to delete":"Vaults — select to open").setItems(labels,(d,index)->{
+                try{JSONObject chosen=result.getJSONObject(index);selectPhoneVault(new File(chosen.getString("path")),chosen.getString("name"),"Selected “"+(chosen.getString("name").isEmpty()?"Unnamed vault":chosen.getString("name"))+"”. Unlock to open it.");if(deleting)deletePhoneVault();}catch(Exception e){maintenance.notice("Could not select the vault. Its files were kept.");}
+            }).setNegativeButton("Cancel",null).create();editorDialog=chooser;chooser.setOnDismissListener(d->{if(editorDialog==chooser)editorDialog=null;});chooser.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);chooser.show();
+        },"Could not read the vault list. Your files were kept.");
+    }
+    private void createPhoneVault() {
+        if(busy||nasRunning)return;
+        LinearLayout fields=column();fields.setPadding(dp(20),dp(8),dp(20),dp(8));
+        fields.addView(label("Create an independent personal vault on this phone. It is editable without NAS pairing. It cannot be paired with a different existing NAS vault. Shared managed vaults must be created on desktop and imported.",15));
+        EditText vaultName=input("Vault name (required)",false);vaultName.setSingleLine(true);fields.addView(vaultName);
+        EditText first=input("Master password (12+ characters)",true),second=input("Confirm master password",true);fields.addView(first);fields.addView(second);
+        ScrollView scroll=new ScrollView(this);scroll.addView(fields);final int token=generation;
+        final AlertDialog prompt=new AlertDialog.Builder(this).setTitle("Create new vault").setView(scroll).setNegativeButton("Cancel",null).setPositiveButton("Create",null).create();editorDialog=prompt;
+        prompt.setOnDismissListener(d->{vaultName.getText().clear();first.getText().clear();second.getText().clear();if(editorDialog==prompt)editorDialog=null;});
+        prompt.setOnShowListener(d->prompt.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{
+            if(token!=generation||busy||nasRunning)return;String secret=first.getText().toString(),name=vaultName.getText().toString().trim();
+            if(name.isEmpty()||name.length()>80){vaultName.setError("Enter a vault name of 1–80 characters.");return;}
+            if(secret.length()<12||!secret.equals(second.getText().toString())){first.setError("Match both fields; use at least 12 characters.");return;}
+            File target=vaultFile.exists()?new File(new File(new File(getNoBackupFilesDir(),"vaults"),UUID.randomUUID().toString()),"vault.db"):vaultFile;
+            prompt.dismiss();lockNow("Creating a separate named vault. Existing vaults are kept.");
+            job("Creating vault…",()->{target.getParentFile().mkdirs();bridge().callAttr("create_personal",target.getAbsolutePath(),secret,name);return "";},r->selectPhoneVault(target,name,"New personal vault created. Unlock with its master password; account name can stay blank."),"Could not create the vault. Existing vaults were kept.");
+        }));prompt.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);prompt.show();
+    }
+    private void renamePhoneVault() {
+        if(busy)return;
+        if(!unlocked||sampleMode){maintenance.notice("Unlock your personal vault to name it. Rename shared NAS vaults in the desktop Manager, then sync or import the named copy.");return;}
+        EditText name=input("Vault name (required)",false);name.setSingleLine(true);name.setText(bridge().callAttr("vault_name").toString());
+        final int token=generation;
+        final AlertDialog prompt=new AlertDialog.Builder(this).setTitle("Rename current vault").setView(name).setNegativeButton("Cancel",null).setPositiveButton("Save",null).create();editorDialog=prompt;
+        prompt.setOnDismissListener(d->{name.getText().clear();if(editorDialog==prompt)editorDialog=null;});
+        prompt.setOnShowListener(d->prompt.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{
+            if(token!=generation||!unlocked||busy)return;String value=name.getText().toString().trim();
+            if(value.isEmpty()||value.length()>80){name.setError("Enter a vault name of 1–80 characters.");return;}
+            prompt.dismiss();job("Saving vault name…",()->{bridge().callAttr("rename_vault",value);return bridge().callAttr("list_entries","").toString();},this::showEntries,"Cannot rename. Shared NAS vaults must be named in the desktop Manager.");
+        }));prompt.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);prompt.show();
+    }
+    private void deletePhoneVault() {
+        if(busy)return;
+        if(!vaultFile.exists()){maintenance.notice("No imported or personal phone vault exists. Exported backups can be removed separately.");return;}
+        lockNow("Authenticate to delete the phone vault.");
+        LinearLayout fields=column();fields.setPadding(dp(20),dp(8),dp(20),dp(8));
+        fields.addView(label("Enter this vault's account credentials again. Personal vault: leave account name blank. Only the phone copy will be removed, including NAS pairing and saved connection credentials. Unsynced edits will be lost. NAS, desktop and exported copies remain.",15));
+        EditText account=input("Account name",false),secret=input("Vault account password",true);fields.addView(account);fields.addView(secret);
+        ScrollView scroll=new ScrollView(this);scroll.addView(fields);final int token=generation;
+        final AlertDialog prompt=new AlertDialog.Builder(this).setTitle("Delete current vault — authorize").setView(scroll).setNegativeButton("Cancel",null).setPositiveButton("Continue",null).create();editorDialog=prompt;
+        prompt.setOnDismissListener(d->{account.getText().clear();secret.getText().clear();if(editorDialog==prompt)editorDialog=null;});
+        prompt.setOnShowListener(d->prompt.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{
+            if(token!=generation||busy)return;String name=account.getText().toString(),password=secret.getText().toString();prompt.dismiss();
+            job("Verifying authorization…",()->bridge().callAttr("verify_deletion",vaultFile.getAbsolutePath(),name,password).toString(),r->maintenance.authenticate(()->maintenance.confirm("Delete current vault","Permanently delete only “"+(r.isEmpty()?"Unnamed vault":r)+"”, its private phone copy, NAS pairing and connection credentials. Other phone vaults, exported backups and the NAS master are kept.",()->{
+                job("Deleting phone vault…",()->{bridge().callAttr("lock");nasSettings.clear();bridge().callAttr("delete_phone_copy",vaultFile.getAbsolutePath());return "";},done->{selectedVaultName="";saveSelectedVault(vaultFile,"");lockNow("Current phone vault deleted. Other vaults are kept. Choose Vaults to open another, or create a new vault.");},"Deletion did not fully complete. Check the phone copy and connection settings before continuing.");
+            })),"Authentication failed. Nothing was deleted.");
+        }));prompt.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);prompt.show();
+    }
+    private String installedVersion() {
+        try { return getPackageManager().getPackageInfo(getPackageName(),0).versionName; }
+        catch (android.content.pm.PackageManager.NameNotFoundException e) { return "unavailable"; }
+    }
+    private void about() {
+        new AlertDialog.Builder(this).setTitle("About Wormwright Vault")
+            .setMessage("NAS companion for Android\n\nVersion " + installedVersion() + "\n\nhttps://wormwright.com/")
+            .setPositiveButton("Website",(d,w) -> openWebsite()).setNegativeButton("Close",null).show();
     }
     private void openWebsite() {
         try {
@@ -150,6 +255,7 @@ public class MainActivity extends Activity {
 
     private void showLogin(String message) {
         frame("ANDROID PREVIEW · PRIVATE PHONE COPY");
+        if(vaultFile.exists())root.addView(label("Current vault: "+(selectedVaultName.isEmpty()?"Unnamed vault":selectedVaultName),16));
         ScrollView scroll = new ScrollView(this); LinearLayout form = column();
         scroll.addView(form); root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
         form.addView(label("Your vault, wherever you are", 23));
@@ -163,6 +269,8 @@ public class MainActivity extends Activity {
         Button unlock = button("Unlock vault", this::unlock);
         unlock.setEnabled(vaultFile.exists()); form.addView(unlock);
         form.addView(button(vaultFile.exists() ? "Replace encrypted phone copy" : "Import encrypted vault", this::chooseImport));
+        form.addView(button("Create new vault",this::createPhoneVault)); form.addView(button("Vaults",()->listVaults(false)));
+        if(vaultFile.exists())form.addView(button("Delete current vault",this::deletePhoneVault));
         form.addView(button("Try the sample vault", this::loadSample));
         form.addView(button("NAS connection settings", this::configureNas));
         if (vaultFile.exists()) form.addView(button("Export encrypted phone backup", this::chooseExport));
@@ -170,21 +278,37 @@ public class MainActivity extends Activity {
         form.addView(label("Personal vault: leave account name blank.", 14));
         form.addView(label("Read and edit your encrypted vault offline. Changes sync with your NAS after unlocking, saving and while the app is open. Complete the first NAS sync before editing.", 16));
         form.addView(label("Locks when you leave the app or after two minutes idle. Screenshots and device backups are disabled. Copied values clear after 30 seconds or when you lock.", 14));
-        form.addView(label("0.1.0-preview.4 · No Google Play services needed", 13));
+        form.addView(label("No Google Play services needed", 13));
     }
     private PyObject bridge() { return Python.getInstance().getModule("mobile_bridge"); }
     private interface Job { String run() throws Exception; }
     private interface Result { void accept(String value) throws Exception; }
-    private void job(Job task, Result success, String errorText) {
+    private void updateProgress() {
+        if (progressRow != null) { progressLabel.setText(busy ? progressText : "Syncing with NAS…"); progressRow.setVisibility(busy || nasRunning ? View.VISIBLE : View.GONE); }
+    }
+    private void setBusy(boolean value, String label) {
+        busy = value; progressText = label; updateProgress();
+        if (value) { disabledControls.clear(); disableControls(root); }
+        else { for (java.util.Map.Entry<View, Boolean> entry : disabledControls.entrySet()) entry.getKey().setEnabled(entry.getValue()); disabledControls.clear(); }
+    }
+    private void disableControls(View view) {
+        if (view instanceof Button && !"Lock".contentEquals(((Button)view).getText()) && !"Help".contentEquals(((Button)view).getText()) || view instanceof EditText) {
+            disabledControls.put(view,view.isEnabled()); view.setEnabled(false);
+        }
+        if (view instanceof ViewGroup) for(int i=0;i<((ViewGroup)view).getChildCount();i++) disableControls(((ViewGroup)view).getChildAt(i));
+    }
+    private void job(Job task, Result success, String errorText) { job("Working…", task, success, errorText); }
+    private void job(String label, Job task, Result success, String errorText) {
+        if (busy) return;
         final int token = generation;
-        busy = true;
+        setBusy(true, label);
         worker.execute(() -> {
             String result = null; boolean failed = false;
             try { result = task.run(); } catch (Exception error) { failed = true; }
             final String value = result; final boolean error = failed;
             handler.post(() -> {
                 if (token != generation || !resumed || isFinishing()) return;
-                busy = false;
+                setBusy(false, "");
                 if (error) { lockNow(errorText); return; }
                 try { success.accept(value); }
                 catch (Exception ignored) { lockNow("Cannot read this vault. Import a valid encrypted copy."); }
@@ -198,7 +322,7 @@ public class MainActivity extends Activity {
         password.getText().clear();
         ((InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(password.getWindowToken(), 0);
         status.setText("Unlocking and checking vault signatures…");
-        job(() -> bridge().callAttr("unlock", vaultFile.getAbsolutePath(), account, secret, true, false).toString(),
+        job("Opening vault…", () -> bridge().callAttr("unlock", vaultFile.getAbsolutePath(), account, secret, true, false).toString(),
             result -> {
                 unlocked = true; sampleMode = false; showEntries(result); resetIdleTimer();
                 if (nasSettings.exists()) { refreshNas(false); handler.postDelayed(nasPoll, 60000); }
@@ -206,7 +330,10 @@ public class MainActivity extends Activity {
             "Cannot unlock. Check the account name and password, or import a fresh encrypted copy.");
     }
     private void showEntries(String result) throws Exception {
-        frame(sampleMode ? "SAMPLE VAULT · INVENTED ENTRIES" : "YOUR VAULT · OFFLINE EDITS + NAS SYNC");
+        String name=bridge().callAttr("vault_name").toString();
+        if(!sampleMode){selectedVaultName=name;saveSelectedVault(vaultFile,name);}
+        frame(sampleMode ? "SAMPLE VAULT · INVENTED ENTRIES" : (name.isEmpty()?"Unnamed vault":name)+" · OFFLINE EDITS + NAS SYNC");
+        if(!sampleMode){root.addView(button("Vaults",()->listVaults(false)));root.addView(button("Rename current vault",this::renamePhoneVault));root.addView(button("Delete current vault",this::deletePhoneVault));}
         LinearLayout actions = new LinearLayout(this);
         actions.addView(button("Lock", () -> lockNow("Vault locked.")),new LinearLayout.LayoutParams(0,-2,1));
         if (!sampleMode) actions.addView(button("Sync now", () -> { if (nasSettings.exists()) refreshNas(true); else configureNas(); }),new LinearLayout.LayoutParams(0,-2,1));
@@ -234,14 +361,25 @@ public class MainActivity extends Activity {
             public void onTextChanged(CharSequence s, int start, int before, int count) {
                 final int request = ++searchVersion;
                 final int token = generation; final String query = s.toString();
+                for(int i=0;i<rows.getChildCount();i++) rows.getChildAt(i).setEnabled(false);
                 handler.postDelayed(() -> {
                     if (!unlocked || request != searchVersion || token != generation) return;
-                    job(() -> bridge().callAttr("list_entries", query).toString(), value -> {
-                        if (request == searchVersion) renderRows(value);
-                    }, "The vault could not be checked. Please unlock again.");
+                    filterEntries(query,request,token);
                 }, 200);
             }
             public void afterTextChanged(Editable s) {}
+        });
+    }
+    private void filterEntries(String query,int request,int token) {
+        worker.execute(() -> {
+            String result=null; boolean failed=false;
+            try { if(token==generation) result=bridge().callAttr("list_entries",query).toString(); } catch(Exception e){failed=true;}
+            final String value=result; final boolean error=failed;
+            handler.post(() -> {
+                if(token!=generation || request!=searchVersion || !unlocked || !resumed || isFinishing())return;
+                if(error){lockNow("The vault could not be checked. Please unlock again.");return;}
+                try{renderRows(value);}catch(Exception e){lockNow("Cannot read this vault. Import a valid encrypted copy.");}
+            });
         });
     }
     private void renderRows(String value) throws Exception {
@@ -315,6 +453,7 @@ public class MainActivity extends Activity {
     }
     @Override protected void onActivityResult(int request, int result, Intent data) {
         super.onActivityResult(request, result, data);
+        if(maintenance.result(request,result,data))return;
         if (result != RESULT_OK || data == null || data.getData() == null) return;
         final Uri uri = data.getData();
         if (request == EXPORT) { handler.post(() -> exportDocument(uri)); return; }
@@ -357,7 +496,7 @@ public class MainActivity extends Activity {
     }
     private void openSample() {
         status.setText("Opening the invented sample entries…");
-        job(() -> {
+        job("Opening vault…", () -> {
             File sample = new File(getNoBackupFilesDir(), "sample.db");
             try (InputStream input = getAssets().open("sample-vault.db"); FileOutputStream output = new FileOutputStream(sample)) {
                 byte[] buffer = new byte[65536]; int count;
@@ -372,7 +511,7 @@ public class MainActivity extends Activity {
     }
     @Override public void onUserInteraction() { super.onUserInteraction(); resetIdleTimer(); }
     private void lockNow(String message) {
-        ++generation; ++searchVersion; unlocked = false; busy = false;
+        ++generation; ++searchVersion; unlocked = false; nasRunning = false; setBusy(false, "");
         handler.removeCallbacks(idleLock); handler.removeCallbacks(nasPoll); clearOwnedClipboard();
         if (detailDialog != null) detailDialog.dismiss();
         if (nasDialog != null) nasDialog.dismiss();
@@ -474,6 +613,13 @@ public class MainActivity extends Activity {
                 if(i==4) { fields[i].setSingleLine(false); fields[i].setMinLines(3); }
                 form.addView(fields[i]);
             }
+            android.widget.CheckBox showPassword=new android.widget.CheckBox(this); showPassword.setText("Show password");
+            showPassword.setOnCheckedChangeListener((button,show)-> {
+                int start=fields[3].getSelectionStart(),end=fields[3].getSelectionEnd();
+                fields[3].setTransformationMethod(show ? null : android.text.method.PasswordTransformationMethod.getInstance());
+                if(start>=0 && end>=0)fields[3].setSelection(start,end); resetIdleTimer();
+            }); form.addView(showPassword);
+            form.addView(button("Generate password",()->{fields[3].setText(PasswordGenerator.generate());fields[3].setSelection(fields[3].length());resetIdleTimer();}));
             JSONObject groups=info.getJSONObject("groups");
             java.util.ArrayList<String> ids=new java.util.ArrayList<>();
             java.util.Iterator<String> keys=groups.keys(); while(keys.hasNext()) ids.add(keys.next());
@@ -561,8 +707,8 @@ public class MainActivity extends Activity {
     private void refreshNas(boolean manual,String choices,String expected) {
         if(!unlocked || sampleMode || !resumed || busy || nasRunning || editorDialog!=null || conflictReview!=null) return;
         if(detailDialog!=null) { if(manual) detailDialog.dismiss(); else return; }
-        nasRunning=true; final int token=generation; final String query=search.getText().toString();
-        search.setEnabled(false); status.setText("Syncing encrypted vault with NAS…");
+        nasRunning=true; updateProgress(); final int token=generation; final String query=search.getText().toString();
+        status.setText("Syncing encrypted vault with NAS…");
         worker.execute(()->{
             JSONObject result=new JSONObject(); File directory=null;
             java.util.function.BooleanSupplier current=()->token==generation && resumed && unlocked;
@@ -592,8 +738,7 @@ public class MainActivity extends Activity {
             }
             final JSONObject response=result;
             handler.post(()->{
-                nasRunning=false; if(token!=generation || !resumed || isFinishing()) return;
-                search.setEnabled(true);
+                if(token!=generation || !resumed || isFinishing()) return; nasRunning=false; updateProgress();
                 try {
                     if(response.has("ready") && !response.getBoolean("ready")) {
                         status.setText(response.getString("message"));
@@ -603,20 +748,20 @@ public class MainActivity extends Activity {
                     } else if(!response.optBoolean("ok")) {
                         if(!response.optBoolean("session_ready")) lockNow("Sync stopped. Unlock to continue."); else status.setText(response.getString("message"));
                     } else if(response.optBoolean("revoked")) lockNow(response.getString("message"));
-                    else { renderRows(response.getString("entries")); status.setText(response.getString("message")); }
+                    else { if(query.equals(search.getText().toString())) renderRows(response.getString("entries")); status.setText(response.getString("message")); }
                 } catch(Exception ignored) { lockNow("Please unlock your vault again."); }
             });
         });
     }
-    @Override protected void onResume() { super.onResume(); resumed = true; }
+    @Override protected void onResume() { super.onResume(); resumed = true; maintenance.onResume(); if(startupChoicePending){startupChoicePending=false;handler.post(()->{if(resumed&&!busy)listVaults(false);});} }
     @Override protected void onPause() {
-        resumed = false; lockNow("Vault locked. Unlock to continue."); super.onPause();
+        maintenance.onPause(); resumed = false; lockNow("Vault locked. Unlock to continue."); super.onPause();
     }
     @Override public void onBackPressed() {
         if (unlocked) lockNow("Vault locked."); else super.onBackPressed();
     }
     @Override protected void onDestroy() {
-        handler.removeCallbacksAndMessages(null); clearOwnedClipboard();
+        maintenance.onDestroy(); handler.removeCallbacksAndMessages(null); clearOwnedClipboard();
         worker.shutdown(); super.onDestroy();
     }
 }
