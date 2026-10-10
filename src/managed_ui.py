@@ -204,7 +204,9 @@ class ManagedWindow(QMainWindow):
         self.selection_changed()
         if self.companion:self.companion.refresh()
 
-    def show_fallback(self):self.password_fallback=True;self.update_state()
+    def show_fallback(self):
+        self.password_fallback=True;self.update_state()
+        self.master.setFocus(Qt.FocusReason.OtherFocusReason)
 
     def password_prompt(self,label='Current account password:'):
         dialog=QInputDialog(self);dialog.setWindowTitle('Authenticate');dialog.setLabelText(label);dialog.setTextEchoMode(QLineEdit.EchoMode.Password);dialog.resize(560,160);dialog.setMinimumWidth(520)

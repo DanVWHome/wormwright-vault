@@ -27,7 +27,7 @@ def prepare(stage):
     launcher=share/'start.sh';launcher.write_text('#!/bin/sh\nexec /usr/bin/wormwright-vault-mint "$@"\n');launcher.chmod(0o755)
     control=binary/'wormwright-control-mint';control.write_text('#!/bin/sh\nexec /usr/bin/python3 /usr/share/'+new+'/hooks.py "$@"\n');control.chmod(0o755)
     docs=stage/'usr/share/doc'/new
-    for name in ('MINT-RELEASE.md','MULTIUSER-DESIGN.md','VALIDATION.md','RELEASE-0.3.6.md'):
+    for name in ('MINT-RELEASE.md','MULTIUSER-DESIGN.md','VALIDATION.md','RELEASE-0.3.7.md'):
         shutil.copy2(ROOT/'docs'/name,docs/name)
     metadata=stage/'DEBIAN/control';text=metadata.read_text().replace('Package: '+old,'Package: '+new)
     text=text.replace('Description: Managed multi-user vault test build, installed alongside personal Vault','Conflicts: '+old+'\nReplaces: '+old+'\nDescription: Offline password vault and optional multi-user Manager for Linux Mint 22.x')

@@ -1,4 +1,4 @@
-name: Windows 0.3.6 maintenance preview
+name: Windows 0.3.7 maintenance preview
 on:
   workflow_dispatch:
   push:
@@ -30,10 +30,11 @@ jobs:
           if (!(Test-Path $compiler)) { choco install innosetup --yes --no-progress; if ($LASTEXITCODE -ne 0) { throw 'Inno Setup installation failed' } }
           & $compiler packaging/windows-installer.iss
           if ($LASTEXITCODE -ne 0) { throw 'Installer compilation failed' }
+      - run: python tests/check_windows_icons.py build-windows/bundle/WormwrightVault/WormwrightVault.exe dist-installer/wormwright-vault_0.3.7_windows_x64_preview1_setup.exe
       - run: python tests/check_windows_installer.py
       - uses: actions/upload-artifact@v4
         with:
-          name: wormwright-vault-windows-0.3.6
+          name: wormwright-vault-windows-0.3.7
           path: |
             dist-windows/*
             dist-installer/*
