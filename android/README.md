@@ -35,3 +35,7 @@ Delete phone vault removes the working phone copy, private sample/temporary file
 ## Named vaults · preview.10
 
 New personal phone vaults require a name. Creating another preserves existing phone vaults. Vaults lists signed names and current selection, with a chooser on reopening when multiple copies exist. Each copy keeps separate NAS settings and its own settings encryption key. Rename current vault applies to independent personal phone vaults; rename shared NAS vaults in the desktop Manager and synchronize/import the named copy. Existing unnamed copies remain usable. Delete current vault removes only the selected copy and its settings after fresh account credentials, phone authorization, named review and typed DELETE. Delete selected vault… starts from the named list. Cancel is available in the chooser, credential prompt and final review. Other phone vaults, NAS masters and exports remain. Display names are visible metadata.
+
+## CSV-safe password generation · preview.11
+
+New and existing entry editors offer Generate password, matching the desktop 24-character alphabet without commas, quotation marks or line breaks. Generated values use cryptographically secure randomness, stay hidden unless Show password is selected, and are committed only by Save. Cancel discards unsaved changes.

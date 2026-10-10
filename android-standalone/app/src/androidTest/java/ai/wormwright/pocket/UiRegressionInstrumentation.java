@@ -13,12 +13,13 @@ import java.util.concurrent.atomic.AtomicInteger;
 /** Real Android dialog/message-loop regression checks; invented sample data only. */
 public class UiRegressionInstrumentation extends Instrumentation {
     private MainActivity activity;
+    private boolean editorsOnly;
     private boolean confirmationOnly;
     private String dialogField = "dialog";
     private String lockMethod = "lock";
     private String sampleButton = "Open invented sample vault";
     private String jobMethod = "task";
-    @Override public void onCreate(Bundle args) { super.onCreate(args); confirmationOnly=args!=null&&"true".equals(args.getString("confirmationOnly")); start(); }
+    @Override public void onCreate(Bundle args) { super.onCreate(args);editorsOnly=args!=null&&"true".equals(args.getString("editorsOnly")); confirmationOnly=args!=null&&"true".equals(args.getString("confirmationOnly")); start(); }
     @Override public void onStart() {
         Bundle result = new Bundle();
         try {
@@ -30,6 +31,7 @@ public class UiRegressionInstrumentation extends Instrumentation {
                 result.putString("stream","\nPASS opening spinner/confirmation focused regression: uppercase, lowercase, mixed case, surrounding whitespace, invalid text, Cancel and pause invalidation.\n");
                 runOnMainSync(()->activity.finish());finish(Activity.RESULT_OK,result);return;
             }
+            if(editorsOnly){openingFeedback();passwordVisibility();result.putBoolean("ui_regression_ok",true);result.putString("stream","\nPASS opening spinner/password generation in new and existing editors, secure alphabet/length, repeated generation, masking, reveal and cancel.\n");runOnMainSync(()->activity.finish());finish(Activity.RESULT_OK,result);return;}
             personalCreation();
             openingFeedback();
             searchKeyboard();
@@ -344,6 +346,13 @@ public class UiRegressionInstrumentation extends Instrumentation {
                 List<EditText> fields=new ArrayList<>();collectInputs(editor().getWindow().getDecorView(),fields);EditText password=fields.get(2);
                 CheckBox show=(CheckBox)findButton(editor().getWindow().getDecorView(),"Show password");check(show!=null&&!show.isChecked(),"password starts hidden");
                 check(password.getTransformationMethod() instanceof android.text.method.PasswordTransformationMethod,"password is masked");
+                Button generate=findButton(editor().getWindow().getDecorView(),"Generate password");check(generate!=null,"generator is available in new/edit entries");
+                List<String> before=new ArrayList<>();for(EditText value:fields)before.add(value.getText().toString());generate.performClick();String generated=password.getText().toString();
+                check(generated.length()==24&&generated.matches("[a-zA-Z0-9!@#$%&*+_=?.\\-]{24}"),"generated password length and safe alphabet");
+                check(password.getTransformationMethod() instanceof android.text.method.PasswordTransformationMethod,"generated password stays hidden");
+                for(int i=0;i<fields.size();i++)if(i!=2)check(before.get(i).equals(fields.get(i).getText().toString()),"generation preserves other fields");
+                show.performClick();check(password.getTransformationMethod()==null&&generated.equals(password.getText().toString()),"generated password can be revealed");show.performClick();
+                generate.performClick();check(!generated.equals(password.getText().toString()),"generate again replaces with a fresh password");
                 password.setText("Invented-Visible-Password!");password.setSelection(5);show.performClick();
                 check(password.getTransformationMethod()==null&&password.getSelectionStart()==5,"reveal preserves cursor");
                 password.getText().append("Typed");String expected=password.getText().toString();show.performClick();

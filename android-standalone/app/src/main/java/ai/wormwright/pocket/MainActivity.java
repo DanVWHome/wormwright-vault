@@ -354,6 +354,7 @@ public class MainActivity extends Activity {
             inputs[2].setTransformationMethod(show ? null : android.text.method.PasswordTransformationMethod.getInstance());
             if(start>=0 && end>=0)inputs[2].setSelection(start,end); onUserInteraction();
         }); fields.addView(showPassword);
+        button(fields,"Generate password",()->{inputs[2].setText(PasswordGenerator.generate());inputs[2].setSelection(inputs[2].length());onUserInteraction();});
         ScrollView scroll=new ScrollView(this); scroll.addView(fields);
         final int token = epoch;
         final AlertDialog editor = new AlertDialog.Builder(this).setTitle("Save entry").setView(scroll).setNegativeButton("Cancel",null).setPositiveButton("Save",null).create();

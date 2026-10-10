@@ -1,3 +1,7 @@
+# Wormwright Pocket 0.1.0-test.11
+
+Add/edit entry dialogs include Generate password, using cryptographically secure random data and the desktop-compatible 24-character alphabet. It fills the field, preserves other entry fields and remains masked until Show password is selected. Generate again replaces the unsaved value; Save commits it and Cancel discards it. Install over test.10 without uninstalling.
+
 # Wormwright Pocket 0.1.0-test.10
 
 Permanent-deletion confirmation accepts DELETE, delete or any mixed capitalization, with surrounding spaces ignored. The complete word is still required; incorrect text, Cancel and leaving the app never authorize deletion. Fresh phone authentication, optional vault password and the named final review are unchanged. Applies to current/selected vaults, all phone vaults and selected backups. Install over test.9 without uninstalling.

@@ -619,6 +619,7 @@ public class MainActivity extends Activity {
                 fields[3].setTransformationMethod(show ? null : android.text.method.PasswordTransformationMethod.getInstance());
                 if(start>=0 && end>=0)fields[3].setSelection(start,end); resetIdleTimer();
             }); form.addView(showPassword);
+            form.addView(button("Generate password",()->{fields[3].setText(PasswordGenerator.generate());fields[3].setSelection(fields[3].length());resetIdleTimer();}));
             JSONObject groups=info.getJSONObject("groups");
             java.util.ArrayList<String> ids=new java.util.ArrayList<>();
             java.util.Iterator<String> keys=groups.keys(); while(keys.hasNext()) ids.add(keys.next());
