@@ -14,18 +14,20 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class UiRegressionInstrumentation extends Instrumentation {
     private MainActivity activity;
     private boolean rotationOnly;
+    private boolean layoutOnly;
     private boolean editorsOnly;
     private String dialogField = "detailDialog";
     private String lockMethod = "lockNow";
     private String sampleButton = "Try the sample vault";
     private String jobMethod = "job";
-    @Override public void onCreate(Bundle args) { super.onCreate(args);rotationOnly=args!=null&&"true".equals(args.getString("rotationOnly"));editorsOnly=args!=null&&"true".equals(args.getString("editorsOnly")); start(); }
+    @Override public void onCreate(Bundle args) { super.onCreate(args);layoutOnly=args!=null&&"true".equals(args.getString("layoutOnly"));rotationOnly=args!=null&&"true".equals(args.getString("rotationOnly"));editorsOnly=args!=null&&"true".equals(args.getString("editorsOnly")); start(); }
     @Override public void onStart() {
         Bundle result = new Bundle();
         try {
             unlockFixtureScreen();
             activity = (MainActivity)startActivitySync(new Intent(getTargetContext(),MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
             waitForIdleSync();
+            if(layoutOnly){openingFeedback();searchKeyboard();result.putBoolean("ui_regression_ok",true);result.putString("stream","\nPASS opening spinner/compact unlocked layout: search and results visible with keyboard, typing retains focus, latest results win.\n");runOnMainSync(()->activity.finish());finish(Activity.RESULT_OK,result);return;}
             if(rotationOnly){openingFeedback();portraitRotation();result.putBoolean("ui_regression_ok",true);result.putString("stream","\nPASS opening spinner/portrait rotation: phone remains portrait, unlocked vault and editor survive rotation attempts; leaving app still locks.\n");runOnMainSync(()->activity.finish());finish(Activity.RESULT_OK,result);return;}
             if(!editorsOnly)maintenanceFlow();
             if(editorsOnly){openingFeedback();passwordVisibility();result.putBoolean("ui_regression_ok",true);result.putString("stream","\nPASS opening spinner/password generation in new and existing editors, secure alphabet/length, repeated generation, masking, reveal and cancel.\n");runOnMainSync(()->activity.finish());finish(Activity.RESULT_OK,result);return;}
@@ -261,6 +263,16 @@ public class UiRegressionInstrumentation extends Instrumentation {
         final EditText input=(EditText)field("search");final String[] entry={""};
         runOnMainSync(()->{try{entry[0]=((Button)((ViewGroup)field("rows")).getChildAt(0)).getText().toString().split("\n",2)[0];}catch(Exception e){throw new RuntimeException(e);}input.requestFocus();((android.view.inputmethod.InputMethodManager)activity.getSystemService(android.content.Context.INPUT_METHOD_SERVICE)).showSoftInput(input,android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT);});
         await(()->keyboardVisible(),"search keyboard opens");
+        waitForIdleSync();
+        runOnMainSync(()->{try{
+            android.graphics.Rect fieldBounds=new android.graphics.Rect(),resultBounds=new android.graphics.Rect();
+            ViewGroup resultRows=(ViewGroup)field("rows");
+            check(input.getGlobalVisibleRect(fieldBounds)&&fieldBounds.height()>=input.getHeight()-2,"entire search field is visible with keyboard");
+            check(resultRows.getChildAt(0).getGlobalVisibleRect(resultBounds)&&resultBounds.height()>=resultRows.getChildAt(0).getHeight()-2,"first result fully visible with keyboard");
+            check(((View)resultRows.getParent()).getHeight()>=activity.getResources().getDisplayMetrics().density*100,"results retain useful scrolling viewport with keyboard");
+            check(findButton(root(),"More")!=null,"secondary actions remain accessible in More");
+        }catch(Exception e){throw new RuntimeException(e);}});
+
         for(int length=1;length<=Math.min(3,entry[0].length());length++) {
             final String query=entry[0].substring(0,length);
             runOnMainSync(()->{input.setText(query);input.setSelection(query.length());});

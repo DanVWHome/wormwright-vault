@@ -120,19 +120,22 @@ public class MainActivity extends Activity {
     private LinearLayout column() { LinearLayout v = new LinearLayout(this); v.setOrientation(LinearLayout.VERTICAL); return v; }
     private TextView text(String s) { TextView v = new TextView(this); v.setText(s); v.setTextSize(17); v.setPadding(12,12,12,12); v.setTextColor(0xff172d43); return v; }
     private int dp(int value) { return Math.round(value * getResources().getDisplayMetrics().density); }
-    private void screen(String title) {
+    private void screen(String title) { screen(title, false); }
+    private void screen(String title, boolean compact) {
         root = column(); root.setPadding(dp(20),dp(16),dp(20),dp(16)); root.setBackgroundColor(0xfffff9ee);
         LinearLayout heading = new LinearLayout(this); heading.setGravity(Gravity.CENTER_VERTICAL);
-        heading.addView(text(title), new LinearLayout.LayoutParams(0,-2,1));
-        Button helpButton = new Button(this); helpButton.setText("Help"); helpButton.setAllCaps(false);
+        TextView caption = text(title); if(compact){caption.setSingleLine(true);caption.setEllipsize(android.text.TextUtils.TruncateAt.END);}
+        heading.addView(caption, new LinearLayout.LayoutParams(0,-2,1));
+        Button helpButton = new Button(this); helpButton.setText(compact ? "More" : "Help"); helpButton.setAllCaps(false);
         helpButton.setOnClickListener(v -> {
             onUserInteraction(); PopupMenu menu = new PopupMenu(this,helpButton);
+            if(compact){menu.getMenu().add("Recently deleted");if(!sample){menu.getMenu().add("Export portable backup");menu.getMenu().add("Export for desktop and NAS");menu.getMenu().add("Change optional vault password");}}
             menu.getMenu().add("Create new vault"); menu.getMenu().add("Vaults"); menu.getMenu().add("Rename current vault"); menu.getMenu().add("Delete current vault"); menu.getMenu().add("Delete vault…"); menu.getMenu().add("Delete all phone vaults"); menu.getMenu().add("Delete selected backups");
             menu.getMenu().add("Backup and recovery"); menu.getMenu().add("About"); menu.getMenu().add("Wormwright Website");
             menu.setOnMenuItemClickListener(item -> { String choice=item.getTitle().toString();
-                if(choice.equals("Create new vault")) newVault(); else if(choice.equals("Vaults")) switchVault(); else if(choice.equals("Rename current vault")) renameVault(); else if(choice.equals("Delete current vault")) deleteCurrentVault(); else if(choice.equals("Delete vault…")) chooseVaultForDeletion(); else if(choice.equals("Delete all phone vaults")) deletePhoneVaults(); else if(choice.equals("Delete selected backups")) maintenance.chooseBackups(); else if (choice.equals("About")) about(); else if (choice.equals("Backup and recovery")) help(); else openWebsite(); return true; }); menu.show();
+                if(choice.equals("Recently deleted")) recentlyDeleted(); else if(choice.equals("Export portable backup")) export(false); else if(choice.equals("Export for desktop and NAS")) export(true); else if(choice.equals("Change optional vault password")) changePassword(); else if(choice.equals("Create new vault")) newVault(); else if(choice.equals("Vaults")) switchVault(); else if(choice.equals("Rename current vault")) renameVault(); else if(choice.equals("Delete current vault")) deleteCurrentVault(); else if(choice.equals("Delete vault…")) chooseVaultForDeletion(); else if(choice.equals("Delete all phone vaults")) deletePhoneVaults(); else if(choice.equals("Delete selected backups")) maintenance.chooseBackups(); else if (choice.equals("About")) about(); else if (choice.equals("Backup and recovery")) help(); else openWebsite(); return true; }); menu.show();
         });
-        heading.addView(helpButton); root.addView(heading); root.addView(text("Version " + installedVersion())); status = text(""); root.addView(status);
+        heading.addView(helpButton); root.addView(heading); if(!compact)root.addView(text("Version " + installedVersion())); status = text(""); if(compact)status.setVisibility(View.GONE); root.addView(status);
         progressRow = column(); LinearLayout loading = new LinearLayout(this); loading.setGravity(Gravity.CENTER_VERTICAL);
         ProgressBar spinner = new ProgressBar(this); spinner.setIndeterminate(true); spinner.setContentDescription("Operation in progress");
         loading.addView(spinner, new LinearLayout.LayoutParams(dp(36),dp(36)));
@@ -146,7 +149,8 @@ public class MainActivity extends Activity {
             view.setPadding(safe.left, safe.top, safe.right, Math.max(safe.bottom, keyboard.bottom));
             return insets;
         });
-        scroll.addView(root); setContentView(scroll); scroll.requestApplyInsets();
+        if(compact){root.setOnApplyWindowInsetsListener((view,insets)->{android.graphics.Insets safe=insets.getInsets(WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());android.graphics.Insets ime=insets.getInsets(WindowInsets.Type.ime());view.setPadding(dp(12)+safe.left,dp(4)+safe.top,dp(12)+safe.right,dp(4)+Math.max(safe.bottom,ime.bottom));return insets;});setContentView(root);root.requestApplyInsets();}
+        else {scroll.addView(root); setContentView(scroll); scroll.requestApplyInsets();}
     }
     private Button button(LinearLayout parent, String title, Runnable action) {
         Button v = new Button(this); v.setText(title); v.setAllCaps(false); parent.addView(v);
@@ -154,7 +158,7 @@ public class MainActivity extends Activity {
         v.setOnClickListener(w -> { if (!busy || "Lock vault".equals(title)) action.run(); else message("Please wait."); });
         return v;
     }
-    private void message(String value) { if (status != null) status.setText(value); }
+    private void message(String value) { if (status != null) {status.setText(value);status.setVisibility(value.isEmpty()?View.GONE:View.VISIBLE);} }
     private void home(String note) {
         screen("Wormwright Pocket"); root.addView(text("Your personal password vault"), 1); message(note);
         boolean stored = new File(base, "active.json").exists();
@@ -265,18 +269,14 @@ public class MainActivity extends Activity {
     }
 
     private void vaultScreen() {
-        screen(sample ? "Invented sample vault" : vaultLabel(active));
-        button(root, "Lock vault", () -> lock("Vault locked."));
-        button(root, "Add entry", () -> edit(new JSONObject()));
-        button(root, "Recently deleted", this::recentlyDeleted);
-        if (!sample) {
-            button(root,"Vaults",this::switchVault); button(root,"Rename current vault",this::renameVault); button(root,"Delete current vault",this::deleteCurrentVault);
-            button(root, "Export portable backup", () -> export(false));
-            button(root, "Export for desktop and NAS", () -> export(true));
-            button(root, "Change optional vault password", this::changePassword);
-        }
+        screen(sample ? "Invented sample vault" : vaultLabel(active), true);
+        LinearLayout actions = new LinearLayout(this);
+        Button lockButton = button(actions, "Lock vault", () -> lock("Vault locked."));
+        Button addButton = button(actions, "Add entry", () -> edit(new JSONObject()));
+        lockButton.setLayoutParams(new LinearLayout.LayoutParams(0,-2,1));
+        addButton.setLayoutParams(new LinearLayout.LayoutParams(0,-2,1)); root.addView(actions);
         search = input(root, "Search description, username or link", false);
-        rows = column(); root.addView(rows);
+        rows = column(); ScrollView results = new ScrollView(this); results.addView(rows); root.addView(results,new LinearLayout.LayoutParams(-1,0,1));
         search.addTextChangedListener(new TextWatcher() {
             public void beforeTextChanged(CharSequence s,int a,int c,int f) {} public void onTextChanged(CharSequence s,int a,int b,int c) {}
             public void afterTextChanged(Editable e) { ++searchVersion; for(int i=0;i<rows.getChildCount();i++)rows.getChildAt(i).setEnabled(false); ui.removeCallbacks(searchJob); ui.postDelayed(searchJob, 250); }

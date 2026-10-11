@@ -128,7 +128,8 @@ public class MainActivity extends Activity {
         });
         return view;
     }
-    private void frame(String subtitle) {
+    private void frame(String subtitle) { frame(subtitle, false); }
+    private void frame(String subtitle, boolean compact) {
         root = column(); root.setBackgroundColor(CREAM);
         root.setPadding(dp(24), dp(16), dp(24), dp(16));
         root.setOnApplyWindowInsetsListener((view, insets) -> {
@@ -137,21 +138,22 @@ public class MainActivity extends Activity {
             view.setPadding(dp(24) + bars.left, dp(16) + bars.top, dp(24) + bars.right, dp(16) + Math.max(bars.bottom, ime.bottom));
             return insets;
         });
-        TextView title = label("Wormwright Vault", 28); title.setTypeface(null, Typeface.BOLD);
+        TextView title = label(compact ? subtitle : "Wormwright Vault", compact ? 17 : 28); if(compact){title.setSingleLine(true);title.setEllipsize(android.text.TextUtils.TruncateAt.END);} title.setTypeface(null, Typeface.BOLD);
         LinearLayout heading = new LinearLayout(this);
         heading.addView(title, new LinearLayout.LayoutParams(0, -2, 1));
-        Button help = button("Help", () -> {});
+        Button help = button(compact ? "More" : "Help", () -> {});
         help.setOnClickListener(v -> {
             onUserInteraction();
             PopupMenu menu = new PopupMenu(this, help);
+            if(compact&&!sampleMode){menu.getMenu().add("Sync now");menu.getMenu().add("NAS connection settings");menu.getMenu().add("Export encrypted phone backup");}
             menu.getMenu().add("Create new vault"); menu.getMenu().add("Vaults"); menu.getMenu().add("Delete selected vault…"); menu.getMenu().add("Rename current vault"); menu.getMenu().add("Delete current vault"); menu.getMenu().add("Delete selected backups");
             menu.getMenu().add("About");
             menu.getMenu().add("Wormwright Website");
-            menu.setOnMenuItemClickListener(item -> { String choice=item.getTitle().toString(); if(choice.equals("Create new vault")) createPhoneVault(); else if(choice.equals("Vaults")) listVaults(false); else if(choice.equals("Delete selected vault…")) listVaults(true); else if(choice.equals("Rename current vault")) renamePhoneVault(); else if(choice.equals("Delete current vault")) deletePhoneVault(); else if(choice.equals("Delete selected backups")) maintenance.chooseBackups(); else if (choice.equals("About")) about(); else openWebsite(); return true; });
+            menu.setOnMenuItemClickListener(item -> { String choice=item.getTitle().toString(); if(choice.equals("Sync now")){if(nasSettings.exists())refreshNas(true);else configureNas();} else if(choice.equals("NAS connection settings"))configureNas(); else if(choice.equals("Export encrypted phone backup"))chooseExport(); else if(choice.equals("Create new vault")) createPhoneVault(); else if(choice.equals("Vaults")) listVaults(false); else if(choice.equals("Delete selected vault…")) listVaults(true); else if(choice.equals("Rename current vault")) renamePhoneVault(); else if(choice.equals("Delete current vault")) deletePhoneVault(); else if(choice.equals("Delete selected backups")) maintenance.chooseBackups(); else if (choice.equals("About")) about(); else openWebsite(); return true; });
             menu.show();
         });
         heading.addView(help);
-        root.addView(heading); root.addView(label("Version " + installedVersion(), 13)); root.addView(label(subtitle, 15));
+        root.addView(heading); if(!compact){root.addView(label("Version " + installedVersion(), 13)); root.addView(label(subtitle, 15));}
         progressRow = new LinearLayout(this); progressRow.setGravity(Gravity.CENTER_VERTICAL);
         ProgressBar spinner = new ProgressBar(this); spinner.setIndeterminate(true); spinner.setContentDescription("Operation in progress");
         progressRow.addView(spinner, new LinearLayout.LayoutParams(dp(36),dp(36)));
@@ -332,25 +334,11 @@ public class MainActivity extends Activity {
     private void showEntries(String result) throws Exception {
         String name=bridge().callAttr("vault_name").toString();
         if(!sampleMode){selectedVaultName=name;saveSelectedVault(vaultFile,name);}
-        frame(sampleMode ? "SAMPLE VAULT · INVENTED ENTRIES" : (name.isEmpty()?"Unnamed vault":name)+" · OFFLINE EDITS + NAS SYNC");
-        if(!sampleMode){root.addView(button("Vaults",()->listVaults(false)));root.addView(button("Rename current vault",this::renamePhoneVault));root.addView(button("Delete current vault",this::deletePhoneVault));}
+        frame(sampleMode ? "Invented sample vault" : (name.isEmpty()?"Unnamed vault":name), true);
         LinearLayout actions = new LinearLayout(this);
         actions.addView(button("Lock", () -> lockNow("Vault locked.")),new LinearLayout.LayoutParams(0,-2,1));
-        if (!sampleMode) actions.addView(button("Sync now", () -> { if (nasSettings.exists()) refreshNas(true); else configureNas(); }),new LinearLayout.LayoutParams(0,-2,1));
+        actions.addView(button("New entry", () -> openEditor(new JSONObject())),new LinearLayout.LayoutParams(0,-2,1));
         root.addView(actions);
-        LinearLayout editing = new LinearLayout(this);
-        editing.addView(button("New entry", () -> openEditor(new JSONObject())),new LinearLayout.LayoutParams(0,-2,1));
-        Button more = new Button(this); more.setText("More"); more.setAllCaps(false);
-        more.setOnClickListener(v -> {
-            PopupMenu menu = new PopupMenu(this,more);
-            menu.getMenu().add("NAS connection settings"); menu.getMenu().add("Export encrypted phone backup");
-            menu.setOnMenuItemClickListener(item -> {
-                if ("NAS connection settings".contentEquals(item.getTitle())) configureNas(); else chooseExport();
-                return true;
-            }); menu.show();
-        });
-        if (!sampleMode) editing.addView(more,new LinearLayout.LayoutParams(0,-2,1));
-        root.addView(editing);
         search = input("Search description, username or website", false); root.addView(search);
         status = label("", 14); root.addView(status);
         ScrollView scroll = new ScrollView(this); rows = column(); scroll.addView(rows);
