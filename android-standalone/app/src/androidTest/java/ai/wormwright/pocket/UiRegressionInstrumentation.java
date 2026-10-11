@@ -13,19 +13,21 @@ import java.util.concurrent.atomic.AtomicInteger;
 /** Real Android dialog/message-loop regression checks; invented sample data only. */
 public class UiRegressionInstrumentation extends Instrumentation {
     private MainActivity activity;
+    private boolean rotationOnly;
     private boolean editorsOnly;
     private boolean confirmationOnly;
     private String dialogField = "dialog";
     private String lockMethod = "lock";
     private String sampleButton = "Open invented sample vault";
     private String jobMethod = "task";
-    @Override public void onCreate(Bundle args) { super.onCreate(args);editorsOnly=args!=null&&"true".equals(args.getString("editorsOnly")); confirmationOnly=args!=null&&"true".equals(args.getString("confirmationOnly")); start(); }
+    @Override public void onCreate(Bundle args) { super.onCreate(args);rotationOnly=args!=null&&"true".equals(args.getString("rotationOnly"));editorsOnly=args!=null&&"true".equals(args.getString("editorsOnly")); confirmationOnly=args!=null&&"true".equals(args.getString("confirmationOnly")); start(); }
     @Override public void onStart() {
         Bundle result = new Bundle();
         try {
             unlockFixtureScreen();
             activity = (MainActivity)startActivitySync(new Intent(getTargetContext(),MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
             waitForIdleSync();
+            if(rotationOnly){openingFeedback();portraitRotation();result.putBoolean("ui_regression_ok",true);result.putString("stream","\nPASS opening spinner/portrait rotation: phone remains portrait, unlocked vault and editor survive rotation attempts; leaving app still locks.\n");runOnMainSync(()->activity.finish());finish(Activity.RESULT_OK,result);return;}
             if(confirmationOnly) {
                 confirmationCapitalization(); result.putBoolean("ui_regression_ok",true);
                 result.putString("stream","\nPASS opening spinner/confirmation focused regression: uppercase, lowercase, mixed case, surrounding whitespace, invalid text, Cancel and pause invalidation.\n");
@@ -58,6 +60,21 @@ public class UiRegressionInstrumentation extends Instrumentation {
         runOnMainSync(()->{int before=actions.get();maintenanceDialog().getButton(AlertDialog.BUTTON_NEGATIVE).performClick();check(actions.get()==before,"Cancel runs no deletion");});
         runOnMainSync(()->helper.confirm("Pause test","Invented data only.",actions::incrementAndGet));waitForIdleSync();
         runOnMainSync(()->{AlertDialog review=maintenanceDialog();int before=actions.get();helper.onPause();review.getButton(AlertDialog.BUTTON_POSITIVE).performClick();check(actions.get()==before&&!review.isShowing(),"leaving invalidates confirmation");helper.onResume();});
+    }
+    private void portraitRotation() throws Exception {
+        check(activity.getRequestedOrientation()==android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT,"portrait requested in manifest");
+        final int before=(Integer)field("epoch");final MainActivity original=activity;
+        runOnMainSync(()->findButton(root(),"Add entry").performClick());
+        await(()->editor()!=null&&editor().isShowing()&&editor().getButton(AlertDialog.BUTTON_POSITIVE)!=null,"editor opens before rotation");
+        final AlertDialog originalEditor=editor();runOnMainSync(()->{List<EditText> fields=new ArrayList<>();collectInputs(originalEditor.getWindow().getDecorView(),fields);fields.get(0).setText("Invented unsaved rotation test");});
+        try {
+            for(int rotation:new int[]{UiAutomation.ROTATION_FREEZE_90,UiAutomation.ROTATION_FREEZE_270,UiAutomation.ROTATION_FREEZE_0}) {
+                check(getUiAutomation().setRotation(rotation),"rotation request accepted by system");SystemClock.sleep(2500);waitForIdleSync();
+                runOnMainSync(()->{try{check(activity==original&&!original.isDestroyed(),"rotation does not recreate activity");check(activity.getResources().getConfiguration().orientation==android.content.res.Configuration.ORIENTATION_PORTRAIT,"layout remains portrait");check(unlocked()&&(Boolean)field("resumed")&&(Integer)field("epoch")==before,"rotation does not lock vault");check(editor()==originalEditor&&originalEditor.isShowing(),"editor survives rotation");List<EditText> fields=new ArrayList<>();collectInputs(originalEditor.getWindow().getDecorView(),fields);check("Invented unsaved rotation test".equals(fields.get(0).getText().toString()),"unsaved entry text survives rotation");}catch(Exception e){throw new RuntimeException(e);}});
+            }
+            runOnMainSync(()->originalEditor.getButton(AlertDialog.BUTTON_NEGATIVE).performClick());
+            shell("input keyevent 3");await(()->!unlocked(),"leaving app still locks the vault");
+        } finally {getUiAutomation().setRotation(UiAutomation.ROTATION_UNFREEZE);}
     }
     private Object field(String name) throws Exception { Field f=MainActivity.class.getDeclaredField(name); f.setAccessible(true); return f.get(activity); }
     private void check(boolean condition,String message) { if(!condition) throw new AssertionError(message); }

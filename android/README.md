@@ -39,3 +39,7 @@ New personal phone vaults require a name. Creating another preserves existing ph
 ## CSV-safe password generation · preview.11
 
 New and existing entry editors offer Generate password, matching the desktop 24-character alphabet without commas, quotation marks or line breaks. Generated values use cryptographically secure randomness, stay hidden unless Show password is selected, and are committed only by Save. Cancel discards unsaved changes.
+
+## Portrait-only phone layout · preview.12
+
+The phone interface stays in portrait when the device is turned sideways, preserving the open vault and editor. Leaving the app and idle locking are unchanged.

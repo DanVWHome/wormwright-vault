@@ -15,6 +15,10 @@ on:
         description: Run focused password editor checks in the selected apps
         type: boolean
         default: false
+      rotation_only:
+        description: Test portrait lock and vault/editor retention on phone rotation
+        type: boolean
+        default: false
 permissions:
   contents: read
 jobs:
@@ -42,6 +46,7 @@ jobs:
           TEST_APP: ${{ inputs.app || 'all' }}
           CONFIRMATION_ONLY: ${{ inputs.confirmation_only || false }}
           EDITORS_ONLY: ${{ inputs.editors_only || false }}
+          ROTATION_ONLY: ${{ inputs.rotation_only || false }}
         run: |
           sdkmanager 'platforms;android-35' 'platforms;android-36' 'build-tools;35.0.0' 'build-tools;36.0.0' 'emulator' 'system-images;android-36;default;x86_64'
           if [ "$TEST_APP" != nas ]; then gradle -p android-standalone assembleDebug assembleDebugAndroidTest lintDebug; fi
@@ -58,6 +63,7 @@ jobs:
           TEST_APP: ${{ inputs.app || 'all' }}
           CONFIRMATION_ONLY: ${{ inputs.confirmation_only || false }}
           EDITORS_ONLY: ${{ inputs.editors_only || false }}
+          ROTATION_ONLY: ${{ inputs.rotation_only || false }}
         run: |
           export PATH="$ANDROID_HOME/platform-tools:$PATH"
           export ANDROID_AVD_HOME="$RUNNER_TEMP/regression-avd"
@@ -90,6 +96,7 @@ jobs:
               command=['adb','shell','am','instrument','-w']
               if name=='pocket' and os.environ.get('CONFIRMATION_ONLY')=='true':command+=['-e','confirmationOnly','true']
               if os.environ.get('EDITORS_ONLY')=='true':command+=['-e','editorsOnly','true']
+              if os.environ.get('ROTATION_ONLY')=='true':command+=['-e','rotationOnly','true']
               result=subprocess.run(command+[target],capture_output=True,text=True,timeout=900 if name=='pocket' else 420)
               output=result.stdout+result.stderr
               Path('regression-results/'+name+'.txt').write_text(output)
