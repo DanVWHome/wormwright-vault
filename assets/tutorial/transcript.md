@@ -1,6 +1,6 @@
-# Wormwright Vault 0.2.13 — tutorial transcript
+# Wormwright Vault — re-recorded tutorial transcript
 
-Narrated video using actual app screens and disposable demo data. Synthetic English narration generated locally with Piper, en_US-lessac-medium. Interface appearance may differ with your desktop theme.
+Narrated video using actual app screens and disposable demo data. Replacement narration supplied by the user in two recordings; verified against the script using local speech recognition. Interface appearance may differ with your desktop theme.
 
 ## 1. Choose the right app
 
