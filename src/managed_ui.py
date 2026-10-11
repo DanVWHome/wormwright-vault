@@ -1,3 +1,5 @@
+from nas_working_copy import prepare_managed_vault
+from shared_folder_picker import choose_shared_folder, choose_vault_file
 """Managed-format UI shared by Vault and the optional Vault Manager launcher."""
 from website import add_website_action
 from update_check import add_update_actions
@@ -591,7 +593,7 @@ class ManagedWindow(QMainWindow):
 
     def open_existing(self):
         if self.task:return
-        path,_=QFileDialog.getOpenFileName(self,'Open existing local vault',str(managed_locations.local_folder()),'SQLite vault (*.sqlite)')
+        path=choose_vault_file(self, str(managed_locations.local_folder()))
         if path:self.open_path(Path(path))
 
     def choose(self):
@@ -599,6 +601,8 @@ class ManagedWindow(QMainWindow):
         path,_=QFileDialog.getSaveFileName(self,'Choose or create local vault',str(self.vault.path),'SQLite vault (*.sqlite)',options=QFileDialog.Option.DontConfirmOverwrite)
         if path:self.open_path(Path(path))
     def open_path(self,path):
+        try:path=prepare_managed_vault(path)
+        except Exception as error:self.warning(error);return
         if path.resolve()==self.vault.path.resolve():return
         if path.exists() and not is_managed(path):
             QMessageBox.information(self,'Unsupported vault','This file is not a supported current-format vault. Create a new vault or open a current-format copy.');return
@@ -864,7 +868,7 @@ class ManagedWindow(QMainWindow):
         help_text=QLabel('Choose a dedicated shared NAS folder for this vault. This requirement applies only to the shared sync folder. Your local working vault can be saved in any local folder. Each computer keeps its own local copy.');help_text.setWordWrap(True);form.addRow(help_text)
         folder=QLineEdit(config.get('folder',''));choose=QPushButton('Choose shared folder…')
         def select_folder():
-            path=QFileDialog.getExistingDirectory(dialog,'Shared folder',folder.text())
+            path=choose_shared_folder(dialog, folder.text())
             if path:folder.setText(path)
         choose.clicked.connect(select_folder);form.addRow('Dedicated shared folder:',folder);form.addRow(choose)
         limit=QSpinBox();limit.setRange(1,1000);limit.setValue(config.get('limit',10));form.addRow('Maximum automatic backups:',limit)

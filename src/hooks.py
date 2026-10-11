@@ -25,12 +25,24 @@ def default_vault():
 
 
 def endpoint(vault):
-    root = Path(vault).resolve().parent / '.vanwormai-control'
-    root.mkdir(mode=0o700, parents=True, exist_ok=True)
+    # Control traffic belongs on this computer, never beside a NAS vault.
+    # Hash the vault identity so even long mount paths fit AF_UNIX limits.
+    identity = hashlib.sha256(str(Path(vault).resolve()).encode()).hexdigest()[:32]
+    runtime = Path(os.environ.get('XDG_RUNTIME_DIR') or f'/run/user/{os.getuid()}')
+    root = runtime / 'wormwright-control'
+    try:
+        info = runtime.lstat()
+        usable = (runtime.is_absolute() and stat.S_ISDIR(info.st_mode)
+                  and info.st_uid == os.getuid() and not info.st_mode & 0o077
+                  and len(os.fsencode(root / (identity + '.sock'))) < 104)
+    except OSError:
+        usable = False
+    if not usable:
+        root = Path('/tmp') / f'wormwright-control-{os.getuid()}'
+    root.mkdir(mode=0o700, exist_ok=True)
     info = root.lstat()
     if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o077:
         raise ValueError('The local control directory must be an owner-only directory.')
-    identity = hashlib.sha256(str(Path(vault).resolve()).encode()).hexdigest()[:16]
     return root / (identity + '.sock')
 
 

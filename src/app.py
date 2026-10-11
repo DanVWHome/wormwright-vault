@@ -1,3 +1,4 @@
+from shared_folder_picker import choose_shared_folder, choose_vault_file
 from website import add_website_action
 from update_check import add_update_actions
 from key_ui import request_key_pin
@@ -660,7 +661,7 @@ class Window(QMainWindow):
     def choose(self):
         if self.sync_busy():
             return
-        filename, _ = QFileDialog.getOpenFileName(self, 'Open Wormwright AI vault', str(self.vault.path.parent), 'SQLite vault (*.sqlite);;All files (*)')
+        filename = choose_vault_file(self, str(self.vault.path.parent))
         if filename and Path(filename).resolve() != self.vault.path.resolve():
             from managed_vault import is_managed
             if is_managed(filename):
@@ -746,7 +747,7 @@ class Window(QMainWindow):
         folder = QLineEdit(settings.get('folder', ''))
         browse = QPushButton('Choose shared folder…')
         def choose_folder():
-            selected = QFileDialog.getExistingDirectory(dialog, 'Choose mounted shared folder', folder.text())
+            selected = choose_shared_folder(dialog, folder.text())
             if selected:
                 folder.setText(selected)
         browse.clicked.connect(choose_folder)
@@ -1123,6 +1124,17 @@ def main():
         return
     from managed_locations import initial_vault
     path = initial_vault(args.vault, args.beta)
+    from nas_working_copy import is_nas_path, prepare_managed_vault
+    from managed_vault import is_managed
+    if is_nas_path(path) and is_managed(path):
+        try:
+            path = prepare_managed_vault(path)
+            import managed_locations
+            managed_locations.remember(vault=path)
+        except Exception as error:
+            app = QApplication([sys.argv[0]])
+            QMessageBox.warning(None, 'Cannot open NAS vault', str(error))
+            return
     request = {'version': 1, 'action': 'lookup', 'query': args.lookup} if args.lookup is not None else {'version': 1, 'action': 'open'}
     try:
         launch_request=request if args.lookup is not None else {'version':1,'action':'open_manager_view' if args.manager else 'open_vault_view'}
