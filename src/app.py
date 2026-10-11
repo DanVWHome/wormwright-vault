@@ -1130,7 +1130,12 @@ def main():
         return
     except (FileNotFoundError, ConnectionRefusedError):
         pass
+    if sys.platform == 'win32':
+        import ctypes
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID('Wormwright.Vault')
     app = QApplication([sys.argv[0]])
+    asset = Path(getattr(sys, '_MEIPASS', Path(__file__).parent.parent)) / 'assets/wormwright-vault.png'
+    app.setWindowIcon(QIcon(str(asset)))
     from managed_vault import is_managed
     if args.manager or is_managed(path) or not path.exists():
         from managed_ui import ManagedWindow

@@ -1,0 +1,47 @@
+name: Android Wormwright Pocket
+on:
+  workflow_dispatch:
+  push:
+    paths: ['android-standalone/**', '.github/workflows/android-pocket.yml']
+  pull_request:
+    paths: ['android-standalone/**', '.github/workflows/android-pocket.yml']
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+          log-accepted-android-sdk-licenses: false
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+      - name: Install SDK and test dependencies
+        run: |
+          sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
+          python -m pip install PyNaCl==1.5.0
+      - name: Offline crypto and migration protocol checks
+        run: python -m unittest discover -s android-standalone/tests -v
+      - name: Compile and lint standalone module
+        working-directory: android-standalone
+        run: gradle assembleDebug lintDebug bundleRelease
+      - name: Verify test APK and nested native libraries
+        run: python android-standalone/verify_package.py android-standalone/app/build/outputs/apk/debug/app-debug.apk "$ANDROID_HOME" > package-verification.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wormwright-pocket-ci-test-build-not-production-signed
+          path: |
+            android-standalone/app/build/outputs/apk/debug/*.apk
+            android-standalone/app/build/outputs/bundle/release/*.aab
+            android-standalone/app/build/reports/lint-results-debug.*
+            package-verification.json
