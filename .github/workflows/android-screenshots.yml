@@ -30,15 +30,15 @@ jobs:
           python - <<'PYBUILD'
           from pathlib import Path
           import re,sys
-          p=Path('android/app/src/main/java/ai/wormwright/vault/MainActivity.java')
+          p=Path('android-standalone/app/src/main/java/ai/wormwright/pocket/MainActivity.java')
           p.write_text(re.sub(r'(?:\w+\.)?getWindow\(\)\.addFlags\(WindowManager.LayoutParams.FLAG_SECURE\);', '', p.read_text()))
-          p=Path('android/app/build.gradle');s=p.read_text()
+          p=Path('android-standalone/app/build.gradle');s=p.read_text()
           s=re.sub(r'    signingConfigs \{.*?\n    buildTypes', '    buildTypes', s, flags=re.S)
           s=s.replace('signingConfig signingConfigs.preview','signingConfig signingConfigs.debug')
           s=re.sub(r"buildPython [^\n]+", "buildPython '"+sys.executable+"'", s)
           p.write_text(s)
           PYBUILD
-          gradle -p android --no-daemon assembleDebug assembleDebugAndroidTest
+          gradle -p android-standalone --no-daemon assembleDebug assembleDebugAndroidTest
       - name: Start emulator and capture login
         run: |
           export PATH="$ANDROID_HOME/platform-tools:$PATH"
@@ -52,18 +52,19 @@ jobs:
           adb shell settings put global hide_error_dialogs 1
           adb shell svc power stayon true
           adb shell input keyevent 82
+          adb shell locksettings set-pin 246813
           adb shell wm size 1080x2400
           adb shell wm density 420
-          adb install android/app/build/outputs/apk/debug/app-debug.apk
-          adb shell am start -n ai.wormwright.vault.preview/ai.wormwright.vault.MainActivity
-          adb install android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
-          adb shell am instrument -w ai.wormwright.vault.preview.test/ai.wormwright.vault.UiRegressionInstrumentation
+          adb install android-standalone/app/build/outputs/apk/debug/app-debug.apk
+          adb shell am start -n ai.wormwright.vault.standalone/ai.wormwright.pocket.MainActivity
+          adb install android-standalone/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+          adb shell am instrument -w ai.wormwright.vault.standalone.test/ai.wormwright.pocket.UiRegressionInstrumentation
           mkdir screenshots
-          for file in $(adb shell run-as ai.wormwright.vault.preview ls files/tutorial-screenshots | tr -d '\r'); do
-            adb exec-out run-as ai.wormwright.vault.preview cat "files/tutorial-screenshots/$file" > "screenshots/$file"
+          for file in $(adb shell run-as ai.wormwright.vault.standalone ls files/tutorial-screenshots | tr -d '\r'); do
+            adb exec-out run-as ai.wormwright.vault.standalone cat "files/tutorial-screenshots/$file" > "screenshots/$file"
           done
       - uses: actions/upload-artifact@v4
         with:
-          name: android-companion-tutorial-screenshots
+          name: android-pocket-tutorial-screenshots
           path: screenshots/*
           if-no-files-found: error

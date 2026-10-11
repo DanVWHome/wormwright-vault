@@ -1,3 +1,15 @@
+# 0.1.0-test.13
+
+The unlocked vault now keeps search above a dedicated scrolling results area. Lock and Add entry share one row. Vault management, exports, recently deleted and Help/About live in More. Version remains available in About.
+
+# Wormwright Pocket 0.1.0-test.12
+
+The app stays in portrait mode on phones. Turning the phone sideways no longer switches to the difficult landscape layout or recreates the activity and locks the vault. Open editors and unsaved text remain in place. Leaving the app and idle locking still protect the vault. Install over test.11 without uninstalling.
+
+# Wormwright Pocket 0.1.0-test.11
+
+Add/edit entry dialogs include Generate password, using cryptographically secure random data and the desktop-compatible 24-character alphabet. It fills the field, preserves other entry fields and remains masked until Show password is selected. Generate again replaces the unsaved value; Save commits it and Cancel discards it. Install over test.10 without uninstalling.
+
 # Wormwright Pocket 0.1.0-test.10
 
 Permanent-deletion confirmation accepts DELETE, delete or any mixed capitalization, with surrounding spaces ignored. The complete word is still required; incorrect text, Cancel and leaving the app never authorize deletion. Fresh phone authentication, optional vault password and the named final review are unchanged. Applies to current/selected vaults, all phone vaults and selected backups. Install over test.9 without uninstalling.

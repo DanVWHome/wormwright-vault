@@ -25,8 +25,10 @@ assert "package: name='ai.wormwright.vault.standalone'" in output
 assert "targetSdkVersion:'36'" in output
 assert 'android.permission.INTERNET' not in output
 assert 'android.permission.USE_BIOMETRIC' in output
+manifest=subprocess.check_output([str(sdk/'build-tools/36.0.0/aapt'),'dump','xmltree',str(apk),'AndroidManifest.xml'],text=True)
+assert any('android:screenOrientation' in line and line.rstrip().endswith('0x1') for line in manifest.splitlines()), 'Phone activity must request portrait orientation'
 subprocess.run([str(sdk/'build-tools/36.0.0/zipalign'),'-c','-P','16','-v','4',str(apk)],check=True,stdout=subprocess.DEVNULL)
 subprocess.run([str(sdk/'build-tools/36.0.0/apksigner'),'verify',str(apk)],check=True)
-report={'package':'ai.wormwright.vault.standalone','target_api':36,'permissions':['USE_BIOMETRIC'],'elf_libraries':elf,'issues':issues,'device_runtime_test':'pending'}
+report={'package':'ai.wormwright.vault.standalone','target_api':36,'phone_orientation':'portrait','permissions':['USE_BIOMETRIC'],'elf_libraries':elf,'issues':issues,'device_runtime_test':'pending'}
 print(json.dumps(report,indent=2))
 if issues:sys.exit(1)

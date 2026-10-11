@@ -13,38 +13,47 @@ import java.util.concurrent.atomic.AtomicInteger;
 /** Real Android dialog/message-loop regression checks; invented sample data only. */
 public class UiRegressionInstrumentation extends Instrumentation {
     private MainActivity activity;
+    private boolean rotationOnly;
+    private boolean layoutOnly;
+    private boolean editorsOnly;
     private boolean confirmationOnly;
     private String dialogField = "dialog";
     private String lockMethod = "lock";
     private String sampleButton = "Open invented sample vault";
     private String jobMethod = "task";
-    @Override public void onCreate(Bundle args) { super.onCreate(args); confirmationOnly=args!=null&&"true".equals(args.getString("confirmationOnly")); start(); }
+    @Override public void onCreate(Bundle args) { super.onCreate(args);layoutOnly=args!=null&&"true".equals(args.getString("layoutOnly"));rotationOnly=args!=null&&"true".equals(args.getString("rotationOnly"));editorsOnly=args!=null&&"true".equals(args.getString("editorsOnly")); confirmationOnly=args!=null&&"true".equals(args.getString("confirmationOnly")); start(); }
     @Override public void onStart() {
-        Bundle result = new Bundle();
+        Bundle result=new Bundle();
         try {
             unlockFixtureScreen();
-            activity = (MainActivity)startActivitySync(new Intent(getTargetContext(),MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
-            waitForIdleSync();
-            if(confirmationOnly) {
-                confirmationCapitalization(); result.putBoolean("ui_regression_ok",true);
-                result.putString("stream","\nPASS opening spinner/confirmation focused regression: uppercase, lowercase, mixed case, surrounding whitespace, invalid text, Cancel and pause invalidation.\n");
-                runOnMainSync(()->activity.finish());finish(Activity.RESULT_OK,result);return;
-            }
-            personalCreation();
-            openingFeedback();
-            searchKeyboard();
-            passwordVisibility();
-            editTransitions();
-            deleteAndRestore();
-            staleCompletion();
-            failureFeedback();
-            result.putBoolean("ui_regression_ok",true);
-            result.putString("stream","\nPASS opening spinner/duplicate taps, PIN creation/re-open with/without optional password, required names, named list after reopening, current and selected deletion preserving other vaults, Cancel before/after auth, typed confirmation and key removal, search keyboard/focus/latest results, new/edit password visibility, edit/save/cancel transitions, delete/restore list refresh, stale completion, error cleanup.\n");
-            runOnMainSync(() -> activity.finish()); finish(Activity.RESULT_OK,result);
-        } catch (Throwable error) {
-            result.putBoolean("ui_regression_ok",false); result.putString("stream",android.util.Log.getStackTraceString(error));
-            finish(Activity.RESULT_CANCELED,result);
-        }
+            activity=(MainActivity)startActivitySync(new Intent(getTargetContext(),MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            waitForIdleSync();capture("01-home");
+            runOnMainSync(()->findButton(root(),"Create personal vault").performClick());capture("03-name");
+            setVaultName("Practice vault");capture("04-optional-password");
+            runOnMainSync(()->dialog().getButton(AlertDialog.BUTTON_POSITIVE).performClick());confirmPin();await(()->unlocked()&&!busy(),"practice vault created");
+            runOnMainSync(()->invoke("switchVault"));capture("13-vaults");runOnMainSync(()->dialog().dismiss());
+            runOnMainSync(()->findButton(root(),"More").performClick());capture("13-menu");shell("input keyevent 4");
+            runOnMainSync(()->findButton(root(),"Lock vault").performClick());
+            runOnMainSync(()->findButton(root(),"Open invented sample vault").performClick());await(()->unlocked()&&!busy()&&hasEntryRows(),"sample loaded");capture("02-sample");
+            runOnMainSync(()->{try{((ViewGroup)field("rows")).getChildAt(0).performClick();}catch(Exception e){throw new RuntimeException(e);}});await(()->dialog()!=null&&dialog().isShowing(),"detail");capture("06-detail");
+            runOnMainSync(()->findButton(dialog().getWindow().getDecorView(),"Show password").performClick());capture("06-show");
+            runOnMainSync(()->dialog().dismiss());runOnMainSync(()->findButton(root(),"Add entry").performClick());await(()->editor()!=null&&editor().isShowing(),"editor");capture("07-editor");
+            runOnMainSync(()->findButton(editor().getWindow().getDecorView(),"Generate password").performClick());capture("07-generator");runOnMainSync(()->editor().dismiss());
+            runOnMainSync(()->{try{((ViewGroup)field("rows")).getChildAt(0).performClick();}catch(Exception e){throw new RuntimeException(e);}});await(()->dialog()!=null&&dialog().isShowing(),"detail for deletion");
+            runOnMainSync(()->findButton(dialog().getWindow().getDecorView(),"Delete entry").performClick());capture("08-delete");
+            runOnMainSync(()->dialog().getButton(AlertDialog.BUTTON_POSITIVE).performClick());await(()->!busy()&&dialog()==null,"deleted");runOnMainSync(()->invoke("recentlyDeleted"));await(()->!busy()&&dialog()!=null&&dialog().isShowing(),"deleted list");capture("08-restore");runOnMainSync(()->dialog().dismiss());
+            callExport(false);capture("10-backup-secret");runOnMainSync(()->dialog().dismiss());
+            callExport(true);capture("14-migrate");runOnMainSync(()->dialog().dismiss());
+            runOnMainSync(()->invoke("chooseRestore"));capture("11-restore");shell("input keyevent 4");
+            runOnMainSync(()->invoke("help"));capture("15-help");runOnMainSync(()->dialog().dismiss());
+            runOnMainSync(()->invoke("about"));capture("15-about");
+            result.putString("stream","PASS Pocket tutorial captures\n");finish(Activity.RESULT_OK,result);
+        }catch(Throwable error){result.putString("stream",android.util.Log.getStackTraceString(error));finish(Activity.RESULT_CANCELED,result);}
+    }
+    private void callExport(boolean migration){runOnMainSync(()->{try{Method m=MainActivity.class.getDeclaredMethod("export",boolean.class);m.setAccessible(true);m.invoke(activity,migration);}catch(Exception e){throw new RuntimeException(e);}});}
+    private void capture(String name)throws Exception{
+        SystemClock.sleep(900);waitForIdleSync();java.io.File dir=new java.io.File(getTargetContext().getFilesDir(),"tutorial-screenshots");dir.mkdirs();android.graphics.Bitmap bitmap=getUiAutomation().takeScreenshot();
+        try(java.io.FileOutputStream out=new java.io.FileOutputStream(new java.io.File(dir,name+".png"))){bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG,100,out);}bitmap.recycle();
     }
     private void confirmationCapitalization() throws Exception {
         DestructiveActions helper=(DestructiveActions)field("maintenance");AtomicInteger actions=new AtomicInteger();
@@ -56,6 +65,21 @@ public class UiRegressionInstrumentation extends Instrumentation {
         runOnMainSync(()->{int before=actions.get();maintenanceDialog().getButton(AlertDialog.BUTTON_NEGATIVE).performClick();check(actions.get()==before,"Cancel runs no deletion");});
         runOnMainSync(()->helper.confirm("Pause test","Invented data only.",actions::incrementAndGet));waitForIdleSync();
         runOnMainSync(()->{AlertDialog review=maintenanceDialog();int before=actions.get();helper.onPause();review.getButton(AlertDialog.BUTTON_POSITIVE).performClick();check(actions.get()==before&&!review.isShowing(),"leaving invalidates confirmation");helper.onResume();});
+    }
+    private void portraitRotation() throws Exception {
+        check(activity.getRequestedOrientation()==android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT,"portrait requested in manifest");
+        final int before=(Integer)field("epoch");final MainActivity original=activity;
+        runOnMainSync(()->findButton(root(),"Add entry").performClick());
+        await(()->editor()!=null&&editor().isShowing()&&editor().getButton(AlertDialog.BUTTON_POSITIVE)!=null,"editor opens before rotation");
+        final AlertDialog originalEditor=editor();runOnMainSync(()->{List<EditText> fields=new ArrayList<>();collectInputs(originalEditor.getWindow().getDecorView(),fields);fields.get(0).setText("Invented unsaved rotation test");});
+        try {
+            for(int rotation:new int[]{UiAutomation.ROTATION_FREEZE_90,UiAutomation.ROTATION_FREEZE_270,UiAutomation.ROTATION_FREEZE_0}) {
+                check(getUiAutomation().setRotation(rotation),"rotation request accepted by system");SystemClock.sleep(2500);waitForIdleSync();
+                runOnMainSync(()->{try{check(activity==original&&!original.isDestroyed(),"rotation does not recreate activity");check(activity.getResources().getConfiguration().orientation==android.content.res.Configuration.ORIENTATION_PORTRAIT,"layout remains portrait");check(unlocked()&&(Boolean)field("resumed")&&(Integer)field("epoch")==before,"rotation does not lock vault");check(editor()==originalEditor&&originalEditor.isShowing(),"editor survives rotation");List<EditText> fields=new ArrayList<>();collectInputs(originalEditor.getWindow().getDecorView(),fields);check("Invented unsaved rotation test".equals(fields.get(0).getText().toString()),"unsaved entry text survives rotation");}catch(Exception e){throw new RuntimeException(e);}});
+            }
+            runOnMainSync(()->originalEditor.getButton(AlertDialog.BUTTON_NEGATIVE).performClick());
+            shell("input keyevent 3");await(()->!unlocked(),"leaving app still locks the vault");
+        } finally {getUiAutomation().setRotation(UiAutomation.ROTATION_UNFREEZE);}
     }
     private Object field(String name) throws Exception { Field f=MainActivity.class.getDeclaredField(name); f.setAccessible(true); return f.get(activity); }
     private void check(boolean condition,String message) { if(!condition) throw new AssertionError(message); }
@@ -275,6 +299,16 @@ public class UiRegressionInstrumentation extends Instrumentation {
         final EditText input=(EditText)field("search");final String[] entry={""};
         runOnMainSync(()->{try{entry[0]=((Button)((ViewGroup)field("rows")).getChildAt(0)).getText().toString().split("\n",2)[0];}catch(Exception e){throw new RuntimeException(e);}input.requestFocus();((android.view.inputmethod.InputMethodManager)activity.getSystemService(android.content.Context.INPUT_METHOD_SERVICE)).showSoftInput(input,android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT);});
         await(()->keyboardVisible(),"search keyboard opens");
+        waitForIdleSync();
+        runOnMainSync(()->{try{
+            android.graphics.Rect fieldBounds=new android.graphics.Rect(),resultBounds=new android.graphics.Rect();
+            ViewGroup resultRows=(ViewGroup)field("rows");
+            check(input.getGlobalVisibleRect(fieldBounds)&&fieldBounds.height()>=input.getHeight()-2,"entire search field is visible with keyboard");
+            check(resultRows.getChildAt(0).getGlobalVisibleRect(resultBounds)&&resultBounds.height()>=resultRows.getChildAt(0).getHeight()-2,"first result fully visible with keyboard");
+            check(((View)resultRows.getParent()).getHeight()>=activity.getResources().getDisplayMetrics().density*100,"results retain useful scrolling viewport with keyboard");
+            check(findButton(root(),"More")!=null,"secondary actions remain accessible in More");
+        }catch(Exception e){throw new RuntimeException(e);}});
+
         for(int length=1;length<=Math.min(3,entry[0].length());length++) {
             final String query=entry[0].substring(0,length);
             runOnMainSync(()->{input.setText(query);input.setSelection(query.length());});
@@ -326,7 +360,7 @@ public class UiRegressionInstrumentation extends Instrumentation {
         runOnMainSync(()->findButton(dialog().getWindow().getDecorView(),"Delete entry").performClick());waitForIdleSync();
         runOnMainSync(()->dialog().getButton(AlertDialog.BUTTON_POSITIVE).performClick());
         await(()->!busy()&&dialog()==null&&hasEntryRows()&&findButton(root(),label[0])==null,"deleted entry immediately disappears");
-        runOnMainSync(()->{try{check(((ViewGroup)field("rows")).getChildCount()==count[0]-1,"list shrinks after deletion");findButton(root(),"Recently deleted").performClick();}catch(Exception e){throw new RuntimeException(e);}});
+        runOnMainSync(()->{try{check(((ViewGroup)field("rows")).getChildCount()==count[0]-1,"list shrinks after deletion");Method deleted=MainActivity.class.getDeclaredMethod("recentlyDeleted");deleted.setAccessible(true);deleted.invoke(activity);}catch(Exception e){throw new RuntimeException(e);}});
         await(()->!busy()&&dialog()!=null&&dialog().isShowing(),"recently deleted opens");
         runOnMainSync(()->{Button restore=findButton(dialog().getWindow().getDecorView(),"Restore "+label[0].split("\n",2)[0]);check(restore!=null,"deleted entry is recoverable");restore.performClick();});
         await(()->!busy()&&findButton(root(),label[0])!=null,"restored entry immediately reappears");
@@ -344,6 +378,13 @@ public class UiRegressionInstrumentation extends Instrumentation {
                 List<EditText> fields=new ArrayList<>();collectInputs(editor().getWindow().getDecorView(),fields);EditText password=fields.get(2);
                 CheckBox show=(CheckBox)findButton(editor().getWindow().getDecorView(),"Show password");check(show!=null&&!show.isChecked(),"password starts hidden");
                 check(password.getTransformationMethod() instanceof android.text.method.PasswordTransformationMethod,"password is masked");
+                Button generate=findButton(editor().getWindow().getDecorView(),"Generate password");check(generate!=null,"generator is available in new/edit entries");
+                List<String> before=new ArrayList<>();for(EditText value:fields)before.add(value.getText().toString());generate.performClick();String generated=password.getText().toString();
+                check(generated.length()==24&&generated.matches("[a-zA-Z0-9!@#$%&*+_=?.\\-]{24}"),"generated password length and safe alphabet");
+                check(password.getTransformationMethod() instanceof android.text.method.PasswordTransformationMethod,"generated password stays hidden");
+                for(int i=0;i<fields.size();i++)if(i!=2)check(before.get(i).equals(fields.get(i).getText().toString()),"generation preserves other fields");
+                show.performClick();check(password.getTransformationMethod()==null&&generated.equals(password.getText().toString()),"generated password can be revealed");show.performClick();
+                generate.performClick();check(!generated.equals(password.getText().toString()),"generate again replaces with a fresh password");
                 password.setText("Invented-Visible-Password!");password.setSelection(5);show.performClick();
                 check(password.getTransformationMethod()==null&&password.getSelectionStart()==5,"reveal preserves cursor");
                 password.getText().append("Typed");String expected=password.getText().toString();show.performClick();
