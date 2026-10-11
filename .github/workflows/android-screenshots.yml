@@ -31,11 +31,11 @@ jobs:
           from pathlib import Path
           import re,sys
           p=Path('android/app/src/main/java/ai/wormwright/vault/MainActivity.java')
-          p.write_text(p.read_text().replace('getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);',''))
+          p.write_text(re.sub(r'(?:\w+\.)?getWindow\(\)\.addFlags\(WindowManager.LayoutParams.FLAG_SECURE\);', '', p.read_text()))
           p=Path('android/app/build.gradle');s=p.read_text()
           s=re.sub(r'    signingConfigs \{.*?\n    buildTypes', '    buildTypes', s, flags=re.S)
           s=s.replace('signingConfig signingConfigs.preview','signingConfig signingConfigs.debug')
-          s=re.sub(r"buildPython rootProject.file\([^\n]+", "buildPython '"+sys.executable+"'", s)
+          s=re.sub(r"buildPython [^\n]+", "buildPython '"+sys.executable+"'", s)
           p.write_text(s)
           PYBUILD
           gradle -p android --no-daemon assembleDebug assembleDebugAndroidTest
