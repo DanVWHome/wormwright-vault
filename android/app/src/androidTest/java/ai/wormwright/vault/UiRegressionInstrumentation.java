@@ -31,15 +31,24 @@ public class UiRegressionInstrumentation extends Instrumentation {
             await(()->dialog()!=null&&dialog().isShowing(),"detail");capture("07-detail");
             runOnMainSync(()->findButton(dialog().getWindow().getDecorView(),"Show password").performClick());capture("08-show");
             runOnMainSync(()->dialog().dismiss());
-            runOnMainSync(()->findButton(root(),"New entry").performClick());capture("09-editor");
-            runOnMainSync(()->{Button b=findButton(editor().getWindow().getDecorView(),"Generate password");if(b!=null)b.performClick();});capture("10-generator");
+            runOnMainSync(()->findButton(root(),"New entry").performClick());await(()->editor()!=null&&editor().isShowing(),"editor");capture("09-editor");
+            runOnMainSync(()->{Button b=findButton(editor().getWindow().getDecorView(),"Generate password");if(b!=null)b.performClick();});runOnMainSync(()->scrollToBottom(editor().getWindow().getDecorView()));capture("10-generator");
             runOnMainSync(()->editor().dismiss());
             runOnMainSync(()->{try{org.json.JSONObject settings=new org.json.JSONObject();settings.put("host","nas.example");settings.put("share","VaultShare");settings.put("folder","FamilyDemo");settings.put("user","Alex");Method m=MainActivity.class.getDeclaredMethod("showNasDialog",org.json.JSONObject.class);m.setAccessible(true);m.invoke(activity,settings);}catch(Exception e){throw new RuntimeException(e);}});capture("05-nas");
             runOnMainSync(()->{try{((Dialog)field("nasDialog")).dismiss();}catch(Exception e){throw new RuntimeException(e);}});
+            runOnMainSync(()->{try{Field f=MainActivity.class.getDeclaredField("sampleMode");f.setAccessible(true);f.set(activity,false);}catch(Exception e){throw new RuntimeException(e);}findButton(root(),"More").performClick();});capture("11-menu");shell("input keyevent 4");
+            runOnMainSync(()->{try{
+                org.json.JSONObject item=new org.json.JSONObject().put("id","tutorial").put("phone","Demo Email — phone edit").put("nas","Demo Email — desktop edit");
+                Field f=MainActivity.class.getDeclaredField("conflictReview");f.setAccessible(true);f.set(activity,new org.json.JSONObject().put("conflicts",new org.json.JSONArray().put(item)));
+                f=MainActivity.class.getDeclaredField("conflictChoices");f.setAccessible(true);f.set(activity,new org.json.JSONObject());
+                Method m=MainActivity.class.getDeclaredMethod("reviewConflict",int.class);m.setAccessible(true);m.invoke(activity,0);
+            }catch(Exception e){throw new RuntimeException(e);}});capture("12-conflict");
+            runOnMainSync(()->{try{((AlertDialog)field("conflictDialog")).getButton(AlertDialog.BUTTON_NEUTRAL).performClick();}catch(Exception e){throw new RuntimeException(e);}});
             runOnMainSync(()->invoke("about"));capture("15-about");
             result.putString("stream","PASS tutorial captures\n");finish(Activity.RESULT_OK,result);
         }catch(Throwable e){result.putString("stream",android.util.Log.getStackTraceString(e));finish(Activity.RESULT_CANCELED,result);}
     }
+    private void scrollToBottom(View view){if(view instanceof ScrollView)((ScrollView)view).fullScroll(View.FOCUS_DOWN);if(view instanceof ViewGroup)for(int i=0;i<((ViewGroup)view).getChildCount();i++)scrollToBottom(((ViewGroup)view).getChildAt(i));}
     private Object fieldUnchecked(String name){try{return field(name);}catch(Exception e){throw new RuntimeException(e);}}
     private void capture(String name)throws Exception{
         SystemClock.sleep(900);waitForIdleSync();
