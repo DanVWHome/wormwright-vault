@@ -31,14 +31,14 @@ jobs:
           from pathlib import Path
           import re,sys
           p=Path('android/app/src/main/java/ai/wormwright/vault/MainActivity.java')
-          p.write_text(p.read_text().replace('getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);','',1))
+          p.write_text(p.read_text().replace('getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);',''))
           p=Path('android/app/build.gradle');s=p.read_text()
           s=re.sub(r'    signingConfigs \{.*?\n    buildTypes', '    buildTypes', s, flags=re.S)
           s=s.replace('signingConfig signingConfigs.preview','signingConfig signingConfigs.debug')
           s=re.sub(r"buildPython rootProject.file\([^\n]+", "buildPython '"+sys.executable+"'", s)
           p.write_text(s)
           PYBUILD
-          gradle -p android --no-daemon assembleDebug
+          gradle -p android --no-daemon assembleDebug assembleDebugAndroidTest
       - name: Start emulator and capture login
         run: |
           export PATH="$ANDROID_HOME/platform-tools:$PATH"
@@ -54,11 +54,14 @@ jobs:
           adb shell wm density 420
           adb install android/app/build/outputs/apk/debug/app-debug.apk
           adb shell am start -n ai.wormwright.vault.preview/ai.wormwright.vault.MainActivity
-          sleep 15
+          adb install android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+          adb shell am instrument -w ai.wormwright.vault.preview.test/ai.wormwright.vault.UiRegressionInstrumentation
           mkdir screenshots
-          adb exec-out screencap -p > screenshots/android-unlock.png
+          for file in $(adb shell run-as ai.wormwright.vault.preview ls files/tutorial-screenshots | tr -d '\r'); do
+            adb exec-out run-as ai.wormwright.vault.preview cat "files/tutorial-screenshots/$file" > "screenshots/$file"
+          done
       - uses: actions/upload-artifact@v4
         with:
-          name: android-preview4-screenshots
+          name: android-companion-tutorial-screenshots
           path: screenshots/*
           if-no-files-found: error

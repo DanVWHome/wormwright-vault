@@ -13,31 +13,54 @@ import java.util.concurrent.atomic.AtomicInteger;
 /** Real Android dialog/message-loop regression checks; invented sample data only. */
 public class UiRegressionInstrumentation extends Instrumentation {
     private MainActivity activity;
+    private boolean rotationOnly;
+    private boolean layoutOnly;
+    private boolean editorsOnly;
     private String dialogField = "detailDialog";
     private String lockMethod = "lockNow";
     private String sampleButton = "Try the sample vault";
     private String jobMethod = "job";
-    @Override public void onCreate(Bundle args) { super.onCreate(args); start(); }
+    @Override public void onCreate(Bundle args) { super.onCreate(args);layoutOnly=args!=null&&"true".equals(args.getString("layoutOnly"));rotationOnly=args!=null&&"true".equals(args.getString("rotationOnly"));editorsOnly=args!=null&&"true".equals(args.getString("editorsOnly")); start(); }
     @Override public void onStart() {
-        Bundle result = new Bundle();
+        Bundle result=new Bundle();
         try {
-            unlockFixtureScreen();
-            activity = (MainActivity)startActivitySync(new Intent(getTargetContext(),MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
-            waitForIdleSync();
-            maintenanceFlow();
-            openingFeedback();
-            searchKeyboard();
-            passwordVisibility();
-            
-            staleCompletion();
-            failureFeedback();
-            result.putBoolean("ui_regression_ok",true);
-            result.putString("stream","\nPASS opening spinner/duplicate taps, required names, named list after reopening, rename persistence, independent NAS settings, selected/current account+PIN deletion preserving another vault, Cancel and typed confirmation, search keyboard/focus/latest results, new/edit password visibility, stale completion, error cleanup.\n");
-            runOnMainSync(() -> activity.finish()); finish(Activity.RESULT_OK,result);
-        } catch (Throwable error) {
-            result.putBoolean("ui_regression_ok",false); result.putString("stream",android.util.Log.getStackTraceString(error));
-            finish(Activity.RESULT_CANCELED,result);
-        }
+            activity=(MainActivity)startActivitySync(new Intent(getTargetContext(),MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            waitForIdleSync(); capture("01-login");
+            runOnMainSync(()->invoke("openSample")); await(()->unlocked()&&!busy(),"sample"); capture("02-list");
+            runOnMainSync(()->((ViewGroup)fieldUnchecked("rows")).getChildAt(0).performClick());
+            await(()->dialog()!=null&&dialog().isShowing(),"detail");capture("07-detail");
+            runOnMainSync(()->findButton(dialog().getWindow().getDecorView(),"Show password").performClick());capture("08-show");
+            runOnMainSync(()->dialog().dismiss());
+            runOnMainSync(()->findButton(root(),"New entry").performClick());capture("09-editor");
+            runOnMainSync(()->{Button b=findButton(editor().getWindow().getDecorView(),"Generate password");if(b!=null)b.performClick();});capture("10-generator");
+            runOnMainSync(()->editor().dismiss());
+            runOnMainSync(()->{try{org.json.JSONObject settings=new org.json.JSONObject();settings.put("host","nas.example");settings.put("share","VaultShare");settings.put("folder","FamilyDemo");settings.put("user","Alex");Method m=MainActivity.class.getDeclaredMethod("showNasDialog",org.json.JSONObject.class);m.setAccessible(true);m.invoke(activity,settings);}catch(Exception e){throw new RuntimeException(e);}});capture("05-nas");
+            runOnMainSync(()->{try{((Dialog)field("nasDialog")).dismiss();}catch(Exception e){throw new RuntimeException(e);}});
+            runOnMainSync(()->invoke("about"));capture("15-about");
+            result.putString("stream","PASS tutorial captures\n");finish(Activity.RESULT_OK,result);
+        }catch(Throwable e){result.putString("stream",android.util.Log.getStackTraceString(e));finish(Activity.RESULT_CANCELED,result);}
+    }
+    private Object fieldUnchecked(String name){try{return field(name);}catch(Exception e){throw new RuntimeException(e);}}
+    private void capture(String name)throws Exception{
+        SystemClock.sleep(900);waitForIdleSync();
+        java.io.File dir=new java.io.File(getTargetContext().getFilesDir(),"tutorial-screenshots");dir.mkdirs();
+        android.graphics.Bitmap bitmap=getUiAutomation().takeScreenshot();
+        try(java.io.FileOutputStream out=new java.io.FileOutputStream(new java.io.File(dir,name+".png"))){bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG,100,out);}bitmap.recycle();
+    }
+    private void portraitRotation() throws Exception {
+        check(activity.getRequestedOrientation()==android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT,"portrait requested in manifest");
+        final int before=(Integer)field("generation");final MainActivity original=activity;
+        runOnMainSync(()->findButton(root(),"New entry").performClick());
+        await(()->editor()!=null&&editor().isShowing()&&editor().getButton(AlertDialog.BUTTON_POSITIVE)!=null,"editor opens before rotation");
+        final AlertDialog originalEditor=editor();runOnMainSync(()->{List<EditText> fields=new ArrayList<>();collectInputs(originalEditor.getWindow().getDecorView(),fields);fields.get(0).setText("Invented unsaved rotation test");});
+        try {
+            for(int rotation:new int[]{UiAutomation.ROTATION_FREEZE_90,UiAutomation.ROTATION_FREEZE_270,UiAutomation.ROTATION_FREEZE_0}) {
+                check(getUiAutomation().setRotation(rotation),"rotation request accepted by system");SystemClock.sleep(2500);waitForIdleSync();
+                runOnMainSync(()->{try{check(activity==original&&!original.isDestroyed(),"rotation does not recreate activity");check(activity.getResources().getConfiguration().orientation==android.content.res.Configuration.ORIENTATION_PORTRAIT,"layout remains portrait");check(unlocked()&&(Boolean)field("resumed")&&(Integer)field("generation")==before,"rotation does not lock vault");check(editor()==originalEditor&&originalEditor.isShowing(),"editor survives rotation");List<EditText> fields=new ArrayList<>();collectInputs(originalEditor.getWindow().getDecorView(),fields);check("Invented unsaved rotation test".equals(fields.get(0).getText().toString()),"unsaved entry text survives rotation");}catch(Exception e){throw new RuntimeException(e);}});
+            }
+            runOnMainSync(()->originalEditor.getButton(AlertDialog.BUTTON_NEGATIVE).performClick());
+            shell("input keyevent 3");await(()->!unlocked(),"leaving app still locks the vault");
+        } finally {getUiAutomation().setRotation(UiAutomation.ROTATION_UNFREEZE);}
     }
     private Object field(String name) throws Exception { Field f=MainActivity.class.getDeclaredField(name); f.setAccessible(true); return f.get(activity); }
     private void check(boolean condition,String message) { if(!condition) throw new AssertionError(message); }
@@ -242,6 +265,16 @@ public class UiRegressionInstrumentation extends Instrumentation {
         final EditText input=(EditText)field("search");final String[] entry={""};
         runOnMainSync(()->{try{entry[0]=((Button)((ViewGroup)field("rows")).getChildAt(0)).getText().toString().split("\n",2)[0];}catch(Exception e){throw new RuntimeException(e);}input.requestFocus();((android.view.inputmethod.InputMethodManager)activity.getSystemService(android.content.Context.INPUT_METHOD_SERVICE)).showSoftInput(input,android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT);});
         await(()->keyboardVisible(),"search keyboard opens");
+        waitForIdleSync();
+        runOnMainSync(()->{try{
+            android.graphics.Rect fieldBounds=new android.graphics.Rect(),resultBounds=new android.graphics.Rect();
+            ViewGroup resultRows=(ViewGroup)field("rows");
+            check(input.getGlobalVisibleRect(fieldBounds)&&fieldBounds.height()>=input.getHeight()-2,"entire search field is visible with keyboard");
+            check(resultRows.getChildAt(0).getGlobalVisibleRect(resultBounds)&&resultBounds.height()>=resultRows.getChildAt(0).getHeight()-2,"first result fully visible with keyboard");
+            check(((View)resultRows.getParent()).getHeight()>=activity.getResources().getDisplayMetrics().density*100,"results retain useful scrolling viewport with keyboard");
+            check(findButton(root(),"More")!=null,"secondary actions remain accessible in More");
+        }catch(Exception e){throw new RuntimeException(e);}});
+
         for(int length=1;length<=Math.min(3,entry[0].length());length++) {
             final String query=entry[0].substring(0,length);
             runOnMainSync(()->{input.setText(query);input.setSelection(query.length());});
@@ -269,6 +302,13 @@ public class UiRegressionInstrumentation extends Instrumentation {
                 List<EditText> fields=new ArrayList<>();collectInputs(editor().getWindow().getDecorView(),fields);EditText password=fields.get(3);
                 CheckBox show=(CheckBox)findButton(editor().getWindow().getDecorView(),"Show password");check(show!=null&&!show.isChecked(),"password starts hidden");
                 check(password.getTransformationMethod() instanceof android.text.method.PasswordTransformationMethod,"password is masked");
+                Button generate=findButton(editor().getWindow().getDecorView(),"Generate password");check(generate!=null,"generator is available in new/edit entries");
+                List<String> before=new ArrayList<>();for(EditText inputField:fields)before.add(inputField.getText().toString());generate.performClick();String generated=password.getText().toString();
+                check(generated.length()==24&&generated.matches("[a-zA-Z0-9!@#$%&*+_=?.\\-]{24}"),"generated password length and safe alphabet");
+                check(password.getTransformationMethod() instanceof android.text.method.PasswordTransformationMethod,"generated password stays hidden");
+                for(int i=0;i<fields.size();i++)if(i!=3)check(before.get(i).equals(fields.get(i).getText().toString()),"generation preserves other fields");
+                show.performClick();check(password.getTransformationMethod()==null&&generated.equals(password.getText().toString()),"generated password can be revealed");show.performClick();
+                generate.performClick();check(!generated.equals(password.getText().toString()),"generate again replaces with a fresh password");
                 password.setText("Invented-Visible-Password!");password.setSelection(5);show.performClick();
                 check(password.getTransformationMethod()==null&&password.getSelectionStart()==5,"reveal preserves cursor");
                 password.getText().append("Typed");String expected=password.getText().toString();show.performClick();
