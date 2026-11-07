@@ -1,0 +1,13 @@
+# Secret-note implementation
+
+`secret=1` rows have an empty title and an AES-256-GCM envelope in `body`. The payload contains the original title and note/checklist text. AAD includes the database row ID. The non-exportable key is app-scoped in Android Keystore, distinct from the NAS credential key.
+
+Fresh access is enforced in MainActivity using platform BiometricPrompt with DEVICE_CREDENTIAL only (Android 11+). Keystore encryption itself is not configured for per-operation user authentication; the foreground UI gate permits continuous autosave after a note is unlocked. No custom PIN screen or PIN copy is used. The unlocked row ID is transient, never serialized, and cleared when leaving the editor or pausing. A recreated activity cannot restore an unlocked secret. In-flight credential callbacks are invalidated on destruction.
+
+Secret fields disable hierarchy state, autofill and personalized IME learning. FLAG_SECURE remains set while a secret surface is visible or backgrounded; it is cleared only after a public replacement frame is committed. No secret content enters list/trash previews or search matching. Sharing is an explicit action available after unlocking; the selected sharing destination receives plaintext.
+
+Database version 2 adds the secret column with default 0, preserving older rows. secure_delete is enabled. This cannot retroactively alter files exported by previous versions.
+
+If any secret row exists (including Trash), export requires fresh foreground credential authorization and a separate backup password. The entire v2 JSON snapshot is sealed using PBKDF2-HMAC-SHA256 (600,000 iterations, 16-byte random salt, 256-bit key) and AES-GCM (12-byte random IV). The versioned binary header is authenticated. Imports cap the file size and reject unsupported KDF costs, wrong passwords and modified/truncated envelopes. Unencrypted JSON cannot import a secret flag. Old v1 public JSON remains supported.
+
+Restore encrypts each secret using the receiving phone's key and newly allocated row ID in one database transaction. It does not persist secret plaintext to SQLite. Backups are portable with their password and do not depend on the originating phone's key. The phone PIN is not a backup password.
