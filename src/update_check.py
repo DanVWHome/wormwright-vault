@@ -15,7 +15,7 @@ from version import VERSION, WINDOWS_PREVIEW
 
 FEED_URL = 'https://wormwright.com/updates/vault-windows.json'
 DOWNLOAD_URL = 'https://wormwright.com/vault-windows.html'
-CURRENT = VERSION + f'-preview.{WINDOWS_PREVIEW}'
+CURRENT = VERSION + (f'-preview.{WINDOWS_PREVIEW}' if WINDOWS_PREVIEW else '')
 DAY = 86400
 MAX_BYTES = 65536
 
@@ -48,7 +48,7 @@ def settings_path():
     return data_home() / 'wormwright-vault-beta/update-settings.json'
 
 def read_settings():
-    defaults = {'automatic':False,'channel':'preview','last_check':0}
+    defaults = {'automatic':False,'channel':'preview' if WINDOWS_PREVIEW else 'stable','last_check':0}
     try:
         value=json.loads(settings_path().read_text())
         if type(value.get('automatic')) is bool: defaults['automatic']=value['automatic']
@@ -107,7 +107,7 @@ class UpdateChecker(QObject):
                     raise ValueError('Update service is unavailable')
                 release=release_from_feed(bytes(reply.readAll()),settings['channel'])
                 if release is None:
-                    if manual:QMessageBox.information(parent,'Check for Updates','No Windows release is available in the selected channel yet. Use Update Settings to select Preview.')
+                    if manual:QMessageBox.information(parent,'Check for Updates','No Windows release is available in the selected channel yet. Choose Stable in Update Settings for released Windows builds.')
                 elif version_key(release['version']) <= version_key(CURRENT):
                     if manual:QMessageBox.information(parent,'Check for Updates',f'You are up to date for the {settings["channel"]} channel. Running {CURRENT}.')
                 else:

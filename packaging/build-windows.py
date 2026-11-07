@@ -1,4 +1,4 @@
-"""Build a Windows x64 portable preview using an explicit source allowlist."""
+"""Build a Windows x64 portable release using an explicit source allowlist."""
 import argparse
 import hashlib
 import importlib.metadata
@@ -34,7 +34,7 @@ def main():
     for license_name in ('LICENSE', 'LICENSING.md'):
         shutil.copy2(ROOT / license_name, docs / license_name)
     shutil.copy2(ROOT / 'docs/WINDOWS.md', bundle / 'README.md')
-    for name in ('RELEASE-0.3.11.md', 'DESKTOP-PREVIEWS-0.3.11.md', 'FOUR-YUBIKEYS.md', 'WINDOWS-0.3.11-preview2.md'):
+    for name in ('RELEASE-0.3.11.md', 'DESKTOP-PREVIEWS-0.3.11.md', 'FOUR-YUBIKEYS.md', 'WINDOWS-0.3.11-preview2.md', 'WINDOWS-0.3.11-STABLE.md'):
         shutil.copy2(ROOT / 'docs' / name, docs / name)
     shutil.copytree(ROOT / 'docs/third-party', docs / 'third-party', dirs_exist_ok=True)
     for name in ['PySide6-Essentials', 'PySide6-Addons', 'shiboken6', 'PyNaCl',
@@ -48,7 +48,7 @@ def main():
                     destination.parent.mkdir(parents=True, exist_ok=True)
                     shutil.copy2(source, destination)
     (bundle / 'Open Manager.cmd').write_text('@echo off\r\nstart "" "%~dp0WormwrightVault.exe" --manager\r\n')
-    name = f'wormwright-vault_{VERSION}_windows_x64_preview{WINDOWS_PREVIEW}'
+    name = f'wormwright-vault_{VERSION}_windows_x64' + (f'_preview{WINDOWS_PREVIEW}' if WINDOWS_PREVIEW else '')
     archive = Path(shutil.make_archive(str(output / name), 'zip', bundle.parent, bundle.name))
     (output / (archive.name + '.sha256')).write_text(hashlib.sha256(archive.read_bytes()).hexdigest() + '  ' + archive.name + '\n')
     print(archive)

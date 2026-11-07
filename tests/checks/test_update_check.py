@@ -19,9 +19,14 @@ for bad in [b'bad json',b'x'*65537,json.dumps({'schema':2}).encode(),json.dumps(
  except ValueError:pass
  else:raise AssertionError('Invalid metadata accepted')
 assert updates.DOWNLOAD_URL=='https://wormwright.com/vault-windows.html'
+assert updates.CURRENT=='0.3.11'
+assert updates.version_key('0.3.11-preview.2') < updates.version_key(updates.CURRENT)
+stable={'schema':1,'channels':{'stable':{'version':'0.3.11','notes':'Stable Windows release'}}}
+assert updates.release_from_feed(json.dumps(stable).encode(),'stable')['version']==updates.CURRENT
 app=QApplication.instance() or QApplication([])
 with tempfile.TemporaryDirectory() as d,patch.object(updates,'settings_path',return_value=Path(d)/'updates.json'):
  assert not updates.read_settings()['automatic']
+ assert updates.read_settings()['channel']=='stable'
  checker=updates.UpdateChecker(app);checker.timer.stop()
  checker.save({'automatic':True,'channel':'preview','last_check':0})
  with patch.object(checker,'check') as check:

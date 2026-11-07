@@ -1,8 +1,8 @@
-# Wormwright Vault 0.3.2 Windows preview 2
+# Wormwright Vault 0.3.11 for Windows
 
 Windows 10/11 x64. Extract the entire ZIP into a local folder and run
 WormwrightVault.exe. Open Manager.cmd opens the Manager interface. No Python
-installation is required. This preview is unsigned.
+installation is required. This Windows release is unsigned.
 
 Windows remembers your last selected vault on restart, including its saved NAS settings.
 The initial window fits the usable screen area. YubiKey operations use the native
@@ -21,8 +21,8 @@ preview; Windows does not change those capabilities.
 
 ## Installer
 
-The Windows preview 2 release also provides
-`wormwright-vault_0.3.2_windows_x64_preview2_setup.exe`. Close Vault and Manager,
+The stable Windows release provides
+`wormwright-vault_0.3.11_windows_x64_setup.exe`. Close Vault and Manager,
 run setup, then open Wormwright Vault or Wormwright Vault Manager from the
 Start menu. The optional desktop shortcut opens Vault. Setup installs per user
 in `%LOCALAPPDATA%\Programs\Wormwright Vault`; no administrator access or Python
@@ -64,3 +64,7 @@ Vault → Delete Local Vault removes the working file and disconnects its local 
 Vault → Delete Shared NAS Vault is a separate Manager-authorized action for the configured shared master. Disconnect sync on every other device first: another client can recreate the NAS master from its local copy. The command requires current NAS Manager access, refuses a busy NAS sync lock, reviews the exact path, and disconnects this computer. Local copies and backups remain.
 
 Vault 0.3.6 requires names when creating vaults. Vault → Vaults lists names and locations; Rename Current Vault names older files using the unlocked Manager account. Delete Current Local Vault reviews that vault and path, with Cancel, fresh authorization and typed DELETE.
+
+## Stable updates and YubiKey enrollment
+
+Choose Help → Update Settings → Stable, then Check for Updates when moving from a preview. Fresh installations default to Stable. Adding a key explains both Windows PIN-and-touch operations: create the credential, then verify the same key and finish enrollment. See [stable release notes](WINDOWS-0.3.11-STABLE.md).
