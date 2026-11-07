@@ -71,6 +71,7 @@ BuildArch: x86_64
 AutoReqProv: no
 Requires: glibc >= 2.39, python3, u2f-hidraw-policy
 Requires: libgcc, libstdc++, zlib, fontconfig, dbus-libs, glib2
+Requires: pulseaudio-libs, alsa-lib
 Requires: libdrm.so.2()(64bit)
 Requires: libGL.so.1()(64bit), libEGL.so.1()(64bit)
 Requires: libX11, libX11-xcb, libXext, libXrender, libxcb
