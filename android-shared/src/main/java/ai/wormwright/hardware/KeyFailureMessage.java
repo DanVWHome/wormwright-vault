@@ -15,7 +15,7 @@ final class KeyFailureMessage {
     if(value==0x2e)return "This YubiKey is not enrolled for this vault account. Use an enrolled key or an alternative unlock method.";
    }
    if(cause instanceof IllegalArgumentException&&"Key is not enrolled for this account".equals(cause.getMessage()))return "This YubiKey is not enrolled for this vault account. Use an enrolled key or an alternative unlock method.";
-   if(cause instanceof IOException)return "The connection to the YubiKey failed. Reconnect USB-C or hold the key steadily at the NFC reader, then try again. Existing vault data was kept.";
+   if(cause instanceof IOException)return "The connection to the YubiKey failed. Reconnect USB-C or hold the key steadily at the NFC reader, then try again. Existing vault data was kept. Support code: "+stage+".";
   }
   return "YubiKey authentication did not complete. Existing vault data was kept. Support code: "+stage+code+". Check the connection and retry explicitly; the app does not retry PINs automatically.";
  }

@@ -5,5 +5,6 @@ final class KeyReadiness {
  synchronized boolean pinSubmitted(){if(cancelled)return false;pin=true;return take();}
  synchronized boolean deviceDetected(){if(cancelled)return false;device=true;return take();}
  private boolean take(){if(started||!pin||!device)return false;started=true;return true;}
+ synchronized void deviceLost(){if(!started)device=false;}
  synchronized void cancel(){cancelled=true;pin=false;device=false;}
 }

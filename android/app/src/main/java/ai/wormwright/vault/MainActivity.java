@@ -776,6 +776,7 @@ public class MainActivity extends Activity {
             });
         });
     }
+    @Override public void onConfigurationChanged(android.content.res.Configuration configuration){super.onConfigurationChanged(configuration);if(root!=null)root.requestApplyInsets();}
     @Override protected void onResume() { super.onResume(); resumed = true; maintenance.onResume();handler.post(()->{if(resumed&&hardwareFailureNotice!=null)showHardwareFailure(hardwareFailureNotice);});usbPermissionPause=false;root.setVisibility(View.VISIBLE);hardware.resume(); if(startupChoicePending){startupChoicePending=false;handler.post(()->{if(resumed&&!busy)listVaults(false);});} }
     @Override protected void onPause() {
         maintenance.onPause(); resumed = false;if(hardware.pauseForUsbPermission()){usbPermissionPause=true;root.setVisibility(View.INVISIBLE);clearOwnedClipboard();}else {if(hardware.active()||(busy&&progressText.contains("YubiKey")))hardwareFailureNotice="YubiKey authentication was interrupted when the app left the screen. Keep the app open and try again.";hardware.stop();lockNow("Vault locked. Unlock to continue.");} super.onPause();
@@ -785,7 +786,7 @@ public class MainActivity extends Activity {
         if (unlocked) lockNow("Vault locked."); else super.onBackPressed();
     }
     @Override protected void onDestroy() {
-        hardware.stop();
+        hardware.dispose();
         maintenance.onDestroy(); handler.removeCallbacksAndMessages(null); clearOwnedClipboard();
         worker.shutdown(); super.onDestroy();
     }

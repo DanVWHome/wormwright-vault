@@ -20,6 +20,12 @@ import com.yubico.yubikit.android.transport.nfc.NfcConfiguration;
 import com.yubico.yubikit.android.transport.nfc.NfcNotAvailable;
 import com.yubico.yubikit.android.transport.usb.UsbConfiguration;
 import com.yubico.yubikit.core.YubiKeyDevice;
+import com.yubico.yubikit.core.YubiKeyConnection;
+import com.yubico.yubikit.core.fido.FidoConnection;
+import com.yubico.yubikit.core.smartcard.SmartCardConnection;
+import com.yubico.yubikit.android.transport.nfc.NfcYubiKeyDevice;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import com.yubico.yubikit.core.application.CommandState;
 import com.yubico.yubikit.fido.Cbor;
 import com.yubico.yubikit.fido.client.BasicWebAuthnClient;
@@ -44,6 +50,7 @@ public final class YubiKeyUnlock {
     private final Activity activity;
     private final Handler ui = new Handler(Looper.getMainLooper());
     private volatile Attempt current;
+    private final ExecutorService hardwareWorker=Executors.newSingleThreadExecutor();
     public interface Callback { void complete(JSONObject result); void failed(String message); }
     private final ForegroundNfcLease<YubiKitManager> nfcLease;
     public YubiKeyUnlock(Activity activity) {
@@ -70,6 +77,7 @@ public final class YubiKeyUnlock {
     public void stop() {
         Attempt a=current;current=null;if(a!=null)a.close(false);nfcLease.release();
     }
+    public void dispose(){stop();hardwareWorker.shutdownNow();}
     /** request contains public enrollment data only: full credential and salt. */
     public void unlock(JSONObject request, Callback done) { begin(request,false,done); }
     public void unlockChoices(JSONArray choices, Callback done) {
@@ -92,11 +100,13 @@ public final class YubiKeyUnlock {
         YubiKeyKeyboardGuard.install(a.dialog.getWindow());a.dialog.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
         a.dialog.show();
         a.dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{
+            if(current!=a||a.cancelled)return;
             if(input.length()<4){input.setError("Enter the key’s PIN (at least 4 characters).");return;}
-            a.pin=new char[input.length()];android.text.TextUtils.getChars(input.getText(),0,input.length(),a.pin,0);input.getText().clear();
+            char[] enteredPin=new char[input.length()];android.text.TextUtils.getChars(input.getText(),0,input.length(),enteredPin,0);a.pinBuffer.set(enteredPin);input.getText().clear();
             input.setVisibility(android.view.View.GONE);a.dialog.getButton(AlertDialog.BUTTON_POSITIVE).setVisibility(android.view.View.GONE);
             note.setText("Waiting for your YubiKey. Connect it over USB-C or hold it against the NFC reader. When the key flashes, touch its gold contact. No more on-screen confirmation is needed.");
             a.timeout=()->fail(a,"YubiKey authentication timed out. Connect the key or keep it against the NFC reader, then try again.");ui.postDelayed(a.timeout,60000);
+            if(a.device!=null&&a.device.getTransport()==com.yubico.yubikit.core.Transport.NFC&&usbKeyPresent()){a.device=null;a.readiness.deviceLost();}
             if(a.readiness.pinSubmitted())connect(a,a.device);
         });
         try { a.manager=new YubiKitManager(activity);
@@ -108,6 +118,11 @@ public final class YubiKeyUnlock {
     }
     private void usbConnect(Attempt a,UsbYubiKeyDevice device) {
         if(current!=a||a.cancelled)return;
+        device.setOnClosed(()->ui.post(()->{
+            if(current!=a||a.cancelled||a.device!=device)return;
+            if(a.claimed.get())fail(a,"The USB key was disconnected during authentication. Reconnect it and start a new attempt.");
+            else{a.device=null;a.readiness.deviceLost();if(a.note!=null)a.note.setText("USB key removed. Reconnect it to continue.");}
+        }));
         if(device.hasPermission()){keyDetected(a,device);return;}
         if(a.permissionPending)return;
         String action=activity.getPackageName()+".YUBIKEY_PERMISSION."+UUID.randomUUID();
@@ -128,8 +143,14 @@ public final class YubiKeyUnlock {
             ((UsbManager)activity.getSystemService(Context.USB_SERVICE)).requestPermission(device.getUsbDevice(),permission);
         }catch(RuntimeException e){a.permissionPending=false;fail(a,"USB permission could not be requested. Existing vault data was kept.");}
     }
+    private boolean usbKeyPresent(){
+        UsbManager manager=(UsbManager)activity.getSystemService(Context.USB_SERVICE);
+        for(android.hardware.usb.UsbDevice device:manager.getDeviceList().values())if(device.getVendorId()==0x1050)return true;
+        return false;
+    }
     private void keyDetected(Attempt a,YubiKeyDevice device) {
         if(current!=a||a.cancelled||a.claimed.get())return;
+        if(device.getTransport()==com.yubico.yubikit.core.Transport.NFC&&usbKeyPresent())return;
         a.device=device;
         if(a.readiness.deviceDetected())connect(a,device);
         else if(a.note!=null)a.note.setText(device.getTransport()==com.yubico.yubikit.core.Transport.NFC?"NFC key detected. Keep it here and enter its PIN.":"YubiKey connected. Enter its PIN and continue.");
@@ -141,13 +162,16 @@ public final class YubiKeyUnlock {
         if(current!=a || a.cancelled || !a.claimed.compareAndSet(false,true))return;
         a.nfc=device.getTransport()==com.yubico.yubikit.core.Transport.NFC;
         progress(a,"CONNECT",a.nfc?"NFC key detected. Hold it steadily against the phone until finished.":"Key connected. Reading its FIDO2 application…");
-        Ctap2Session.create(device, value->{
-            JSONObject result=null;String error=null;
-            try(Ctap2Session session=value.getValue()) {
-                a.session=session;
-                if(a.cancelled) return;
+        hardwareWorker.execute(()->{
+            JSONObject result=null;String error=null;char[] operationPin=null;
+            try {
+                if(a.cancelled)return;
+                operationPin=a.pinBuffer.copyForOperation();
+                Ctap2Session session=openSession(a,device);
+                if(session==null)return;
+                if(a.cancelled)return;
                 {
-                    // The outer scope owns the session; close it exactly once.
+                    // The physical connection owner handles cancellation and cleanup.
                     BasicWebAuthnClient client=new BasicWebAuthnClient(session,Collections.singletonList(new RawHmacSecretExtension()));
                     if(!client.isPinConfigured())throw new GeneralSecurityException("Set the key’s FIDO2 PIN on your computer first.");
                     if(a.cancelled)throw new GeneralSecurityException("Cancelled");
@@ -160,7 +184,7 @@ public final class YubiKeyUnlock {
                             new AuthenticatorSelectionCriteria("cross-platform","discouraged","required"),"none",
                             Extensions.fromMap(Collections.singletonMap("hmacCreateSecret",true)));
                         progress(a,"CREATE","Creating the vault credential. Wait for the key to flash, then touch its gold contact.");
-                        PublicKeyCredential registration=client.makeCredential(data,options,RP_ID,a.pin,null,a.command);
+                        PublicKeyCredential registration=client.makeCredential(data,options,RP_ID,operationPin,null,a.command);
                         AuthenticatorAttestationResponse response=(AuthenticatorAttestationResponse)registration.getResponse();
                         byte[] auth=response.getAuthenticatorData().getBytes();
                         if(!Arrays.equals(data,response.getClientDataJson()) || (auth[32]&5)!=5
@@ -173,7 +197,7 @@ public final class YubiKeyUnlock {
                         byte[] salt=random(32);
                         // A verified assertion proves the new credential works before vault metadata is changed.
                         progress(a,"VERIFY-NEW","Checking the new credential. Keep the key connected; touch again when it flashes.");
-                        byte[] secret=assertKey(client,cred,salt,a);
+                        byte[] secret=assertKey(client,cred,salt,a,operationPin);
                         try{result=new JSONObject().put("credential",b64(full)).put("salt",b64(salt)).put("response",b64(secret));}
                         finally{Arrays.fill(secret,(byte)0);}
                     } else {
@@ -186,7 +210,7 @@ public final class YubiKeyUnlock {
                             credentials.add(cred);salts.put(id,b64url(decode(request.getString("salt"))));
                         }
                         progress(a,"UNLOCK","Authenticating your enrolled YubiKey. Touch its gold contact when it flashes.");
-                        byte[] secret=assertKeys(client,credentials,salts,a);
+                        byte[] secret=assertKeys(client,credentials,salts,a,operationPin);
                         JSONObject request=requests.get(CredentialSaltSelector.id(a.selectedCredential));
                         try{result=new JSONObject().put("response",b64(secret)).put("request",request.toString());}finally{Arrays.fill(secret,(byte)0);}
 
@@ -194,8 +218,11 @@ public final class YubiKeyUnlock {
                 }
             } catch(Exception e) {
                 // Never log exceptions, PINs, CTAP payloads or hmac-secret output.
-                error=KeyFailureMessage.describe(e,a.stage);
-            } finally { a.session=null;if(a.pin!=null)Arrays.fill(a.pin,'\0'); }
+                error=KeyFailureMessage.describe(e,(a.nfc?"NFC-":"USB-")+a.stage);
+             } finally {
+                try{a.connectionOwner.close();}catch(Exception closing){if(error==null)error=KeyFailureMessage.describe(closing,(a.nfc?"NFC-":"USB-")+"CLOSE");}
+                if(operationPin!=null)Arrays.fill(operationPin,'\0');a.pinBuffer.clear();
+            }
             final JSONObject output=result;final String problem=error;
             ui.post(()->{if(current!=a||a.cancelled)return;
                 Runnable finish=()->{if(current!=a||a.cancelled)return;current=null;a.close(true);if(problem!=null)a.done.failed(problem);else a.done.complete(output);};
@@ -203,13 +230,27 @@ public final class YubiKeyUnlock {
             });
         });
     }
-    private static byte[] assertKey(BasicWebAuthnClient client,AttestedCredentialData cred,byte[] salt,Attempt a)throws Exception {
+    /** Own the physical connection before constructing the session (which does
+     * I/O). Cancellation can abort GetInfo/PIN exchange too. The owner closes
+     * once; neither the SDK callback wrapper nor Ctap2Session closes it again. */
+    private static Ctap2Session openSession(Attempt a,YubiKeyDevice device)throws Exception{
+        YubiKeyConnection connection;
+        if(device instanceof UsbYubiKeyDevice){
+            UsbYubiKeyDevice usb=(UsbYubiKeyDevice)device;
+            connection=usb.supportsConnection(FidoConnection.class)?usb.openConnection(FidoConnection.class):usb.openConnection(SmartCardConnection.class);
+        }else if(device instanceof NfcYubiKeyDevice)connection=((NfcYubiKeyDevice)device).openConnection(SmartCardConnection.class);
+        else throw new java.io.IOException("Unsupported key connection");
+        if(!a.connectionOwner.attach(connection))return null;
+        if(a.cancelled)return null;
+        return connection instanceof FidoConnection?new Ctap2Session((FidoConnection)connection):new Ctap2Session((SmartCardConnection)connection);
+    }
+    private static byte[] assertKey(BasicWebAuthnClient client,AttestedCredentialData cred,byte[] salt,Attempt a,char[] operationPin)throws Exception {
         if(a.cancelled)throw new GeneralSecurityException("Cancelled");
         if(salt.length!=32)throw new GeneralSecurityException("Invalid wrapping salt");
         Map<String,Object> salts=new HashMap<>();salts.put(CredentialSaltSelector.id(cred.getCredentialId()),b64url(salt));
-        return assertKeys(client,Collections.singletonList(cred),salts,a);
+        return assertKeys(client,Collections.singletonList(cred),salts,a,operationPin);
     }
-    private static byte[] assertKeys(BasicWebAuthnClient client,List<AttestedCredentialData> credentials,Map<String,Object> salts,Attempt a)throws Exception {
+    private static byte[] assertKeys(BasicWebAuthnClient client,List<AttestedCredentialData> credentials,Map<String,Object> salts,Attempt a,char[] operationPin)throws Exception {
         if(a.cancelled||credentials.isEmpty()||credentials.size()>4)throw new GeneralSecurityException("Invalid key request");
         List<PublicKeyCredentialDescriptor> allowed=new ArrayList<>();for(AttestedCredentialData cred:credentials)allowed.add(new PublicKeyCredentialDescriptor("public-key",cred.getCredentialId(),null));
         byte[] challenge=random(32);byte[] data=clientData("webauthn.get",challenge);
@@ -218,7 +259,7 @@ public final class YubiKeyUnlock {
             allowed,"required",
             Extensions.fromMap(Collections.singletonMap("hmacGetSecret",get)));
         PublicKeyCredential result;
-        try{result=client.getAssertion(data,options,RP_ID,a.pin,a.command);}
+        try{result=client.getAssertion(data,options,RP_ID,operationPin,a.command);}
         catch(com.yubico.yubikit.fido.client.MultipleAssertionsAvailable e){throw new GeneralSecurityException("Unexpected multiple key assertions");}
         AuthenticatorAssertionResponse r=(AuthenticatorAssertionResponse)result.getResponse();
         Map<String,Object> outputs=result.getClientExtensionResults().toMap(SerializationType.CBOR);
@@ -243,18 +284,18 @@ public final class YubiKeyUnlock {
     private static String b64url(byte[] v){return Base64.encodeToString(v,Base64.URL_SAFE|Base64.NO_WRAP|Base64.NO_PADDING);}
     private static byte[] decode(String v){return Base64.decode(v,Base64.DEFAULT);}
     private final class Attempt {
-        final KeyReadiness readiness=new KeyReadiness();YubiKeyDevice device;
+        final KeyReadiness readiness=new KeyReadiness();final PinBuffer pinBuffer=new PinBuffer();final SessionOwner<YubiKeyConnection> connectionOwner=new SessionOwner<>();YubiKeyDevice device;
         final JSONObject request;final boolean enroll;final Callback done;final AtomicBoolean claimed=new AtomicBoolean();
         byte[] selectedCredential;volatile String stage="DISCOVERY";volatile boolean nfc;boolean nfcStarted;TextView note;
         final CommandState command=new CommandState(){
             @Override public void onKeepAliveStatus(byte status){
                 if(status==STATUS_UPNEEDED)ui.post(()->{if(current==Attempt.this&&!cancelled&&note!=null&&!nfc){dialog.setTitle("Touch your YubiKey now");note.setTextSize(22);note.setTypeface(null,android.graphics.Typeface.BOLD);note.setText(stage.equals("VERIFY-NEW")?"Touch the gold contact again now to verify the new key.":"The key is ready. Touch its flashing gold contact to continue.");}});
             }
-        };volatile boolean cancelled;char[] pin;volatile Ctap2Session session;
+        };volatile boolean cancelled;
         YubiKitManager manager;AlertDialog dialog;Runnable timeout,pending;
         boolean permissionPending;BroadcastReceiver permissionReceiver;
         void unregisterPermission(){if(permissionReceiver!=null){try{activity.unregisterReceiver(permissionReceiver);}catch(IllegalArgumentException ignored){}permissionReceiver=null;}}
         Attempt(JSONObject r,boolean e,Callback d){request=r;enroll=e;done=d;}
-        void close(boolean keepNfc){cancelled=true;readiness.cancel();device=null;permissionPending=false;pending=null;unregisterPermission();command.cancel();if(timeout!=null)ui.removeCallbacks(timeout);if(manager!=null){if(nfcStarted){if(keepNfc)nfcLease.retain(manager);else try{manager.stopNfcDiscovery(activity);}catch(RuntimeException ignored){}}try{manager.stopUsbDiscovery();}catch(RuntimeException ignored){}}if(dialog!=null)dialog.dismiss();if(pin!=null)Arrays.fill(pin,'\0');}
+        void close(boolean keepNfc){cancelled=true;readiness.cancel();command.cancel();pinBuffer.clear();try{connectionOwner.close();}catch(Exception ignored){}device=null;permissionPending=false;pending=null;unregisterPermission();if(timeout!=null)ui.removeCallbacks(timeout);if(manager!=null){if(nfcStarted){if(keepNfc)nfcLease.retain(manager);else try{manager.stopNfcDiscovery(activity);}catch(RuntimeException ignored){}}try{manager.stopUsbDiscovery();}catch(RuntimeException ignored){}}if(dialog!=null)dialog.dismiss();}
     }
 }

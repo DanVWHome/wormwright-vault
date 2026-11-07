@@ -676,6 +676,7 @@ public class MainActivity extends Activity {
         if(dialog!=null)dialog.dismiss();ui.removeCallbacks(idle);clearClipboard();worker.execute(()->engine().callAttr("lock"));home(note);
     }
     @Override public void onUserInteraction(){super.onUserInteraction();if(unlocked){ui.removeCallbacks(idle);ui.postDelayed(idle,120000);}}
+    @Override public void onConfigurationChanged(android.content.res.Configuration configuration){super.onConfigurationChanged(configuration);if(root!=null)root.requestApplyInsets();}
     @Override protected void onResume(){super.onResume();resumed=true;maintenance.onResume();ui.post(()->{if(resumed&&hardwareFailureNotice!=null)showHardwareFailure(hardwareFailureNotice);});if(!hardwareAuthorization)root.setVisibility(View.VISIBLE);usbPermissionPause=false;hardware.resume();if(startupChoicePending){startupChoicePending=false;ui.post(()->{if(resumed&&!busy&&!authenticating)switchVault();});}if(pendingAuthentication!=null)ui.post(()->{if(pendingAuthentication!=null)pendingAuthentication.run();});}
     @Override protected void onPause(){maintenance.onPause();resumed=false;
         if(hardware.pauseForUsbPermission()) { usbPermissionPause=true;root.setVisibility(View.INVISIBLE);clearClipboard(); }
@@ -683,5 +684,5 @@ public class MainActivity extends Activity {
         else {if(hardware.active()||(busy&&progressText.contains("YubiKey")))hardwareFailureNotice="YubiKey authentication was interrupted when the app left the screen. Keep the app open and try again.";hardware.stop();lock("Vault locked. Authenticate to reopen.",authenticating);}
         super.onPause();}
     @Override protected void onStop(){if(usbPermissionPause){hardware.stop();lock("Vault locked. Reopen to retry YubiKey authorization.");}super.onStop();}
-    @Override protected void onDestroy(){hardwareAuthorization=false;ui.removeCallbacks(hardwareAuthorizationTimeout);hardware.stop();worker.execute(()->engine().callAttr("lock"));maintenance.onDestroy();++authVersion;pendingAuthentication=null;if(auth!=null)auth.cancel();if(pendingExport!=null)pendingExport.delete();super.onDestroy();}
+    @Override protected void onDestroy(){hardwareAuthorization=false;ui.removeCallbacks(hardwareAuthorizationTimeout);hardware.dispose();worker.execute(()->engine().callAttr("lock"));maintenance.onDestroy();++authVersion;pendingAuthentication=null;if(auth!=null)auth.cancel();if(pendingExport!=null)pendingExport.delete();super.onDestroy();}
 }
