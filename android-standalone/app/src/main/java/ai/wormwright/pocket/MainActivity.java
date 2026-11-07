@@ -22,6 +22,7 @@ import java.util.concurrent.*;
 import javax.crypto.Cipher;
 
 public class MainActivity extends Activity {
+    private ai.wormwright.hardware.YubiKeyUnlock hardware;
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
     private final Handler ui = new Handler(Looper.getMainLooper());
     private LinearLayout root, rows;
@@ -52,7 +53,7 @@ public class MainActivity extends Activity {
     private PyObject engine() { return Python.getInstance().getModule("pocket"); }
     private String call(String name, Object... args) { PyObject result = engine().callAttr(name, args); return result == null ? "" : result.toString(); }
     @Override public void onCreate(Bundle state) {
-        super.onCreate(state); maintenance=new DestructiveActions(this); getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
+        super.onCreate(state); hardware=new ai.wormwright.hardware.YubiKeyUnlock(this); maintenance=new DestructiveActions(this); getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
         getWindow().setDecorFitsSystemWindows(false);
         base = getNoBackupFilesDir();
         try { active = readActive(); startupChoicePending=savedVaults().size()>1; } catch (Exception e) { active = null; }
@@ -131,9 +132,10 @@ public class MainActivity extends Activity {
             onUserInteraction(); PopupMenu menu = new PopupMenu(this,helpButton);
             if(compact){menu.getMenu().add("Recently deleted");if(!sample){menu.getMenu().add("Export portable backup");menu.getMenu().add("Export for desktop and NAS");menu.getMenu().add("Change optional vault password");}}
             menu.getMenu().add("Create new vault"); menu.getMenu().add("Vaults"); menu.getMenu().add("Rename current vault"); menu.getMenu().add("Delete current vault"); menu.getMenu().add("Delete vault…"); menu.getMenu().add("Delete all phone vaults"); menu.getMenu().add("Delete selected backups");
+            if(unlocked&&!sample)menu.getMenu().add("Enroll YubiKey");
             menu.getMenu().add("Backup and recovery"); menu.getMenu().add("About"); menu.getMenu().add("Wormwright Website");
             menu.setOnMenuItemClickListener(item -> { String choice=item.getTitle().toString();
-                if(choice.equals("Recently deleted")) recentlyDeleted(); else if(choice.equals("Export portable backup")) export(false); else if(choice.equals("Export for desktop and NAS")) export(true); else if(choice.equals("Change optional vault password")) changePassword(); else if(choice.equals("Create new vault")) newVault(); else if(choice.equals("Vaults")) switchVault(); else if(choice.equals("Rename current vault")) renameVault(); else if(choice.equals("Delete current vault")) deleteCurrentVault(); else if(choice.equals("Delete vault…")) chooseVaultForDeletion(); else if(choice.equals("Delete all phone vaults")) deletePhoneVaults(); else if(choice.equals("Delete selected backups")) maintenance.chooseBackups(); else if (choice.equals("About")) about(); else if (choice.equals("Backup and recovery")) help(); else openWebsite(); return true; }); menu.show();
+                if(choice.equals("Enroll YubiKey")) confirmEnrollHardware(); else if(choice.equals("Recently deleted")) recentlyDeleted(); else if(choice.equals("Export portable backup")) export(false); else if(choice.equals("Export for desktop and NAS")) export(true); else if(choice.equals("Change optional vault password")) changePassword(); else if(choice.equals("Create new vault")) newVault(); else if(choice.equals("Vaults")) switchVault(); else if(choice.equals("Rename current vault")) renameVault(); else if(choice.equals("Delete current vault")) deleteCurrentVault(); else if(choice.equals("Delete vault…")) chooseVaultForDeletion(); else if(choice.equals("Delete all phone vaults")) deletePhoneVaults(); else if(choice.equals("Delete selected backups")) maintenance.chooseBackups(); else if (choice.equals("About")) about(); else if (choice.equals("Backup and recovery")) help(); else openWebsite(); return true; }); menu.show();
         });
         heading.addView(helpButton); root.addView(heading); if(!compact)root.addView(text("Version " + installedVersion())); status = text(""); if(compact)status.setVisibility(View.GONE); root.addView(status);
         progressRow = column(); LinearLayout loading = new LinearLayout(this); loading.setGravity(Gravity.CENTER_VERTICAL);
@@ -163,7 +165,7 @@ public class MainActivity extends Activity {
         screen("Wormwright Pocket"); root.addView(text("Your personal password vault"), 1); message(note);
         boolean stored = new File(base, "active.json").exists();
         if(stored)root.addView(text("Current vault: "+vaultLabel(active)));
-        if (stored) { button(root,"Choose a vault",this::switchVault); button(root, "Open “"+vaultLabel(active)+"”", this::unlockPersonal); button(root,"Create new vault",this::newVault); button(root,"Delete current vault",this::deleteCurrentVault); }
+        if (stored) { button(root,"Choose a vault",this::switchVault); button(root,"Unlock with YubiKey (NFC / USB-C)",this::unlockHardware); button(root, "Open “"+vaultLabel(active)+"”", this::unlockPersonal); button(root,"Create new vault",this::newVault); button(root,"Delete current vault",this::deleteCurrentVault); }
         else {button(root, "Create personal vault", () -> createOrRestore(null, null));button(root,"Vaults",this::switchVault);}
         button(root, "Open invented sample vault", () -> { sample = true; task("Opening vault…", () -> call("sample", new File(base, "sample.sqlite").getPath()), v -> { unlocked = true; vaultScreen(); }); });
         button(root, "Restore portable encrypted backup", this::chooseRestore);
@@ -200,21 +202,54 @@ public class MainActivity extends Activity {
                 });
         } catch(RuntimeException e) { authenticating=false;auth=null;pendingAuthentication=null;throw e; }
     }
-    private void unlockPersonal() {
+    private void unlockHardware() {
+        if(busy||active==null||hardware.active())return;
+        final String slot=active.optString("slot");final String path=slotFile(slot).getPath();
+        task("Reading YubiKey enrollment…",()->call("hardware_request",path),request->{
+            final int token=epoch;
+            hardware.unlock(new JSONObject(request),new ai.wormwright.hardware.YubiKeyUnlock.Callback(){
+                public void failed(String note){if(token==epoch&&resumed)message(note);}
+                public void complete(JSONObject output){
+                    if(token!=epoch||!resumed||active==null||!slot.equals(active.optString("slot")))return;
+                    task("Opening vault with YubiKey…",()->call("unlock_hardware",path,request,output.getString("response")),result->{sample=false;unlocked=true;vaultScreen();});
+                }
+            });
+        });
+    }
+    private void confirmEnrollHardware() {
+        if(busy||sample||!unlocked)return;
+        dialog=new AlertDialog.Builder(this).setTitle("Enroll a YubiKey for this vault?")
+            .setMessage("This key will unlock this vault over NFC or USB-C with its own PIN, instead of phone authentication and any optional vault password. Phone unlock and portable-backup recovery remain available. Only one key per vault is supported; an existing enrollment will not be replaced. You will authenticate this vault again before enrollment.")
+            .setNegativeButton("Cancel",null).setPositiveButton("Continue",(d,w)->unlockPersonal(()->task("Checking enrollment…",()->call("prepare_hardware_enrollment"),v->enrollHardware()))).create();
+        dialog.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);dialog.show();
+    }
+    private void enrollHardware() {
+        if(busy||sample||!unlocked)return;
+        final int token=epoch;final String slot=active.optString("slot");
+        hardware.enroll(new ai.wormwright.hardware.YubiKeyUnlock.Callback(){
+            public void failed(String note){if(token==epoch&&resumed)message(note);}
+            public void complete(JSONObject output){
+                if(token!=epoch||!resumed||!unlocked||!slot.equals(active.optString("slot")))return;
+                task("Saving YubiKey enrollment…",()->call("enroll_hardware",output.toString()),MainActivity.this::message);
+            }
+        });
+    }
+    private void unlockPersonal() { unlockPersonal(null); }
+    private void unlockPersonal(Runnable after) {
         try {
             active = readActive(); if (active == null) throw new IllegalStateException();
             JSONObject state = active; String slot = state.getString("slot");
             authenticate(DeviceKey.cipher(slot, false, decode(state.getString("iv"))), c -> {
                 String envelope = new String(DeviceKey.finish(slot,c,decode(state.getString("wrapped"))), StandardCharsets.UTF_8);
-                if (state.optBoolean("password")) password("Separate vault password", false, false, p -> openEnvelope(slot, envelope, p));
-                else openEnvelope(slot, envelope, "");
+                if (state.optBoolean("password")) password("Separate vault password", false, false, p -> openEnvelope(slot, envelope, p, after));
+                else openEnvelope(slot, envelope, "", after);
             });
         } catch (Exception e) { message("Device key or vault metadata unavailable. Your files were kept. Restore an exported portable backup; no replacement was created."); }
     }
-    private void openEnvelope(String slot,String envelope,String password) {
+    private void openEnvelope(String slot,String envelope,String password,Runnable after) {
         task("Opening vault…",()->{String secret=call("unprotect",envelope,password);String result=call("unlock",slotFile(slot).getPath(),secret);String name=call("vault_name");
             JSONObject state=readActive();if(state!=null&&slot.equals(state.optString("slot"))&&!name.isEmpty()){state.put("name",name);publish(state);}return result;
-        },v->{sample=false;unlocked=true;vaultScreen();if(active.optString("name","").isEmpty())message("This vault has no name yet. Choose Rename current vault to identify it in the list.");});
+        },v->{sample=false;unlocked=true;vaultScreen();if(active.optString("name","").isEmpty())message("This vault has no name yet. Choose Rename current vault to identify it in the list.");if(after!=null)after.run();});
     }
     private void createOrRestore(File imported, String recovery) {
         namePrompt("Name the vault", "", null, name->createNamed(imported,recovery,name));
@@ -553,6 +588,7 @@ public class MainActivity extends Activity {
     }
     private void lock(String note) { lock(note,false); }
     private void lock(String note,boolean keepAuthentication) {
+        if(hardware!=null)hardware.cancel();
         epoch++;unlocked=false;setBusy(false, "");
         if(!keepAuthentication) { ++authVersion;authenticating=false;pendingAuthentication=null;if(auth!=null)auth.cancel();auth=null; }
         if(dialog!=null)dialog.dismiss();ui.removeCallbacks(idle);clearClipboard();worker.execute(()->engine().callAttr("lock"));home(note);

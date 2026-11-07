@@ -2,9 +2,9 @@ name: Android Wormwright Pocket
 on:
   workflow_dispatch:
   push:
-    paths: ['android-standalone/**', '.github/workflows/android-pocket.yml']
+    paths: ['android-standalone/**', 'android-shared/**', '.github/workflows/android-pocket.yml']
   pull_request:
-    paths: ['android-standalone/**', '.github/workflows/android-pocket.yml']
+    paths: ['android-standalone/**', 'android-shared/**', '.github/workflows/android-pocket.yml']
 permissions:
   contents: read
 jobs:
@@ -32,6 +32,8 @@ jobs:
           python -m pip install PyNaCl==1.5.0
       - name: Offline crypto and migration protocol checks
         run: python -m unittest discover -s android-standalone/tests -v
+      - name: Hardware wrapping and stale enrollment checks
+        run: PYTHONPATH=android-shared/python python -m unittest discover -s android-shared/tests -v
       - name: Compile and lint standalone module
         working-directory: android-standalone
         run: gradle assembleDebug lintDebug bundleRelease

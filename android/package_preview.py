@@ -46,21 +46,21 @@ digest = hashlib.sha256(APK.read_bytes()).hexdigest()
 (OUTPUT / 'SHA256SUMS').write_text(digest + '  ' + APK.name + '\n')
 lint = (ROOT / 'app/build/reports/lint-results-release.txt').read_text()
 lint_counts = re.search(r'(\d+) errors, (\d+) warnings', lint)
-unit_tests = [ET.parse(p).getroot() for p in (ROOT / 'app/build/test-results/testReleaseUnitTest').glob('TEST-*.xml')]
+unit_tests = [ET.parse(p).getroot() for p in (ROOT / 'app/build/test-results/testDebugUnitTest').glob('TEST-*.xml')]
 report = {
     'version': VERSION, 'app_id': 'ai.wormwright.vault.preview',
     'distribution': 'local signed preview; not published',
     'scope': ['encrypted format-2 import', 'account unlock and offline editing', 'visible-field search',
               'masked list', 'password reveal and copy', 'background and inactivity lock',
               'direct SMB two-way NAS sync', 'three-way entry conflict review', 'verified atomic uploads', 'shared Linux lock protocol', 'encrypted NAS credentials',
-              'authenticated snapshot replacement with encrypted backups', 'foreground refresh every 60 seconds'],
-    'not_included': ['closed-app background sync', 'Android autofill', 'YubiKey', 'Manager administration'],
-    'desktop_interoperability_tests': {'passed': 22, 'failed': 0},
+              'authenticated snapshot replacement with encrypted backups', 'foreground refresh every 60 seconds', 'native NFC/USB YubiKey unlock'],
+    'not_included': ['closed-app background sync', 'Android autofill', 'Manager administration'],
+    'desktop_interoperability_tests': 'Run android/tests and android-shared/tests; see this build report.',
     'network_protocol_unit_tests': {'tests': sum(int(p.get('tests', 0)) for p in unit_tests),
                                     'failures': sum(int(p.get('failures', 0)) + int(p.get('errors', 0)) for p in unit_tests)},
     'android_lint': {'errors': int(lint_counts.group(1)), 'warnings': int(lint_counts.group(2))},
     'native_16kb_alignment': {'passed': True, 'modules': native_modules},
-    'pixel_device_acceptance': 'preview.2 import and NAS download user-confirmed; preview.3 editing and upload awaiting device acceptance',
+    'pixel_device_acceptance': 'NFC/USB device acceptance pending for this build',
     'sha256': digest,
     'upstream_engine': {'desktop_version': '0.3.0', 'unchanged_files': {
         name: hashlib.sha256((ROOT / 'app/src/main/python' / name).read_bytes()).hexdigest()
@@ -75,5 +75,8 @@ with zipfile.ZipFile(OUTPUT / 'wormwright-vault-android-source.zip', 'w', zipfil
         if path.name == 'local.properties' or path.suffix in {'.jks', '.keystore'}:
             continue
         archive.write(path, Path('android') / relative)
+    for path in (ROOT.parent / 'android-shared').rglob('*'):
+        if path.is_file() and '__pycache__' not in path.parts:
+            archive.write(path, Path('android-shared') / path.relative_to(ROOT.parent / 'android-shared'))
 print(json.dumps({'apk': str(APK), 'size_mb': round(APK.stat().st_size / 1024**2, 1),
                   'aligned_native_modules': len(native_modules), 'sha256': digest}))

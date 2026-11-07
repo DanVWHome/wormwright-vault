@@ -189,3 +189,50 @@ def verify_deletion(path,local_secret):
         candidate.unlock(local_secret)
         return candidate.display_name
     finally:candidate.lock()
+
+
+def hardware_request(path):
+    import hardware_bridge
+    return hardware_bridge.describe(ManagedVault(path).yubikey_settings())
+
+
+def enroll_hardware(document):
+    import hardware_bridge
+    source = require()
+    if source.yubikey_settings() is not None:
+        raise VaultError('This vault already has a key. Replacing it is not supported here; existing enrollment was kept.')
+    data = json.loads(document)
+    credential = base64.b64decode(data['credential'], validate=True)
+    salt = base64.b64decode(data['salt'], validate=True)
+    value = hardware_bridge.response(data['response'])
+    if len(credential) < 19 or len(credential) > 4096 or len(salt) != 32:
+        raise VaultError('Invalid key enrollment.')
+    # Encrypted safety snapshot; never copy the raw local secret or device envelope.
+    backup = source.path.with_name(source.path.stem + '-before-yubikey.sqlite')
+    with sqlite3.connect(backup) as db:
+        source.db.backup(db)
+    source.enroll_yubikey(credential, salt, value)
+    return 'YubiKey enrolled. Phone authentication remains available. Keep a portable backup.'
+
+
+def unlock_hardware(path, request, value):
+    import hardware_bridge
+    global _vault
+    lock()
+    candidate = ManagedVault(path)
+    try:
+        settings = hardware_bridge.current_settings(candidate, '', request)
+        candidate.unlock_yubikey(settings, hardware_bridge.response(value))
+        candidate.entries(include_deleted=True)
+        _vault = candidate
+        return listing('')
+    except Exception:
+        candidate.lock()
+        lock()
+        raise
+
+
+def prepare_hardware_enrollment():
+    if require().yubikey_settings() is not None:
+        raise VaultError('A key is already enrolled. Existing enrollment was kept; multiple keys are not supported yet.')
+    return ''

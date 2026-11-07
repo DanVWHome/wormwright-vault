@@ -44,6 +44,7 @@ import java.util.concurrent.Executors;
 
 /** A local, read-only preview. All crypto and SQLite work uses one worker. */
 public class MainActivity extends Activity {
+    private ai.wormwright.hardware.YubiKeyUnlock hardware;
     private static final int IMPORT = 100;
     private static final int EXPORT = 101;
     private static final int NAVY = Color.rgb(23, 45, 67);
@@ -82,7 +83,7 @@ public class MainActivity extends Activity {
     };
 
     @Override public void onCreate(Bundle state) {
-        super.onCreate(state); maintenance=new DestructiveActions(this);
+        super.onCreate(state); hardware=new ai.wormwright.hardware.YubiKeyUnlock(this); maintenance=new DestructiveActions(this);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
         vaultFile = new File(getNoBackupFilesDir(), "vault.db");
         try{android.util.AtomicFile pointer=new android.util.AtomicFile(new File(getNoBackupFilesDir(),"selected-vault.json"));
@@ -271,6 +272,7 @@ public class MainActivity extends Activity {
         Button unlock = button("Unlock vault", this::unlock);
         unlock.setEnabled(vaultFile.exists()); form.addView(unlock);
         form.addView(button(vaultFile.exists() ? "Replace encrypted phone copy" : "Import encrypted vault", this::chooseImport));
+        Button key=button("Unlock with YubiKey (NFC / USB-C)",this::unlockHardware);key.setEnabled(vaultFile.exists());form.addView(key);
         form.addView(button("Create new vault",this::createPhoneVault)); form.addView(button("Vaults",()->listVaults(false)));
         if(vaultFile.exists())form.addView(button("Delete current vault",this::deletePhoneVault));
         form.addView(button("Try the sample vault", this::loadSample));
@@ -316,6 +318,24 @@ public class MainActivity extends Activity {
                 catch (Exception ignored) { lockNow("Cannot read this vault. Import a valid encrypted copy."); }
             });
         });
+    }
+    private void unlockHardware() {
+        if(busy||!vaultFile.exists()||hardware.active())return;
+        final String path=vaultFile.getAbsolutePath(),account=username.getText().toString();
+        password.getText().clear();
+        job("Reading YubiKey enrollment…",()->bridge().callAttr("hardware_request",path,account).toString(),request->{
+            final int token=generation;
+            hardware.unlock(new JSONObject(request),new ai.wormwright.hardware.YubiKeyUnlock.Callback(){
+                public void failed(String message){if(token==generation&&resumed)status.setText(message);}
+                public void complete(JSONObject output){
+                    if(token!=generation||!resumed||!path.equals(vaultFile.getAbsolutePath()))return;
+                    job("Opening vault with YubiKey…",()->bridge().callAttr("unlock_hardware",path,account,request,output.getString("response")).toString(),result->{
+                        unlocked=true;sampleMode=false;showEntries(result);resetIdleTimer();
+                        if(nasSettings.exists()){refreshNas(false);handler.postDelayed(nasPoll,60000);}
+                    },"YubiKey unlock failed. Use the enrolled key or your vault password. Existing vault was kept.");
+                }
+            });
+        },"No usable key enrollment for this account. Enroll on desktop, sync/import the copy, or use your vault password.");
     }
     private void unlock() {
         if (busy || !vaultFile.exists()) return;
@@ -499,6 +519,7 @@ public class MainActivity extends Activity {
     }
     @Override public void onUserInteraction() { super.onUserInteraction(); resetIdleTimer(); }
     private void lockNow(String message) {
+        if(hardware!=null)hardware.cancel();
         ++generation; ++searchVersion; unlocked = false; nasRunning = false; setBusy(false, "");
         handler.removeCallbacks(idleLock); handler.removeCallbacks(nasPoll); clearOwnedClipboard();
         if (detailDialog != null) detailDialog.dismiss();

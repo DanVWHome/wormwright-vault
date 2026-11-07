@@ -1,3 +1,9 @@
+# 0.1.0-test.14
+
+Enroll one YubiKey after fresh phone authentication; unlock with its PIN over
+NFC or USB-C. Existing phone unlock and portable backup workflows remain.
+See ../../docs/ANDROID-YUBIKEY.md. Physical device acceptance is pending.
+
 # 0.1.0-test.13
 
 The unlocked vault now keeps search above a dedicated scrolling results area. Lock and Add entry share one row. Vault management, exports, recently deleted and Help/About live in More. Version remains available in About.

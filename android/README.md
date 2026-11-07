@@ -1,3 +1,10 @@
+## YubiKey update
+
+See [Android YubiKey unlock](../docs/ANDROID-YUBIKEY.md) for NFC/USB-C setup,
+recovery, the single-key enrollment limit, and required physical testing.
+The sections below describe the earlier baseline; hardware unlock is added in
+network preview.14 and Pocket test.14.
+
 # Wormwright Vault Android preview 5
 
 Preview 5 immediately shows a spinner and “Opening vault…” while checking the local
@@ -16,7 +23,7 @@ Both platforms use the same shared directory lock and unchanged desktop cryptogr
 
 Uploads retain an encrypted NAS backup, write to a unique temporary file, flush and verify the content, then atomically rename over the shared vault. The phone baseline advances only after publication is acknowledged. Local replacements retain ten encrypted backups. NAS backups use the desktop naming scheme and retain ten copies for this master filename.
 
-Preview limitations: no closed-app background sync, Android autofill, hardware keys or Manager account administration. Pixel 10 / GrapheneOS acceptance confirmed: encrypted import, NAS downloads, phone-created entries appearing on Linux, and phone deletions appearing in Manager recovery view.
+Preview limitations: no closed-app background sync, Android autofill or Manager account administration. Pixel 10 / GrapheneOS acceptance confirmed: encrypted import, NAS downloads, phone-created entries appearing on Linux, and phone deletions appearing in Manager recovery view.
 
 Build with the workspace Gradle and Android SDK. `prepare_build.py` creates private persistent local signing credentials outside the packaged source. Never distribute the signing key. `package_preview.py` creates the APK, source archive, checksum and verification report. Python interoperability tests run with PyNaCl; JVM transport tests simulate cancellation, contention and interrupted uploads.
 

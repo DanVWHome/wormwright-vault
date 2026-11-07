@@ -308,3 +308,26 @@ def file_name(path):
         candidate._connect()
         return candidate.display_name
     finally:candidate.lock()
+
+
+def hardware_request(path, username):
+    import hardware_bridge
+    candidate = ManagedVault(path)
+    return hardware_bridge.describe(candidate.yubikey_settings(username))
+
+
+def unlock_hardware(path, username, request, value):
+    import hardware_bridge
+    global _vault, _sample
+    lock()
+    candidate = ManagedVault(path)
+    try:
+        settings = hardware_bridge.current_settings(candidate, username, request)
+        candidate.unlock_yubikey(settings, hardware_bridge.response(value))
+        candidate.entries(include_deleted=True)
+        _vault, _sample = candidate, False
+        return list_entries('')
+    except Exception:
+        candidate.lock()
+        lock()
+        raise

@@ -1,3 +1,10 @@
+## YubiKey update
+
+See [Android YubiKey unlock](../docs/ANDROID-YUBIKEY.md) for NFC/USB-C setup,
+recovery, the single-key enrollment limit, and required physical testing.
+The sections below describe the earlier baseline; hardware unlock is added in
+network preview.14 and Pocket test.14.
+
 # Wormwright Pocket — Android standalone test
 
 Your personal password vault.
