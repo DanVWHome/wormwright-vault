@@ -1,7 +1,7 @@
 """Managed-format UI shared by Vault and the optional Vault Manager launcher."""
 from website import add_website_action
 from update_check import add_update_actions
-from key_ui import request_key_pin, choose_key
+from key_ui import request_key_pin, choose_key, enroll_with_guidance
 from pathlib import Path
 import sys
 import tempfile
@@ -833,9 +833,9 @@ class ManagedWindow(QMainWindow):
         if new is not None:
             try:self.vault.change_password(authentication.get("password"),new,yubikey_settings=authentication.get("yubikey_settings"),yubikey_response=authentication.get("yubikey_response"));self.auto_sync()
             except Exception as error:self.warning(error)
-    def key_request(self,operation):
+    def key_request(self,operation,**options):
         from app import Window
-        return Window.key_request(self,operation)
+        return Window.key_request(self,operation,**options)
     def unlock_key(self):
         try:
             from yubikey_auth import unlock_any
@@ -862,7 +862,7 @@ class ManagedWindow(QMainWindow):
             pin,ok=request_key_pin(self, 'Enroll new YubiKey', 'Plug in only the NEW YubiKey, then enter its FIDO2 PIN:')
             if not ok:return
             from yubikey_auth import enroll
-            credential,salt,response=self.key_request(lambda event:enroll(pin,event));self.vault.enroll_yubikey(credential,salt,response,name);self.update_state();self.auto_sync()
+            credential,salt,response=enroll_with_guidance(self,pin);self.vault.enroll_yubikey(credential,salt,response,name);self.update_state();self.auto_sync()
         except Exception as error:self.warning(error)
     def manage_keys(self):
         if not self.reauthenticate():return

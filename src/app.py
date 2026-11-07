@@ -1,6 +1,6 @@
 from website import add_website_action
 from update_check import add_update_actions
-from key_ui import request_key_pin, choose_key
+from key_ui import request_key_pin, choose_key, enroll_with_guidance, ENROLLMENT_STEPS
 import os
 import sys
 import secrets
@@ -9,7 +9,7 @@ import threading
 from collections import Counter
 from pathlib import Path
 from PySide6.QtGui import QIcon, QPixmap, QFont
-from PySide6.QtCore import Qt, QTimer, QThread, QEventLoop, QEvent
+from PySide6.QtCore import Qt, QTimer, QThread, QEventLoop, QEvent, Signal
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QPushButton, QLineEdit, QTableWidget, QTableWidgetItem, QAbstractItemView,
     QHeaderView, QMessageBox, QDialog, QFormLayout, QTextEdit, QDialogButtonBox, QFileDialog,
@@ -32,16 +32,27 @@ COPY_FIELDS = [('description', 'Description'), ('link', 'Link'),
 
 
 class KeyTask(QThread):
-    def __init__(self, operation):
+    enrollment_stage = Signal(int)
+
+    def __init__(self, operation, enrollment=False):
         super().__init__()
         self.operation = operation
+        self.enrollment = enrollment
         self.cancelled = threading.Event()
         self.result = None
         self.error = None
 
+    def confirm_stage(self, step):
+        if self.cancelled.is_set():
+            raise VaultError('YubiKey enrollment cancelled.')
+        self.enrollment_stage.emit(step)
+        if self.cancelled.is_set():
+            raise VaultError('YubiKey enrollment cancelled.')
+
     def run(self):
         try:
-            self.result = self.operation(self.cancelled)
+            self.result = (self.operation(self.cancelled, self.confirm_stage) if self.enrollment
+                           else self.operation(self.cancelled))
         except Exception as error:
             self.error = str(error)
         finally:
@@ -419,15 +430,26 @@ class Window(QMainWindow):
             self.table.selectRow(selected)
             self.table.scrollToItem(self.table.item(selected, 1))
 
-    def key_request(self, operation):
-        task = KeyTask(operation)
+    def key_request(self, operation, *, enrollment=False):
+        task = KeyTask(operation, enrollment)
         self.key_task = task
-        progress = QProgressDialog('Touch your YubiKey when it flashes.\nEnrollment may request two touches.', 'Cancel', 0, 0, self)
+        progress = QProgressDialog('Follow the Windows security-key prompts.' if enrollment else 'Touch your YubiKey when it flashes.', 'Cancel', 0, 0, self)
         progress.setWindowTitle('YubiKey PIN + Touch')
         progress.setMinimumDuration(0)
         progress.setWindowModality(Qt.WindowModality.ApplicationModal)
         progress.canceled.connect(task.cancelled.set)
         task.finished.connect(progress.accept)
+        if enrollment:
+            def explain_stage(step):
+                if task.cancelled.is_set(): return
+                title, text = ENROLLMENT_STEPS[step]
+                progress.setWindowTitle(title)
+                progress.setLabelText(text)
+                answer = QMessageBox.information(progress, title, text, QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel)
+                if answer != QMessageBox.StandardButton.Ok: task.cancelled.set()
+            # The hardware worker waits for the UI explanation to be acknowledged
+            # before opening the next native Windows prompt. No PIN crosses this signal.
+            task.enrollment_stage.connect(explain_stage, Qt.ConnectionType.BlockingQueuedConnection)
         task.start()
         progress.exec()
         if task.isRunning():
@@ -489,7 +511,7 @@ class Window(QMainWindow):
             if not pin and sys.platform != 'win32':
                 raise VaultError('Enter your YubiKey PIN.')
             from yubikey_auth import enroll
-            credential, salt, response = self.key_request(lambda event: enroll(pin, event))
+            credential, salt, response = enroll_with_guidance(self, pin)
             pin = None
             safety = self.vault.enroll_yubikey(credential, salt, response, name)
             response = None

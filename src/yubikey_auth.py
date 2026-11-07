@@ -161,7 +161,7 @@ def authenticate(client, service, credential, salt, cancelled):
     return output.output1
 
 
-def enroll(pin, cancelled):
+def enroll(pin, cancelled, stage=None):
     with client_session(pin, cancelled) as (client, interaction):
         service = server()
         options, state = service.register_begin(
@@ -170,6 +170,7 @@ def enroll(pin, cancelled):
             authenticator_attachment='cross-platform')
         options = {**options['publicKey'], 'extensions': {'hmacCreateSecret': True}}
         try:
+            if stage: stage(1)
             registration = client.make_credential(options, event=cancelled)
             auth_data = service.register_complete(state, registration)
             if not registration.client_extension_results.get('hmacCreateSecret'):
@@ -181,6 +182,7 @@ def enroll(pin, cancelled):
             # A second verified assertion checks that the new credential works.
             # The PIN may be requested once again for this distinct operation.
             interaction.requested = False
+            if stage: stage(2)
             response = authenticate(client, service, credential, salt, cancelled)
             return bytes(credential), salt, response
         finally:

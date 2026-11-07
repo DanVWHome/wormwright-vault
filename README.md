@@ -6,7 +6,7 @@ Keep a local working vault on each device and sync through your own NAS.
 ## Downloads
 
 - [Linux Mint 0.3.11 — stable](https://github.com/DanVWHome/wormwright-vault/releases/tag/v0.3.11)
-- [Windows 0.3.11 preview 1](https://github.com/DanVWHome/wormwright-vault/releases/tag/v0.3.11-windows-preview.1)
+- [Windows 0.3.11 preview 2](https://github.com/DanVWHome/wormwright-vault/releases/tag/v0.3.11-windows-preview.2)
 - [Fedora 44 — 0.3.11 preview 2](https://github.com/DanVWHome/wormwright-vault/releases/tag/v0.3.11-fedora-preview.2)
 - [Android Network/NAS 0.1.0-preview.21](https://github.com/DanVWHome/wormwright-vault/releases/tag/android-v0.1.0-preview.21)
 - [Android Pocket 0.1.0-test.21](https://github.com/DanVWHome/wormwright-vault/releases/tag/pocket-v0.1.0-test.21)

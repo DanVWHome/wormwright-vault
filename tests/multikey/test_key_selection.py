@@ -23,7 +23,7 @@ class KeySelection(unittest.TestCase):
    w=Window(pathlib.Path(folder)/'vault.sqlite');w.auto_timer.stop();w.vault.create(PW)
    first=os.urandom(32);w.vault.enroll_yubikey(os.urandom(128),os.urandom(32),first,'Laptop')
    original=w.vault.yubikey_settings()
-   with patch('app.QInputDialog.getText',side_effect=[(PW,True),('Phone',True)]),patch('app.request_key_pin',return_value=('DummyPinOnly',True)),patch('yubikey_auth.enroll',return_value=(os.urandom(128),os.urandom(32),os.urandom(32))),patch.object(w,'key_request',side_effect=lambda f:f(threading.Event())),patch('app.QMessageBox.information'),patch('app.QMessageBox.warning') as warning,patch('app.QMessageBox.question') as replace:
+   with patch('app.QInputDialog.getText',side_effect=[(PW,True),('Phone',True)]),patch('app.request_key_pin',return_value=('DummyPinOnly',True)),patch('yubikey_auth.enroll',return_value=(os.urandom(128),os.urandom(32),os.urandom(32))),patch.object(w,'key_request',side_effect=lambda f,**options:f(threading.Event(),lambda step:None) if options.get("enrollment") else f(threading.Event())),patch('app.QMessageBox.information'),patch('app.QMessageBox.warning') as warning,patch('app.QMessageBox.question') as replace:
     w.enroll_key();warning.assert_not_called();replace.assert_not_called()
    self.assertEqual(w.vault.yubikey_enrollments()[0],original)
    self.assertEqual([k['label'] for k in w.vault.yubikey_enrollments()],['Laptop','Phone']);w.lock();w.close()
@@ -32,7 +32,7 @@ class KeySelection(unittest.TestCase):
    w=ManagedWindow(pathlib.Path(folder)/'vault.sqlite',False);w.auto_timer.stop();w.vault.create(PW)
    w.vault.enroll_yubikey(os.urandom(128),os.urandom(32),os.urandom(32),'Laptop')
    original=w.vault.yubikey_enrollments()[0]
-   with patch('managed_ui.QMessageBox.information') as instructions,patch.object(w,'password_prompt',return_value=(PW,True)),patch('managed_ui.QInputDialog.getText',return_value=('Phone',True)),patch('managed_ui.request_key_pin',return_value=('DummyPinOnly',True)),patch('yubikey_auth.enroll',return_value=(os.urandom(128),os.urandom(32),os.urandom(32))),patch('yubikey_auth.unlock') as old_key,patch.object(w,'key_request',side_effect=lambda f:f(threading.Event())),patch.object(w,'auto_sync'),patch.object(w,'warning') as warning:
+   with patch('managed_ui.QMessageBox.information') as instructions,patch.object(w,'password_prompt',return_value=(PW,True)),patch('managed_ui.QInputDialog.getText',return_value=('Phone',True)),patch('managed_ui.request_key_pin',return_value=('DummyPinOnly',True)),patch('yubikey_auth.enroll',return_value=(os.urandom(128),os.urandom(32),os.urandom(32))),patch('yubikey_auth.unlock') as old_key,patch.object(w,'key_request',side_effect=lambda f,**options:f(threading.Event(),lambda step:None) if options.get("enrollment") else f(threading.Event())),patch.object(w,'auto_sync'),patch.object(w,'warning') as warning:
     w.enroll();old_key.assert_not_called();warning.assert_not_called();self.assertIn('Unplug all',instructions.call_args_list[0].args[2])
    self.assertEqual(w.vault.yubikey_enrollments()[0],original)
    self.assertEqual([k['label'] for k in w.vault.yubikey_enrollments()],['Laptop','Phone'])
@@ -46,7 +46,7 @@ class KeySelection(unittest.TestCase):
    w.vault.lock()
    def hardware(keys,pin,event):
     self.assertEqual(len(keys),3);return next(k for k in keys if k['label']=='Backup'),values['Backup']
-   with patch('PySide6.QtWidgets.QInputDialog.getItem',return_value=('Backup',True)) as chooser,patch('managed_ui.request_key_pin',return_value=('DummyPinOnly',True)),patch('yubikey_auth.unlock_any',side_effect=hardware),patch.object(w,'key_request',side_effect=lambda f:f(threading.Event())),patch.object(w,'auto_sync'),patch.object(w,'warning') as warning:
+   with patch('PySide6.QtWidgets.QInputDialog.getItem',return_value=('Backup',True)) as chooser,patch('managed_ui.request_key_pin',return_value=('DummyPinOnly',True)),patch('yubikey_auth.unlock_any',side_effect=hardware),patch.object(w,'key_request',side_effect=lambda f,**options:f(threading.Event(),lambda step:None) if options.get("enrollment") else f(threading.Event())),patch.object(w,'auto_sync'),patch.object(w,'warning') as warning:
     w.unlock_key();warning.assert_not_called();chooser.assert_not_called();self.assertTrue(w.vault.unlocked)
    w.lock();w.close()
 if __name__=='__main__':unittest.main()

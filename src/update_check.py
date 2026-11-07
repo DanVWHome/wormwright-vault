@@ -11,11 +11,11 @@ from PySide6.QtWidgets import QDialog, QVBoxLayout, QLabel, QCheckBox, QComboBox
 from shiboken6 import isValid
 from platform_paths import data_home
 from sync import atomic_json
-from version import VERSION
+from version import VERSION, WINDOWS_PREVIEW
 
 FEED_URL = 'https://wormwright.com/updates/vault-windows.json'
 DOWNLOAD_URL = 'https://wormwright.com/vault-windows.html'
-CURRENT = VERSION + '-preview.1'
+CURRENT = VERSION + f'-preview.{WINDOWS_PREVIEW}'
 DAY = 86400
 MAX_BYTES = 65536
 
