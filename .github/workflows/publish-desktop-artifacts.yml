@@ -1,0 +1,55 @@
+name: Publish already-tested desktop preview artifacts
+on:
+  workflow_dispatch:
+    inputs:
+      build_run_id:
+        description: Desktop preview run with successful Windows and Fedora package jobs
+        required: true
+permissions:
+  contents: write
+  actions: read
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Validate package jobs and original source revision
+        id: build
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUILD_RUN_ID: ${{ inputs.build_run_id }}
+        run: |
+          python3 - <<'PY'
+          import subprocess,json,os
+          repo=os.environ['GITHUB_REPOSITORY'];run=os.environ['BUILD_RUN_ID']
+          assert run.isdigit()
+          def api(path):return json.loads(subprocess.check_output(['gh','api','repos/'+repo+path],text=True))
+          data=api('/actions/runs/'+run)
+          assert data['head_repository']['full_name']==repo
+          assert data['head_branch']=='main' and data['event']=='workflow_dispatch'
+          assert data['path']=='.github/workflows/desktop-platform-previews.yml'
+          jobs=api('/actions/runs/'+run+'/jobs')['jobs']
+          for name in ('windows','fedora'):
+              job=next(j for j in jobs if j['name']==name)
+              assert job['status']=='completed' and job['conclusion']=='success',name
+          revision=data['head_sha']
+          version=subprocess.check_output(['git','show',revision+':src/version.py'],text=True)
+          assert "VERSION = '0.3.11'" in version
+          with open(os.environ['GITHUB_OUTPUT'],'a') as output:output.write('revision='+revision+'\n')
+          print('Verified both successful package jobs and original build source:',revision)
+          PY
+      - name: Retrieve tested package artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUILD_RUN_ID: ${{ inputs.build_run_id }}
+        run: |
+          gh run download "$BUILD_RUN_ID" --name windows-preview-0.3.11 --dir preview-artifacts/windows-preview-0.3.11
+          gh run download "$BUILD_RUN_ID" --name fedora-preview-0.3.11 --dir preview-artifacts/fedora-preview-0.3.11
+      - name: Publish exact artifacts with original matching source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WORMWRIGHT_BUILD_REVISION: ${{ steps.build.outputs.revision }}
+        run: python3 packaging/publish-desktop-previews.py

@@ -7,13 +7,13 @@ import shutil
 import subprocess
 
 root = Path(__file__).resolve().parents[1]
-revision = os.environ['GITHUB_SHA']
+revision = os.environ.get('WORMWRIGHT_BUILD_REVISION', os.environ['GITHUB_SHA'])
 source = root / 'wormwright-desktop-0.3.11-preview-source.zip'
 subprocess.run(['git', 'archive', '--format=zip', '--output=' + str(source), revision], check=True)
 repo = os.environ['GITHUB_REPOSITORY']
 for platform, pattern in [('windows', ('*.exe', '*.zip')), ('fedora', ('*.rpm',))]:
     directory = root / 'preview-artifacts' / (platform + '-preview-0.3.11')
-    files = sorted(p for glob in pattern for p in directory.glob(glob))
+    files = sorted(p for glob in pattern for p in directory.rglob(glob))
     assert len(files) == (2 if platform == 'windows' else 1), files
     for name in ('DESKTOP-PREVIEWS-0.3.11.md',):
         shutil.copy2(root / 'docs' / name, directory / name)
