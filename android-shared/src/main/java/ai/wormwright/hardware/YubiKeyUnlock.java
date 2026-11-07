@@ -45,7 +45,11 @@ public final class YubiKeyUnlock {
     private final Handler ui = new Handler(Looper.getMainLooper());
     private volatile Attempt current;
     public interface Callback { void complete(JSONObject result); void failed(String message); }
-    public YubiKeyUnlock(Activity activity) { this.activity=activity; }
+    private final ForegroundNfcLease<YubiKitManager> nfcLease;
+    public YubiKeyUnlock(Activity activity) {
+        this.activity=activity;
+        nfcLease=new ForegroundNfcLease<>(manager->{try{manager.stopNfcDiscovery(activity);}catch(RuntimeException ignored){}});
+    }
     private boolean foreground=true;
     /** Only the exact USB permission overlay may temporarily pause discovery.
      * The host hides its content and cancels if it is actually stopped. */
@@ -60,7 +64,11 @@ public final class YubiKeyUnlock {
     public boolean active() { return current!=null; }
     public void cancel() {
         Attempt a=current; current=null;
-        if(a!=null) a.close();
+        if(a!=null) a.close(true);
+    }
+    /** Host must call this when actually leaving the foreground. */
+    public void stop() {
+        Attempt a=current;current=null;if(a!=null)a.close(false);nfcLease.release();
     }
     /** request contains public enrollment data only: full credential and salt. */
     public void unlock(JSONObject request, Callback done) { begin(request,false,done); }
@@ -101,7 +109,7 @@ public final class YubiKeyUnlock {
             try { a.manager=new YubiKitManager(activity);
                 a.manager.startUsbDiscovery(new UsbConfiguration().handlePermissions(false), device->ui.post(()->usbConnect(a,device)));
             } catch(RuntimeException e){fail(a,"USB key access is unavailable. Check device permissions and retry.");return;}
-            try { a.manager.startNfcDiscovery(new NfcConfiguration(),activity,device->connect(a,device)); }
+            try { nfcLease.release();a.manager.startNfcDiscovery(NfcReaderSettings.create(),activity,device->connect(a,device));a.nfcStarted=true; }
             catch(NfcNotAvailable e){note.append("\nNFC is unavailable or off; USB-C is still available.");}
             if(current!=a)return;
             a.timeout=()->fail(a,"YubiKey operation timed out. Reopen and try again.");ui.postDelayed(a.timeout,60000);
@@ -130,11 +138,12 @@ public final class YubiKeyUnlock {
         }catch(RuntimeException e){a.permissionPending=false;fail(a,"USB permission could not be requested. Existing vault data was kept.");}
     }
     private void progress(Attempt a,String stage,String message) {
-        a.stage=stage;ui.post(()->{if(current==a&&!a.cancelled&&a.note!=null)a.note.setText(message);});
+        a.stage=stage;ui.post(()->{if(current==a&&!a.cancelled&&a.note!=null)a.note.setText(a.nfc?"Keep the YubiKey against the phone until the vault opens. No gold-contact touch is needed for NFC.":message);});
     }
     private void connect(Attempt a,YubiKeyDevice device) {
         if(current!=a || a.cancelled || !a.claimed.compareAndSet(false,true))return;
-        progress(a,"CONNECT","Key connected. Reading its FIDO2 application…");
+        a.nfc=device.getTransport()==com.yubico.yubikit.core.Transport.NFC;
+        progress(a,"CONNECT",a.nfc?"NFC key detected. Hold it steadily against the phone until finished.":"Key connected. Reading its FIDO2 application…");
         Ctap2Session.create(device, value->{
             JSONObject result=null;String error=null;
             try(Ctap2Session session=value.getValue()) {
@@ -186,7 +195,7 @@ public final class YubiKeyUnlock {
             } finally { a.session=null;if(a.pin!=null)Arrays.fill(a.pin,'\0'); }
             final JSONObject output=result;final String problem=error;
             ui.post(()->{if(current!=a||a.cancelled)return;
-                Runnable finish=()->{if(current!=a||a.cancelled)return;current=null;a.close();if(problem!=null)a.done.failed(problem);else a.done.complete(output);};
+                Runnable finish=()->{if(current!=a||a.cancelled)return;current=null;a.close(true);if(problem!=null)a.done.failed(problem);else a.done.complete(output);};
                 if(foreground)finish.run();else a.pending=finish;
             });
         });
@@ -215,7 +224,7 @@ public final class YubiKeyUnlock {
         AlgorithmParameters p=AlgorithmParameters.getInstance("EC");p.init(new ECGenParameterSpec("secp256r1"));
         return KeyFactory.getInstance("EC").generatePublic(new ECPublicKeySpec(new ECPoint(new BigInteger(1,(byte[])cose.get(-2)),new BigInteger(1,(byte[])cose.get(-3))),p.getParameterSpec(ECParameterSpec.class)));
     }
-    private void fail(Attempt a,String message){if(current!=a)return;if(!foreground){a.close();a.pending=()->fail(a,message);return;}current=null;a.close();a.done.failed(message);}
+    private void fail(Attempt a,String message){if(current!=a)return;if(!foreground){a.close(false);a.pending=()->fail(a,message);return;}current=null;a.close(true);a.done.failed(message);}
     private static byte[] random(int n){byte[] b=new byte[n];new SecureRandom().nextBytes(b);return b;}
     private static byte[] clientData(String type,byte[] challenge)throws Exception{return new JSONObject().put("type",type).put("challenge",b64url(challenge)).put("origin","https://"+RP_ID).put("crossOrigin",false).toString().getBytes(StandardCharsets.UTF_8);}
     public static String b64(byte[] v){return Base64.encodeToString(v,Base64.NO_WRAP);}
@@ -223,16 +232,16 @@ public final class YubiKeyUnlock {
     private static byte[] decode(String v){return Base64.decode(v,Base64.DEFAULT);}
     private final class Attempt {
         final JSONObject request;final boolean enroll;final Callback done;final AtomicBoolean claimed=new AtomicBoolean();
-        volatile String stage="DISCOVERY";TextView note;
+        volatile String stage="DISCOVERY";volatile boolean nfc;boolean nfcStarted;TextView note;
         final CommandState command=new CommandState(){
             @Override public void onKeepAliveStatus(byte status){
-                if(status==STATUS_UPNEEDED)ui.post(()->{if(current==Attempt.this&&!cancelled&&note!=null){dialog.setTitle("Touch your YubiKey now");note.setTextSize(22);note.setTypeface(null,android.graphics.Typeface.BOLD);note.setText(stage.equals("VERIFY-NEW")?"Touch the gold contact again now to verify the new key.":"The key is ready. Touch its flashing gold contact to continue.");}});
+                if(status==STATUS_UPNEEDED)ui.post(()->{if(current==Attempt.this&&!cancelled&&note!=null&&!nfc){dialog.setTitle("Touch your YubiKey now");note.setTextSize(22);note.setTypeface(null,android.graphics.Typeface.BOLD);note.setText(stage.equals("VERIFY-NEW")?"Touch the gold contact again now to verify the new key.":"The key is ready. Touch its flashing gold contact to continue.");}});
             }
         };volatile boolean cancelled;char[] pin;volatile Ctap2Session session;
         YubiKitManager manager;AlertDialog dialog;Runnable timeout,pending;
         boolean permissionPending;BroadcastReceiver permissionReceiver;
         void unregisterPermission(){if(permissionReceiver!=null){try{activity.unregisterReceiver(permissionReceiver);}catch(IllegalArgumentException ignored){}permissionReceiver=null;}}
         Attempt(JSONObject r,boolean e,Callback d){request=r;enroll=e;done=d;}
-        void close(){cancelled=true;permissionPending=false;pending=null;unregisterPermission();command.cancel();if(timeout!=null)ui.removeCallbacks(timeout);if(manager!=null){try{manager.stopNfcDiscovery(activity);}catch(RuntimeException ignored){}try{manager.stopUsbDiscovery();}catch(RuntimeException ignored){}}if(dialog!=null)dialog.dismiss();if(pin!=null)Arrays.fill(pin,'\0');}
+        void close(boolean keepNfc){cancelled=true;permissionPending=false;pending=null;unregisterPermission();command.cancel();if(timeout!=null)ui.removeCallbacks(timeout);if(manager!=null){if(nfcStarted){if(keepNfc)nfcLease.retain(manager);else try{manager.stopNfcDiscovery(activity);}catch(RuntimeException ignored){}}try{manager.stopUsbDiscovery();}catch(RuntimeException ignored){}}if(dialog!=null)dialog.dismiss();if(pin!=null)Arrays.fill(pin,'\0');}
     }
 }

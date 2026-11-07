@@ -670,9 +670,9 @@ public class MainActivity extends Activity {
     @Override protected void onResume(){super.onResume();resumed=true;maintenance.onResume();if(!hardwareAuthorization)root.setVisibility(View.VISIBLE);usbPermissionPause=false;hardware.resume();if(startupChoicePending){startupChoicePending=false;ui.post(()->{if(resumed&&!busy&&!authenticating)switchVault();});}if(pendingAuthentication!=null)ui.post(()->{if(pendingAuthentication!=null)pendingAuthentication.run();});}
     @Override protected void onPause(){maintenance.onPause();resumed=false;
         if(hardware.pauseForUsbPermission()) { usbPermissionPause=true;root.setVisibility(View.INVISIBLE);clearClipboard(); }
-        else if(hardwareAuthorization&&authenticating) { unlocked=false;root.setVisibility(View.INVISIBLE);clearClipboard(); }
-        else lock("Vault locked. Authenticate to reopen.",authenticating);
+        else if(hardwareAuthorization&&authenticating) { hardware.stop();unlocked=false;root.setVisibility(View.INVISIBLE);clearClipboard(); }
+        else {hardware.stop();lock("Vault locked. Authenticate to reopen.",authenticating);}
         super.onPause();}
-    @Override protected void onStop(){if(usbPermissionPause)lock("Vault locked. Reopen to retry YubiKey authorization.");super.onStop();}
-    @Override protected void onDestroy(){hardwareAuthorization=false;ui.removeCallbacks(hardwareAuthorizationTimeout);hardware.cancel();worker.execute(()->engine().callAttr("lock"));maintenance.onDestroy();++authVersion;pendingAuthentication=null;if(auth!=null)auth.cancel();if(pendingExport!=null)pendingExport.delete();super.onDestroy();}
+    @Override protected void onStop(){if(usbPermissionPause){hardware.stop();lock("Vault locked. Reopen to retry YubiKey authorization.");}super.onStop();}
+    @Override protected void onDestroy(){hardwareAuthorization=false;ui.removeCallbacks(hardwareAuthorizationTimeout);hardware.stop();worker.execute(()->engine().callAttr("lock"));maintenance.onDestroy();++authVersion;pendingAuthentication=null;if(auth!=null)auth.cancel();if(pendingExport!=null)pendingExport.delete();super.onDestroy();}
 }
