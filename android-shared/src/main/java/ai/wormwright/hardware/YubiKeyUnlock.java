@@ -1,6 +1,11 @@
 package ai.wormwright.hardware;
 
 import android.app.Activity;
+import android.app.PendingIntent;
+import android.content.*;
+import android.hardware.usb.UsbManager;
+import android.os.Build;
+import com.yubico.yubikit.android.transport.usb.UsbYubiKeyDevice;
 import android.app.AlertDialog;
 import android.os.Handler;
 import android.os.Looper;
@@ -41,6 +46,17 @@ public final class YubiKeyUnlock {
     private volatile Attempt current;
     public interface Callback { void complete(JSONObject result); void failed(String message); }
     public YubiKeyUnlock(Activity activity) { this.activity=activity; }
+    private boolean foreground=true;
+    /** Only the exact USB permission overlay may temporarily pause discovery.
+     * The host hides its content and cancels if it is actually stopped. */
+    public boolean pauseForUsbPermission() {
+        if(current==null||!current.permissionPending)return false;
+        foreground=false;return true;
+    }
+    public void resume() {
+        foreground=true;Attempt a=current;
+        if(a!=null&&a.pending!=null){Runnable next=a.pending;a.pending=null;ui.post(()->{if(current==a)next.run();});}
+    }
     public boolean active() { return current!=null; }
     public void cancel() {
         Attempt a=current; current=null;
@@ -83,7 +99,7 @@ public final class YubiKeyUnlock {
             input.setVisibility(android.view.View.GONE);a.dialog.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(false);
             note.setText("Connect one YubiKey over USB-C, or hold it against the NFC reader. Keep it in place. Touch the gold contact if requested.");
             try { a.manager=new YubiKitManager(activity);
-                a.manager.startUsbDiscovery(new UsbConfiguration(), device->connect(a,device));
+                a.manager.startUsbDiscovery(new UsbConfiguration().handlePermissions(false), device->ui.post(()->usbConnect(a,device)));
             } catch(RuntimeException e){fail(a,"USB key access is unavailable. Check device permissions and retry.");return;}
             try { a.manager.startNfcDiscovery(new NfcConfiguration(),activity,device->connect(a,device)); }
             catch(NfcNotAvailable e){note.append("\nNFC is unavailable or off; USB-C is still available.");}
@@ -91,8 +107,30 @@ public final class YubiKeyUnlock {
             a.timeout=()->fail(a,"YubiKey operation timed out. Reopen and try again.");ui.postDelayed(a.timeout,60000);
         });
     }
+    private void usbConnect(Attempt a,UsbYubiKeyDevice device) {
+        if(current!=a||a.cancelled)return;
+        if(device.hasPermission()){connect(a,device);return;}
+        if(a.permissionPending)return;
+        String action=activity.getPackageName()+".YUBIKEY_PERMISSION."+UUID.randomUUID();
+        a.permissionReceiver=new BroadcastReceiver(){
+            @Override public void onReceive(Context context,Intent intent){
+                if(!action.equals(intent.getAction())||current!=a)return;
+                a.permissionPending=false;a.unregisterPermission();
+                Runnable next=()->{if(current!=a)return;if(device.hasPermission())connect(a,device);else fail(a,"USB permission was not granted. No key was added. Retry and allow access to the YubiKey.");};
+                if(foreground)next.run();else a.pending=next;
+            }
+        };
+        if(Build.VERSION.SDK_INT>=33)activity.registerReceiver(a.permissionReceiver,new IntentFilter(action),Context.RECEIVER_NOT_EXPORTED);
+        else activity.registerReceiver(a.permissionReceiver,new IntentFilter(action));
+        a.permissionPending=true;
+        try {
+            int flags=PendingIntent.FLAG_UPDATE_CURRENT;if(Build.VERSION.SDK_INT>=31)flags|=PendingIntent.FLAG_MUTABLE;
+            PendingIntent permission=PendingIntent.getBroadcast(activity,0,new Intent(action).setPackage(activity.getPackageName()),flags);
+            ((UsbManager)activity.getSystemService(Context.USB_SERVICE)).requestPermission(device.getUsbDevice(),permission);
+        }catch(RuntimeException e){a.permissionPending=false;fail(a,"USB permission could not be requested. Existing vault data was kept.");}
+    }
     private void connect(Attempt a,YubiKeyDevice device) {
-        if(current!=a || !a.claimed.compareAndSet(false,true))return;
+        if(current!=a || a.cancelled || !a.claimed.compareAndSet(false,true))return;
         Ctap2Session.create(device, value->{
             JSONObject result=null;String error=null;
             try(Ctap2Session session=value.getValue()) {
@@ -138,7 +176,10 @@ public final class YubiKeyUnlock {
                 error="YubiKey authentication failed. Check the key and PIN, then retry explicitly. Wrong PINs consume the key’s limited attempts; the app never retries automatically. Existing vault data was kept.";
             } finally { a.session=null;if(a.pin!=null)Arrays.fill(a.pin,'\0'); }
             final JSONObject output=result;final String problem=error;
-            ui.post(()->{if(current!=a||a.cancelled)return;current=null;a.close();if(problem!=null)a.done.failed(problem);else a.done.complete(output);});
+            ui.post(()->{if(current!=a||a.cancelled)return;
+                Runnable finish=()->{if(current!=a||a.cancelled)return;current=null;a.close();if(problem!=null)a.done.failed(problem);else a.done.complete(output);};
+                if(foreground)finish.run();else a.pending=finish;
+            });
         });
     }
     private static byte[] assertKey(BasicWebAuthnClient client,AttestedCredentialData cred,byte[] salt,Attempt a)throws Exception {
@@ -165,7 +206,7 @@ public final class YubiKeyUnlock {
         AlgorithmParameters p=AlgorithmParameters.getInstance("EC");p.init(new ECGenParameterSpec("secp256r1"));
         return KeyFactory.getInstance("EC").generatePublic(new ECPublicKeySpec(new ECPoint(new BigInteger(1,(byte[])cose.get(-2)),new BigInteger(1,(byte[])cose.get(-3))),p.getParameterSpec(ECParameterSpec.class)));
     }
-    private void fail(Attempt a,String message){if(current!=a)return;current=null;a.close();a.done.failed(message);}
+    private void fail(Attempt a,String message){if(current!=a)return;if(!foreground){a.close();a.pending=()->fail(a,message);return;}current=null;a.close();a.done.failed(message);}
     private static byte[] random(int n){byte[] b=new byte[n];new SecureRandom().nextBytes(b);return b;}
     private static byte[] clientData(String type,byte[] challenge)throws Exception{return new JSONObject().put("type",type).put("challenge",b64url(challenge)).put("origin","https://"+RP_ID).put("crossOrigin",false).toString().getBytes(StandardCharsets.UTF_8);}
     public static String b64(byte[] v){return Base64.encodeToString(v,Base64.NO_WRAP);}
@@ -174,8 +215,10 @@ public final class YubiKeyUnlock {
     private final class Attempt {
         final JSONObject request;final boolean enroll;final Callback done;final AtomicBoolean claimed=new AtomicBoolean();
         final CommandState command=new CommandState();volatile boolean cancelled;char[] pin;volatile Ctap2Session session;
-        YubiKitManager manager;AlertDialog dialog;Runnable timeout;
+        YubiKitManager manager;AlertDialog dialog;Runnable timeout,pending;
+        boolean permissionPending;BroadcastReceiver permissionReceiver;
+        void unregisterPermission(){if(permissionReceiver!=null){try{activity.unregisterReceiver(permissionReceiver);}catch(IllegalArgumentException ignored){}permissionReceiver=null;}}
         Attempt(JSONObject r,boolean e,Callback d){request=r;enroll=e;done=d;}
-        void close(){cancelled=true;command.cancel();if(timeout!=null)ui.removeCallbacks(timeout);if(manager!=null){try{manager.stopNfcDiscovery(activity);}catch(RuntimeException ignored){}try{manager.stopUsbDiscovery();}catch(RuntimeException ignored){}}if(dialog!=null)dialog.dismiss();if(pin!=null)Arrays.fill(pin,'\0');}
+        void close(){cancelled=true;permissionPending=false;pending=null;unregisterPermission();command.cancel();if(timeout!=null)ui.removeCallbacks(timeout);if(manager!=null){try{manager.stopNfcDiscovery(activity);}catch(RuntimeException ignored){}try{manager.stopUsbDiscovery();}catch(RuntimeException ignored){}}if(dialog!=null)dialog.dismiss();if(pin!=null)Arrays.fill(pin,'\0');}
     }
 }

@@ -17,7 +17,8 @@ removing a key writes a version-2 key collection. Existing credentials, salts,
 wrapped keys, account passwords and encrypted entries are preserved.
 
 Desktop: unlock normally. Use Add YubiKey, authenticate, give it a unique name,
-and perform the normal PIN/touch enrollment. Repeat for the other keys.
+Unplug all current YubiKeys first, authorize using your account password, then
+connect only the new key when prompted and perform its PIN/touch enrollment. Repeat for the other keys.
 Manage YubiKeys renames/removes a selected enrollment after fresh authentication.
 Only current-account keys are displayed. A legacy key starts as Original key;
 rename it Laptop if appropriate. PINs can be different on each physical key.
@@ -28,8 +29,8 @@ selector. Then enter that key's PIN and use NFC or USB-C. No PIN is trialled
 against other keys. Normal password unlock remains available.
 
 Pocket: unlock normally, then More > Enroll YubiKey. Confirm the alternative
-unlock method, authenticate again, and name/enroll each key. More > Manage
-YubiKeys renames or removes a key after fresh phone/password authentication.
+unlock method, confirm your phone credential, and name/enroll each key. More > Manage
+YubiKeys renames or removes a key after fresh phone authentication.
 The YubiKey path replaces phone authentication and any optional vault password
 for that unlock. Existing phone authentication remains available.
 

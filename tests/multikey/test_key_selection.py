@@ -27,6 +27,16 @@ class KeySelection(unittest.TestCase):
     w.enroll_key();warning.assert_not_called();replace.assert_not_called()
    self.assertEqual(w.vault.yubikey_enrollments()[0],original)
    self.assertEqual([k['label'] for k in w.vault.yubikey_enrollments()],['Laptop','Phone']);w.lock();w.close()
+ def test_manager_enrollment_authorizes_with_password_not_connected_old_key(self):
+  with tempfile.TemporaryDirectory() as folder:
+   w=ManagedWindow(pathlib.Path(folder)/'vault.sqlite',False);w.auto_timer.stop();w.vault.create(PW)
+   w.vault.enroll_yubikey(os.urandom(128),os.urandom(32),os.urandom(32),'Laptop')
+   original=w.vault.yubikey_enrollments()[0]
+   with patch('managed_ui.QMessageBox.information') as instructions,patch.object(w,'password_prompt',return_value=(PW,True)),patch('managed_ui.QInputDialog.getText',return_value=('Phone',True)),patch('managed_ui.request_key_pin',return_value=('DummyPinOnly',True)),patch('yubikey_auth.enroll',return_value=(os.urandom(128),os.urandom(32),os.urandom(32))),patch('yubikey_auth.unlock') as old_key,patch.object(w,'key_request',side_effect=lambda f:f(threading.Event())),patch.object(w,'auto_sync'),patch.object(w,'warning') as warning:
+    w.enroll();old_key.assert_not_called();warning.assert_not_called();self.assertIn('Unplug all',instructions.call_args_list[0].args[2])
+   self.assertEqual(w.vault.yubikey_enrollments()[0],original)
+   self.assertEqual([k['label'] for k in w.vault.yubikey_enrollments()],['Laptop','Phone'])
+   w.lock();w.close()
  def test_managed_unlock_uses_selected_backup(self):
   with tempfile.TemporaryDirectory() as folder:
    w=ManagedWindow(pathlib.Path(folder)/'vault.sqlite',False);w.auto_timer.stop();w.vault.create(PW)

@@ -472,6 +472,7 @@ class Window(QMainWindow):
             pin = None
 
     def enroll_key(self):
+        QMessageBox.information(self, 'Before adding a YubiKey', 'Unplug all currently connected YubiKeys first.\n\nNext, authorize with your vault account password. When prompted for the new key, plug in only the YubiKey you want to add. Your existing keys will remain enrolled.')
         password, ok = QInputDialog.getText(self, 'Authorize YubiKey enrollment', 'Current fallback/master password:', QLineEdit.EchoMode.Password)
         if not ok:
             return
@@ -483,7 +484,7 @@ class Window(QMainWindow):
             name, ok = QInputDialog.getText(self, 'Name this key', 'Key name (Laptop, Phone, Backup…):')
             if not ok: return
             name = label_for(keys, name)
-            pin, ok = request_key_pin(self, 'Set up YubiKey', 'Existing YubiKey FIDO2 PIN:')
+            pin, ok = request_key_pin(self, 'Set up new YubiKey', 'Plug in only the NEW YubiKey, then enter its FIDO2 PIN:')
             if not ok:
                 return
             if not pin and sys.platform != 'win32':

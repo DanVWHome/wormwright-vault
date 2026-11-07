@@ -33,6 +33,8 @@ public class MainActivity extends Activity {
     private String progressText = "Working…";
     private final java.util.Map<View, Boolean> disabledControls = new java.util.IdentityHashMap<>();
     private boolean unlocked, sample, busy, resumed;
+    private boolean hardwareAuthorization, usbPermissionPause;
+    private final Runnable hardwareAuthorizationTimeout = () -> lock("Phone authorization timed out. Unlock to retry.");
     private volatile int epoch;
     private CancellationSignal auth;
     private int authVersion;
@@ -135,7 +137,7 @@ public class MainActivity extends Activity {
             if(unlocked&&!sample){menu.getMenu().add("Enroll YubiKey");menu.getMenu().add("Manage YubiKeys");}
             menu.getMenu().add("Backup and recovery"); menu.getMenu().add("About"); menu.getMenu().add("Wormwright Website");
             menu.setOnMenuItemClickListener(item -> { String choice=item.getTitle().toString();
-                if(choice.equals("Manage YubiKeys")) unlockPersonal(this::manageHardware); else if(choice.equals("Enroll YubiKey")) confirmEnrollHardware(); else if(choice.equals("Recently deleted")) recentlyDeleted(); else if(choice.equals("Export portable backup")) export(false); else if(choice.equals("Export for desktop and NAS")) export(true); else if(choice.equals("Change optional vault password")) changePassword(); else if(choice.equals("Create new vault")) newVault(); else if(choice.equals("Vaults")) switchVault(); else if(choice.equals("Rename current vault")) renameVault(); else if(choice.equals("Delete current vault")) deleteCurrentVault(); else if(choice.equals("Delete vault…")) chooseVaultForDeletion(); else if(choice.equals("Delete all phone vaults")) deletePhoneVaults(); else if(choice.equals("Delete selected backups")) maintenance.chooseBackups(); else if (choice.equals("About")) about(); else if (choice.equals("Backup and recovery")) help(); else openWebsite(); return true; }); menu.show();
+                if(choice.equals("Manage YubiKeys")) authorizeHardware(this::manageHardware); else if(choice.equals("Enroll YubiKey")) confirmEnrollHardware(); else if(choice.equals("Recently deleted")) recentlyDeleted(); else if(choice.equals("Export portable backup")) export(false); else if(choice.equals("Export for desktop and NAS")) export(true); else if(choice.equals("Change optional vault password")) changePassword(); else if(choice.equals("Create new vault")) newVault(); else if(choice.equals("Vaults")) switchVault(); else if(choice.equals("Rename current vault")) renameVault(); else if(choice.equals("Delete current vault")) deleteCurrentVault(); else if(choice.equals("Delete vault…")) chooseVaultForDeletion(); else if(choice.equals("Delete all phone vaults")) deletePhoneVaults(); else if(choice.equals("Delete selected backups")) maintenance.chooseBackups(); else if (choice.equals("About")) about(); else if (choice.equals("Backup and recovery")) help(); else openWebsite(); return true; }); menu.show();
         });
         heading.addView(helpButton); root.addView(heading); if(!compact)root.addView(text("Version " + installedVersion())); status = text(""); if(compact)status.setVisibility(View.GONE); root.addView(status);
         progressRow = column(); LinearLayout loading = new LinearLayout(this); loading.setGravity(Gravity.CENTER_VERTICAL);
@@ -189,14 +191,14 @@ public class MainActivity extends Activity {
                             if (request != authVersion || !resumed || isFinishing()) return;
                             authenticating = false; auth = null; pendingAuthentication = null;
                             try { if (r.getCryptoObject() == null || r.getCryptoObject().getCipher() == null) throw new IllegalStateException(); done.accept(r.getCryptoObject().getCipher()); }
-                            catch (Exception e) { message(safeError(e)); }
+                            catch (Exception e) { if(hardwareAuthorization)lock("Phone authorization failed. No key was added.");else message(safeError(e)); }
                         };
                         if (resumed) pendingAuthentication.run();
                     }
                     @Override public void onAuthenticationError(int code, CharSequence error) {
                         if (request != authVersion) return;
                         authenticating = false; auth = null; pendingAuthentication = null;
-                        message("Authentication cancelled or unavailable. Vault remains locked.");
+                        if(hardwareAuthorization)lock("Phone authorization cancelled. No key was added.");else message("Authentication cancelled or unavailable. Vault remains locked.");
                     }
                     @Override public void onAuthenticationFailed() { if (request == authVersion) message("Authentication failed. Try again or use the phone credential."); }
                 });
@@ -219,9 +221,27 @@ public class MainActivity extends Activity {
     private void confirmEnrollHardware() {
         if(busy||sample||!unlocked)return;
         dialog=new AlertDialog.Builder(this).setTitle("Enroll a YubiKey for this vault?")
-            .setMessage("This key will unlock this vault over NFC or USB-C with its own PIN, instead of phone authentication and any optional vault password. Phone unlock and portable-backup recovery remain available. Up to four named keys can be enrolled; adding one preserves the others. You will authenticate this vault again before enrollment.")
-            .setNegativeButton("Cancel",null).setPositiveButton("Continue",(d,w)->unlockPersonal(this::nameHardware)).create();
+            .setMessage("This key will unlock this vault over NFC or USB-C with its own PIN, instead of phone authentication and any optional vault password. Phone unlock and portable-backup recovery remain available. Up to four named keys can be enrolled; adding one preserves the others. Confirm your phone credential before enrollment. You do not need to re-enter the optional vault password.")
+            .setNegativeButton("Cancel",null).setPositiveButton("Continue",(d,w)->authorizeHardware(this::nameHardware)).create();
         dialog.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);dialog.show();
+    }
+    /** The vault is already unlocked. Fresh device authentication authorizes only
+     * this hardware-management action; it does not decrypt the password envelope again. */
+    private void authorizeHardware(Runnable after) {
+        if(busy||sample||!unlocked||active==null)return;
+        final int token=epoch;final String slot=active.optString("slot");
+        try {
+            hardwareAuthorization=true;
+            ui.removeCallbacks(idle);ui.postDelayed(hardwareAuthorizationTimeout,60000);
+            authenticate(DeviceKey.cipher(slot,false,decode(active.getString("iv"))),c->{
+                // Verify the authenticated Keystore operation, discarding the envelope.
+                byte[] envelope=DeviceKey.finish(slot,c,decode(active.getString("wrapped")));
+                java.util.Arrays.fill(envelope,(byte)0);
+                if(!hardwareAuthorization||token!=epoch||!slot.equals(active.optString("slot")))return;
+                hardwareAuthorization=false;ui.removeCallbacks(hardwareAuthorizationTimeout);
+                unlocked=true;vaultScreen();onUserInteraction();after.run();
+            });
+        } catch(Exception e) { lock("Phone authorization failed. Unlock to retry."); }
     }
     private void nameHardware() {
         if(busy||sample||!unlocked)return;
@@ -629,12 +649,18 @@ public class MainActivity extends Activity {
     private void lock(String note) { lock(note,false); }
     private void lock(String note,boolean keepAuthentication) {
         if(hardware!=null)hardware.cancel();
+        hardwareAuthorization=false;usbPermissionPause=false;ui.removeCallbacks(hardwareAuthorizationTimeout);
         epoch++;unlocked=false;setBusy(false, "");
         if(!keepAuthentication) { ++authVersion;authenticating=false;pendingAuthentication=null;if(auth!=null)auth.cancel();auth=null; }
         if(dialog!=null)dialog.dismiss();ui.removeCallbacks(idle);clearClipboard();worker.execute(()->engine().callAttr("lock"));home(note);
     }
     @Override public void onUserInteraction(){super.onUserInteraction();if(unlocked){ui.removeCallbacks(idle);ui.postDelayed(idle,120000);}}
-    @Override protected void onResume(){super.onResume();resumed=true;maintenance.onResume();if(startupChoicePending){startupChoicePending=false;ui.post(()->{if(resumed&&!busy&&!authenticating)switchVault();});}if(pendingAuthentication!=null)ui.post(()->{if(pendingAuthentication!=null)pendingAuthentication.run();});}
-    @Override protected void onPause(){maintenance.onPause();resumed=false;lock("Vault locked. Authenticate to reopen.",authenticating);super.onPause();}
-    @Override protected void onDestroy(){maintenance.onDestroy();++authVersion;pendingAuthentication=null;if(auth!=null)auth.cancel();if(pendingExport!=null)pendingExport.delete();super.onDestroy();}
+    @Override protected void onResume(){super.onResume();resumed=true;maintenance.onResume();if(!hardwareAuthorization)root.setVisibility(View.VISIBLE);usbPermissionPause=false;hardware.resume();if(startupChoicePending){startupChoicePending=false;ui.post(()->{if(resumed&&!busy&&!authenticating)switchVault();});}if(pendingAuthentication!=null)ui.post(()->{if(pendingAuthentication!=null)pendingAuthentication.run();});}
+    @Override protected void onPause(){maintenance.onPause();resumed=false;
+        if(hardware.pauseForUsbPermission()) { usbPermissionPause=true;root.setVisibility(View.INVISIBLE);clearClipboard(); }
+        else if(hardwareAuthorization&&authenticating) { unlocked=false;root.setVisibility(View.INVISIBLE);clearClipboard(); }
+        else lock("Vault locked. Authenticate to reopen.",authenticating);
+        super.onPause();}
+    @Override protected void onStop(){if(usbPermissionPause)lock("Vault locked. Reopen to retry YubiKey authorization.");super.onStop();}
+    @Override protected void onDestroy(){hardwareAuthorization=false;ui.removeCallbacks(hardwareAuthorizationTimeout);hardware.cancel();worker.execute(()->engine().callAttr("lock"));maintenance.onDestroy();++authVersion;pendingAuthentication=null;if(auth!=null)auth.cancel();if(pendingExport!=null)pendingExport.delete();super.onDestroy();}
 }

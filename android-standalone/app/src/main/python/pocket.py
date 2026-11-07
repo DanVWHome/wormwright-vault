@@ -210,6 +210,16 @@ def enroll_hardware(document):
     with sqlite3.connect(backup) as db:
         source.db.backup(db)
     source.enroll_yubikey(credential, salt, value, data.get('label'))
+    # Reopen from disk and prove this newly saved enrollment can unlock before
+    # reporting success. Keep the current unlocked session intact.
+    check = ManagedVault(source.path)
+    try:
+        settings = next((key for key in check.yubikey_enrollments() if key['credential'] == credential), None)
+        if settings is None:
+            raise VaultError('Key enrollment was not saved. Unlock normally and retry.')
+        check.unlock_yubikey(settings, value)
+    finally:
+        check.lock()
     return 'YubiKey added. Existing keys and phone authentication remain available. Keep a portable backup.'
 
 

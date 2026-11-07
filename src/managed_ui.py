@@ -848,13 +848,20 @@ class ManagedWindow(QMainWindow):
             self.master.clear();self.touch();self.history.remember(self.vault.path);managed_locations.remember(vault=self.vault.path);self.update_state();self.refresh();self.complete_lookup();self.auto_sync()
         except Exception as error:self.warning(error)
     def enroll(self):
-        if not self.reauthenticate():return
+        QMessageBox.information(self, 'Before adding a YubiKey', 'Unplug all currently connected YubiKeys first.\n\nNext, authorize with your vault account password. When prompted for the new key, plug in only the YubiKey you want to add. Your existing keys will remain enrolled.')
+        # A newly connected key cannot authenticate an existing enrollment.
+        # Authorize with the account password before talking to the new key.
+        password,ok=self.password_prompt()
+        if not ok:return
+        try:self.vault.verify_password(password)
+        except Exception as error:self.warning(error);return
+        finally:password=None
         try:
             from hardware_keys import label_for
             name,ok=QInputDialog.getText(self,'Name this key','Key name (Laptop, Phone, Backup…):')
             if not ok:return
             name=label_for(self.vault.yubikey_enrollments(),name)
-            pin,ok=request_key_pin(self, 'Enroll YubiKey', 'FIDO2 PIN:')
+            pin,ok=request_key_pin(self, 'Enroll new YubiKey', 'Plug in only the NEW YubiKey, then enter its FIDO2 PIN:')
             if not ok:return
             from yubikey_auth import enroll
             credential,salt,response=self.key_request(lambda event:enroll(pin,event));self.vault.enroll_yubikey(credential,salt,response,name);self.update_state();self.auto_sync()

@@ -45,6 +45,7 @@ import java.util.concurrent.Executors;
 /** A local, read-only preview. All crypto and SQLite work uses one worker. */
 public class MainActivity extends Activity {
     private ai.wormwright.hardware.YubiKeyUnlock hardware;
+    private boolean usbPermissionPause;
     private static final int IMPORT = 100;
     private static final int EXPORT = 101;
     private static final int NAVY = Color.rgb(23, 45, 67);
@@ -762,10 +763,11 @@ public class MainActivity extends Activity {
             });
         });
     }
-    @Override protected void onResume() { super.onResume(); resumed = true; maintenance.onResume(); if(startupChoicePending){startupChoicePending=false;handler.post(()->{if(resumed&&!busy)listVaults(false);});} }
+    @Override protected void onResume() { super.onResume(); resumed = true; maintenance.onResume();usbPermissionPause=false;root.setVisibility(View.VISIBLE);hardware.resume(); if(startupChoicePending){startupChoicePending=false;handler.post(()->{if(resumed&&!busy)listVaults(false);});} }
     @Override protected void onPause() {
-        maintenance.onPause(); resumed = false; lockNow("Vault locked. Unlock to continue."); super.onPause();
+        maintenance.onPause(); resumed = false;if(hardware.pauseForUsbPermission()){usbPermissionPause=true;root.setVisibility(View.INVISIBLE);clearOwnedClipboard();}else lockNow("Vault locked. Unlock to continue."); super.onPause();
     }
+    @Override protected void onStop(){if(usbPermissionPause){usbPermissionPause=false;lockNow("Vault locked. Reopen to retry YubiKey authorization.");}super.onStop();}
     @Override public void onBackPressed() {
         if (unlocked) lockNow("Vault locked."); else super.onBackPressed();
     }
