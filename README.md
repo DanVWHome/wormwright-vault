@@ -24,6 +24,17 @@ The Windows preview has been tested on one Windows laptop: password and enrolled
 YubiKey unlock, remembered vault and sync settings, and window sizing worked.
 Other Windows machines and all NAS scenarios have not been verified.
 
+## Wormwright Notes for Android
+
+A separate notes and checklist app, with offline autosave, search, pins, trash,
+file backup/restore and manual SMB NAS backups. No ads or in-app purchases.
+
+- [Download and install Wormwright Notes](https://wormwright.com/notes.html)
+- [Notes preview 0.1.0-preview.2](https://github.com/DanVWHome/wormwright-vault/releases/tag/notes-v0.1.0-preview.2)
+- [Notes source, build and backup instructions](apps/wormwright-notes/README.md)
+
+This is a separate app; it does not open or modify Vault databases.
+
 ## NAS sync and compatibility
 
 Use **SMB**. FTP-mounted shares have shown intermittent sync failures and incorrect

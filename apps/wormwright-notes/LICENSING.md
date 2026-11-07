@@ -1,0 +1,1 @@
+Wormwright Notes application code is licensed under GNU GPL version 3, as detailed in LICENSE. NAS credential storage is adapted from Wormwright Vault. Third-party libraries retain the licenses listed in THIRD-PARTY-NOTICES.txt and licenses/. The Wormwright name and mascot branding are separate from the application code; this source release does not grant trademark rights.
