@@ -10,7 +10,7 @@ names = ['vault', 'managed_vault', 'sync', 'managed_sync', 'merge_sync',
          'sync_settings_baseline', 'sync_lock_cleanup', 'gvfs_upload', 'conflicts', 'history', 'backup', 'import',
          'export', 'fido_protocol', 'windows_control', 'windows_local_sync', 'windows_debug', 'update_check', 'vault_cleanup', 'vault_names', 'password_focus']
 if sys.platform != 'win32':
-    names.append('requests')
+    names.extend(['requests', 'control_paths'])
 with tempfile.TemporaryDirectory(prefix='wormwright-portable-') as directory:
     environment = {**os.environ, 'QT_QPA_PLATFORM': 'offscreen',
                    'XDG_DATA_HOME': directory, 'LOCALAPPDATA': directory,

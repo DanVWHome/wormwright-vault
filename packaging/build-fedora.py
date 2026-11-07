@@ -37,7 +37,7 @@ def prepare(source, stage):
     docs = stage / 'usr/share/doc/wormwright-vault'
     shutil.copytree(source / 'usr/share/doc/vanwormai-vault', docs)
     shutil.copy2(ROOT / 'docs/FEDORA.md', docs / 'FEDORA.md')
-    for name in ('RELEASE-0.3.11.md', 'DESKTOP-PREVIEWS-0.3.11.md', 'FOUR-YUBIKEYS.md'):
+    for name in ('RELEASE-0.3.11.md', 'DESKTOP-PREVIEWS-0.3.11.md', 'FOUR-YUBIKEYS.md', 'FEDORA-0.3.11-preview2.md'):
         shutil.copy2(ROOT / 'docs' / name, docs / name)
 
 
@@ -63,7 +63,7 @@ def main():
     spec = work / 'wormwright-vault.spec'
     spec.write_text(f'''Name: wormwright-vault
 Version: {VERSION}
-Release: 1.fc44
+Release: 2.fc44
 Summary: Offline encrypted vault and optional multi-user Manager
 License: GPL-3.0-only
 URL: https://wormwright.com/vault.html
@@ -100,7 +100,7 @@ cp -a "{stage}/usr" %{{buildroot}}/
 %doc /usr/share/doc/wormwright-vault
 ''')
     subprocess.run([args.rpmbuild, '-bb', '--define', '_topdir ' + str(work / 'rpm'), '--define', '_tmppath ' + str(work), '--define', '_dbpath ' + str(work / 'rpmdb'), '--define', '_rpmdir ' + str(output), '--define', '_build_id_links none', '--define', '__os_install_post %{nil}', '--define', '_binary_payload w2.gzdio', str(spec)], check=True)
-    print(output / 'x86_64' / f'wormwright-vault-{VERSION}-1.fc44.x86_64.rpm')
+    print(output / 'x86_64' / f'wormwright-vault-{VERSION}-2.fc44.x86_64.rpm')
 
 
 if __name__ == '__main__':

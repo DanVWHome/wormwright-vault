@@ -6,7 +6,7 @@ Targets Fedora 44. This is a preview, not a package in the official Fedora repos
 Install the downloaded package from its folder:
 
 ```sh
-sudo dnf install ./wormwright-vault-0.3.11-1.fc44.x86_64.rpm
+sudo dnf install ./wormwright-vault-0.3.11-2.fc44.x86_64.rpm
 ```
 
 Open Wormwright Vault or Wormwright Vault Manager from the applications menu.
@@ -46,3 +46,7 @@ Compare the RPM SHA-256 against SHA256SUMS on the same GitHub release. This prev
 The first-run introduction lets you create a vault, open an existing one, or explicitly load the disposable demo. One user across multiple devices needs only Vault. Use Manager for users, groups and exclusions. Each device needs a local working copy of the same encrypted vault and the same dedicated shared folder. Local storage need not be a dedicated folder; the shared sync folder should be dedicated to one vault.
 
 Validate startup in your desktop session, tutorial sound/video, YubiKey if used, NAS reconnect/restart, sync in both directions, and offline edits with a disposable vault before relying on the preview. Revocation and permission changes arrive after successful sync and cannot recall secrets already retained offline.
+
+## Preview 2 startup fix
+
+Revision 2 fixes AF_UNIX path-too-long startup failures using a short private local control socket directory. See [preview 2 notes](FEDORA-0.3.11-preview2.md).
