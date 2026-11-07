@@ -4,6 +4,6 @@ WINDOWS_PREVIEW = None
 import sys
 import platform
 RELEASE_LABEL = (f'Windows preview {WINDOWS_PREVIEW}' if WINDOWS_PREVIEW else 'Windows release') if sys.platform == 'win32' else (
-    'Fedora preview 1' if platform.freedesktop_os_release().get('ID') == 'fedora'
+    'Fedora release' if platform.freedesktop_os_release().get('ID') == 'fedora'
     else 'Linux Mint release'
 )

@@ -1,12 +1,12 @@
-# Fedora 44 preview — Wormwright Vault 0.3.11
+# Wormwright Vault 0.3.11 for Fedora 44
 
 For Fedora Workstation or KDE on x86_64 (Intel/AMD 64-bit PCs).
-Targets Fedora 44. This is a preview, not a package in the official Fedora repositories.
+Targets Fedora 44. This is a stable Wormwright release, distributed separately from the official Fedora repositories.
 
 Install the downloaded package from its folder:
 
 ```sh
-sudo dnf install ./wormwright-vault-0.3.11-2.fc44.x86_64.rpm
+sudo dnf install ./wormwright-vault-0.3.11-3.fc44.x86_64.rpm
 ```
 
 Open Wormwright Vault or Wormwright Vault Manager from the applications menu.
@@ -21,7 +21,7 @@ synthetic vault for the first Fedora test. Existing vault formats are unchanged.
 The RPM installs application files only; it does not move or delete user vaults.
 Remove the application with `sudo dnf remove wormwright-vault`.
 
-This is a preview built on Ubuntu 24.04 with a glibc 2.39 baseline. Automated checks cover package installation and offscreen startup in a Fedora 44 container, plus bundled-runtime and synthetic regression checks. Wayland/X11 desktop interaction, real YubiKey and SMB sync still need on-device verification. Fedora Atomic desktops and ARM are not validated.
+This release is built on Ubuntu 24.04 with a glibc 2.39 baseline. Automated checks cover package installation and offscreen startup in a Fedora 44 container, plus bundled-runtime and synthetic regression checks. The user confirmed both YubiKeys and the key-management list using the mounted NAS vault in a Fedora 44 GNOME Boxes VM. Other hardware and NAS scenarios still need separate verification. Fedora Atomic desktops and ARM are not validated.
 
 Rebuild with Python dependencies from requirements-build.txt, RPM build tools,
 and `python packaging/build-fedora.py --work-dir /tmp/ww-build --output-dir dist`.
@@ -41,7 +41,7 @@ Help → Watch Tutorial includes the re-recorded 7 minute 44 second desktop walk
 
 ## Verification and troubleshooting
 
-Compare the RPM SHA-256 against SHA256SUMS on the same GitHub release. This preview RPM is unsigned; the checksum detects a damaged download but is not a publisher signature. Download only from the linked Wormwright GitHub release. If the graphical installer hangs or reports a transaction error, close it and use the DNF installation command above.
+Compare the RPM SHA-256 against SHA256SUMS on the same GitHub release. This RPM is unsigned; the checksum detects a damaged download but is not a publisher signature. Download only from the linked Wormwright GitHub release. If the graphical installer hangs or reports a transaction error, close it and use the DNF installation command above.
 
 The first-run introduction lets you create a vault, open an existing one, or explicitly load the disposable demo. One user across multiple devices needs only Vault. Use Manager for users, groups and exclusions. Each device needs a local working copy of the same encrypted vault and the same dedicated shared folder. Local storage need not be a dedicated folder; the shared sync folder should be dedicated to one vault.
 
@@ -50,3 +50,7 @@ Validate startup in your desktop session, tutorial sound/video, YubiKey if used,
 ## Preview 2 startup fix
 
 Revision 2 fixes AF_UNIX path-too-long startup failures using a short private local control socket directory. See [preview 2 notes](FEDORA-0.3.11-preview2.md).
+
+## Stable release
+
+RPM revision 3 removes the preview label and upgrades revision 2 in place. See [stable release notes](FEDORA-0.3.11-STABLE.md).

@@ -7,13 +7,13 @@ Keep a local working vault on each device and sync through your own NAS.
 
 - [Linux Mint 0.3.11 — stable](https://github.com/DanVWHome/wormwright-vault/releases/tag/v0.3.11)
 - [Windows 0.3.11 — stable](https://github.com/DanVWHome/wormwright-vault/releases/tag/v0.3.11-windows)
-- [Fedora 44 — 0.3.11 preview 2](https://github.com/DanVWHome/wormwright-vault/releases/tag/v0.3.11-fedora-preview.2)
+- [Fedora 44 — 0.3.11 stable](https://github.com/DanVWHome/wormwright-vault/releases/tag/v0.3.11-fedora)
 - [Android Network/NAS 0.1.0-preview.21](https://github.com/DanVWHome/wormwright-vault/releases/tag/android-v0.1.0-preview.21)
 - [Android Pocket 0.1.0-test.21](https://github.com/DanVWHome/wormwright-vault/releases/tag/pocket-v0.1.0-test.21)
 
 Both Android .21 apps passed user testing on Pixel 10 with GrapheneOS, including
 the numeric keypad, letters/symbols toggle, USB-C and NFC. See
-[device testing](docs/ANDROID-DEVICE-TESTING.md). Windows 0.3.11 is stable after user confirmation of update discovery, enrollment guidance and successful key registration. Fedora remains a preview; see [preview notes](docs/DESKTOP-PREVIEWS-0.3.11.md).
+[device testing](docs/ANDROID-DEVICE-TESTING.md). Windows 0.3.11 is stable after user confirmation of update discovery, enrollment guidance and successful key registration. Fedora 0.3.11 is also stable after confirmation that both keys work with the mounted NAS vault; see [preview notes](docs/DESKTOP-PREVIEWS-0.3.11.md).
 
 For setup and platform limits, see [the website](https://wormwright.com/vault.html),
 [Windows setup](docs/WINDOWS.md), [Linux setup](docs/MINT-RELEASE.md), and
