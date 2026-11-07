@@ -71,7 +71,7 @@ public final class SecretUiInstrumentation extends Instrumentation {
         key(66);
     }
     AccessibilityNodeInfo button(AccessibilityNodeInfo node,String text){
-        if(node==null)return null;if(node.isClickable()&&node.isVisibleToUser()&&text.contentEquals(node.getText()==null?"":node.getText()))return node;
+        if(node==null)return null;if(node.isClickable()&&node.isVisibleToUser()&&text.equalsIgnoreCase(node.getText()==null?"":node.getText().toString()))return node;
         for(int i=0;i<node.getChildCount();i++){AccessibilityNodeInfo found=button(node.getChild(i),text);if(found!=null)return found;}return null;
     }
     void tapText(String text)throws Exception{waitFor(()->button(getUiAutomation().getRootInActiveWindow(),text)!=null,10000);check(button(getUiAutomation().getRootInActiveWindow(),text).performAction(AccessibilityNodeInfo.ACTION_CLICK),"tap "+text);}
