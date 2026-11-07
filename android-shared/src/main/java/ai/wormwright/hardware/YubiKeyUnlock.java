@@ -9,7 +9,6 @@ import com.yubico.yubikit.android.transport.usb.UsbYubiKeyDevice;
 import android.app.AlertDialog;
 import android.os.Handler;
 import android.os.Looper;
-import android.text.InputType;
 import android.util.Base64;
 import android.view.WindowManager;
 import android.widget.EditText;
@@ -92,18 +91,20 @@ public final class YubiKeyUnlock {
         Attempt a=new Attempt(request,enroll,done);current=a;
         LinearLayout view=new LinearLayout(activity);view.setOrientation(LinearLayout.VERTICAL);view.setPadding(32,16,32,16);
         TextView note=new TextView(activity);a.note=note;note.setText("Connect your YubiKey over USB-C or hold it against the NFC reader, and enter its PIN. Either order works. Keep an NFC key in place until the vault opens.");view.addView(note);
-        EditText input=new EditText(activity);input.setHint("YubiKey PIN");input.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD);input.setSaveEnabled(false);input.setImportantForAutofill(android.view.View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS);view.addView(input);
+        YubiKeyPinInput pinEntry=new YubiKeyPinInput(activity);EditText input=pinEntry.input;view.addView(pinEntry);
         a.dialog=new AlertDialog.Builder(activity).setTitle(enroll?"Enroll YubiKey":"Unlock with YubiKey").setView(view)
             .setNegativeButton("Cancel",(d,w)->fail(a,"YubiKey operation cancelled. Existing unlock methods remain available."))
             .setPositiveButton("Continue",null).create();
         a.dialog.setOnCancelListener(d->fail(a,"YubiKey operation cancelled."));
         YubiKeyKeyboardGuard.install(a.dialog.getWindow());a.dialog.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
+        a.dialog.getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE|WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
         a.dialog.show();
+        input.requestFocus();
         a.dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{
             if(current!=a||a.cancelled)return;
             if(input.length()<4){input.setError("Enter the key’s PIN (at least 4 characters).");return;}
             char[] enteredPin=new char[input.length()];android.text.TextUtils.getChars(input.getText(),0,input.length(),enteredPin,0);a.pinBuffer.set(enteredPin);input.getText().clear();
-            input.setVisibility(android.view.View.GONE);a.dialog.getButton(AlertDialog.BUTTON_POSITIVE).setVisibility(android.view.View.GONE);
+            pinEntry.setVisibility(android.view.View.GONE);a.dialog.getButton(AlertDialog.BUTTON_POSITIVE).setVisibility(android.view.View.GONE);
             note.setText("Waiting for your YubiKey. Connect it over USB-C or hold it against the NFC reader. When the key flashes, touch its gold contact. No more on-screen confirmation is needed.");
             a.timeout=()->fail(a,"YubiKey authentication timed out. Connect the key or keep it against the NFC reader, then try again.");ui.postDelayed(a.timeout,60000);
             if(a.device!=null&&a.device.getTransport()==com.yubico.yubikit.core.Transport.NFC&&usbKeyPresent()){a.device=null;a.readiness.deviceLost();}

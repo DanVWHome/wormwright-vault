@@ -6,8 +6,8 @@ android {
         applicationId 'ai.wormwright.vault.standalone'
         minSdk 30
         targetSdk 36
-        versionCode 20
-        versionName '0.1.0-test.20'
+        versionCode 21
+        versionName '0.1.0-test.21'
         testInstrumentationRunner 'ai.wormwright.pocket.UiRegressionInstrumentation'
         ndk { abiFilters 'arm64-v8a', 'x86_64' }
     }
@@ -36,13 +36,16 @@ android {
         release { minifyEnabled false; if (System.getenv('WORMWRIGHT_RELEASE_SIGNING')) signingConfig signingConfigs.publisher }
     }
     sourceSets { main.java.srcDirs += ["../../android-shared/src/main/java"]; test.java.srcDirs += ["../../android-shared/src/test/java"]; main.python.srcDirs += ["../../android-shared/python"] }
+    testOptions { unitTests.includeAndroidResources = true }
     compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
 }
 dependencies {
     implementation "com.yubico.yubikit:android:2.9.0"
     implementation "com.yubico.yubikit:fido:2.9.0"
     implementation "org.slf4j:slf4j-nop:2.0.9"
- testImplementation 'junit:junit:4.13.2' }
+    testImplementation 'org.robolectric:robolectric:4.16.1'
+    testImplementation 'junit:junit:4.13.2'
+}
 chaquopy {
     defaultConfig {
         version = '3.13'
