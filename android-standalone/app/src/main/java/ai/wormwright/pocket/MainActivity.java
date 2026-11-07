@@ -23,6 +23,8 @@ import javax.crypto.Cipher;
 
 public class MainActivity extends Activity {
     private ai.wormwright.hardware.YubiKeyUnlock hardware;
+    private String hardwareFailureNotice;
+    private AlertDialog hardwareFailureDialog;
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
     private final Handler ui = new Handler(Looper.getMainLooper());
     private LinearLayout root, rows;
@@ -267,8 +269,14 @@ public class MainActivity extends Activity {
         });
     }
     private void showHardwareFailure(String note) {
-        dialog=new AlertDialog.Builder(this).setTitle("YubiKey operation stopped").setMessage(note).setPositiveButton("Close",null).create();
-        ai.wormwright.hardware.YubiKeyKeyboardGuard.install(dialog.getWindow());dialog.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);dialog.show();
+        hardwareFailureNotice=note;
+        if(hardwareFailureDialog!=null&&hardwareFailureDialog.isShowing()){hardwareFailureDialog.setMessage(note);return;}
+        final AlertDialog errorDialog=new AlertDialog.Builder(this).setTitle("YubiKey authentication did not complete").setMessage(note).setPositiveButton("Close",(d,w)->hardwareFailureNotice=null).create();
+        hardwareFailureDialog=errorDialog;
+        hardwareFailureDialog.setOnCancelListener(d->hardwareFailureNotice=null);
+        hardwareFailureDialog.setOnDismissListener(d->{if(hardwareFailureDialog==errorDialog)hardwareFailureDialog=null;});
+        hardwareFailureDialog.setCanceledOnTouchOutside(false);
+        ai.wormwright.hardware.YubiKeyKeyboardGuard.install(hardwareFailureDialog.getWindow());hardwareFailureDialog.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);hardwareFailureDialog.show();
     }
     private void showEnrollmentResult(String note) {
         dialog=new AlertDialog.Builder(this).setTitle("YubiKey saved and verified").setMessage(note).setPositiveButton("View enrolled keys",(d,w)->manageHardware()).setNegativeButton("Close",null).create();
@@ -661,17 +669,18 @@ public class MainActivity extends Activity {
     private void lock(String note) { lock(note,false); }
     private void lock(String note,boolean keepAuthentication) {
         if(hardware!=null)hardware.cancel();
+        if(hardwareFailureDialog!=null)hardwareFailureDialog.dismiss();
         hardwareAuthorization=false;usbPermissionPause=false;ui.removeCallbacks(hardwareAuthorizationTimeout);
         epoch++;unlocked=false;setBusy(false, "");
         if(!keepAuthentication) { ++authVersion;authenticating=false;pendingAuthentication=null;if(auth!=null)auth.cancel();auth=null; }
         if(dialog!=null)dialog.dismiss();ui.removeCallbacks(idle);clearClipboard();worker.execute(()->engine().callAttr("lock"));home(note);
     }
     @Override public void onUserInteraction(){super.onUserInteraction();if(unlocked){ui.removeCallbacks(idle);ui.postDelayed(idle,120000);}}
-    @Override protected void onResume(){super.onResume();resumed=true;maintenance.onResume();if(!hardwareAuthorization)root.setVisibility(View.VISIBLE);usbPermissionPause=false;hardware.resume();if(startupChoicePending){startupChoicePending=false;ui.post(()->{if(resumed&&!busy&&!authenticating)switchVault();});}if(pendingAuthentication!=null)ui.post(()->{if(pendingAuthentication!=null)pendingAuthentication.run();});}
+    @Override protected void onResume(){super.onResume();resumed=true;maintenance.onResume();ui.post(()->{if(resumed&&hardwareFailureNotice!=null)showHardwareFailure(hardwareFailureNotice);});if(!hardwareAuthorization)root.setVisibility(View.VISIBLE);usbPermissionPause=false;hardware.resume();if(startupChoicePending){startupChoicePending=false;ui.post(()->{if(resumed&&!busy&&!authenticating)switchVault();});}if(pendingAuthentication!=null)ui.post(()->{if(pendingAuthentication!=null)pendingAuthentication.run();});}
     @Override protected void onPause(){maintenance.onPause();resumed=false;
         if(hardware.pauseForUsbPermission()) { usbPermissionPause=true;root.setVisibility(View.INVISIBLE);clearClipboard(); }
         else if(hardwareAuthorization&&authenticating) { hardware.stop();unlocked=false;root.setVisibility(View.INVISIBLE);clearClipboard(); }
-        else {hardware.stop();lock("Vault locked. Authenticate to reopen.",authenticating);}
+        else {if(hardware.active()||(busy&&progressText.contains("YubiKey")))hardwareFailureNotice="YubiKey authentication was interrupted when the app left the screen. Keep the app open and try again.";hardware.stop();lock("Vault locked. Authenticate to reopen.",authenticating);}
         super.onPause();}
     @Override protected void onStop(){if(usbPermissionPause){hardware.stop();lock("Vault locked. Reopen to retry YubiKey authorization.");}super.onStop();}
     @Override protected void onDestroy(){hardwareAuthorization=false;ui.removeCallbacks(hardwareAuthorizationTimeout);hardware.stop();worker.execute(()->engine().callAttr("lock"));maintenance.onDestroy();++authVersion;pendingAuthentication=null;if(auth!=null)auth.cancel();if(pendingExport!=null)pendingExport.delete();super.onDestroy();}

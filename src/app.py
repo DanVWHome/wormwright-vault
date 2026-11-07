@@ -450,13 +450,12 @@ class Window(QMainWindow):
     def unlock_key(self):
         pin = None
         try:
-            from yubikey_auth import unlock
-            settings = choose_key(self, self.vault.yubikey_enrollments())
-            if settings is None: return
-            pin, ok = request_key_pin(self, 'YubiKey unlock — '+settings['label'], 'YubiKey FIDO2 PIN:')
+            from yubikey_auth import unlock_any
+            keys = self.vault.yubikey_enrollments()
+            pin, ok = request_key_pin(self, 'Unlock with connected YubiKey', 'YubiKey FIDO2 PIN:')
             if not ok: return
             if not pin and sys.platform != 'win32': raise VaultError('Enter your YubiKey PIN.')
-            response = self.key_request(lambda event: unlock(settings, pin, event))
+            settings, response = self.key_request(lambda event: unlock_any(keys, pin, event))
             self.vault.unlock_yubikey(settings, response)
             response = None
             self.remember_vault()
@@ -874,16 +873,15 @@ class Window(QMainWindow):
             if not ok:
                 return None
         if method == 'YubiKey PIN + Touch':
-            settings = choose_key(self, self.vault.yubikey_enrollments())
-            if settings is None: return None
+            keys = self.vault.yubikey_enrollments()
             pin, ok = request_key_pin(self, 'Authorize CSV export', 'YubiKey FIDO2 PIN:')
             if not ok:
                 return None
             try:
                 if not pin and sys.platform != 'win32':
                     raise VaultError('Enter your YubiKey PIN.')
-                from yubikey_auth import unlock
-                response = self.key_request(lambda event: unlock(settings, pin, event))
+                from yubikey_auth import unlock_any
+                settings, response = self.key_request(lambda event: unlock_any(keys, pin, event))
                 return {'yubikey_settings': settings, 'yubikey_response': response}
             finally:
                 pin = None

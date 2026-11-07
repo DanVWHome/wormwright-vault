@@ -7,10 +7,35 @@ import threading
 import time
 from contextlib import closing, contextmanager
 from fido2.client import DefaultClientDataCollector, Fido2Client, UserInteraction
-from fido2.ctap2.extensions import HmacSecretExtension
+from fido2.ctap2.extensions import HmacSecretExtension, AuthenticationExtensionProcessor
+from dataclasses import replace
+from fido2.utils import websafe_encode
 from fido2.hid import CtapHidDevice
 from fido2.server import Fido2Server
 from fido2.webauthn import AttestedCredentialData
+
+class PerCredentialHmacSecretExtension(HmacSecretExtension):
+    """Use the SDK-selected credential's original raw salt, without PRF hashing."""
+    def __init__(self):super().__init__(allow_hmac_secret=True)
+    def get_assertion(self, ctap, options, pin_protocol):
+        salts=(options.extensions or {}).get('wormwrightRawSalts')
+        if salts is None:return super().get_assertion(ctap,options,pin_protocol)
+        owner=self
+        class Selected(AuthenticationExtensionProcessor):
+            processor=None
+            def prepare_inputs(self, selected, pin_token):
+                salt=salts.get(websafe_encode(selected.id)) if selected else None
+                if not isinstance(salt,bytes) or len(salt)!=32:
+                    raise ValueError('The connected key does not match this account.')
+                chosen=replace(options,extensions={'hmacGetSecret':{'salt1':salt}})
+                self.processor=super(PerCredentialHmacSecretExtension,owner).get_assertion(ctap,chosen,pin_protocol)
+                if self.processor is None:raise ValueError('Key lacks offline vault support.')
+                return self.processor.prepare_inputs(selected,pin_token)
+            def prepare_outputs(self,response,pin_token):
+                if self.processor is None:raise ValueError('Credential was not selected.')
+                return self.processor.prepare_outputs(response,pin_token)
+        return Selected()
+
 
 RP_ID = 'atlas-portable.local'
 ORIGIN = 'https://' + RP_ID
@@ -62,7 +87,7 @@ def client_for(device, pin, cancelled):
     interaction = KeyInteraction(pin, cancelled)
     client = Fido2Client(device, client_data_collector=DefaultClientDataCollector(ORIGIN),
                          user_interaction=interaction,
-                         extensions=[HmacSecretExtension(allow_hmac_secret=True)])
+                         extensions=[PerCredentialHmacSecretExtension()])
     if 'hmac-secret' not in client.info.extensions:
         raise ValueError('This key does not support offline vault unlocking.')
     if not client.info.options.get('clientPin'):
@@ -102,6 +127,9 @@ class NativeWindowsClient:
     def get_assertion(self, options, event):
         native_event = WindowsCancellation(event)
         try:
+            if options.get("extensions",{}).get("wormwrightRawSalts"):
+                from yubikey_windows import get_assertion
+                return get_assertion(self.client,options,native_event)
             return self.client.get_assertion(options, event=native_event)
         finally:
             native_event.set()
@@ -166,3 +194,44 @@ def unlock(settings, pin, cancelled):
             return authenticate(client, server(), credential, settings['salt'], cancelled)
         finally:
             interaction.pin = None
+
+
+def authenticate_any(client, service, settings, cancelled):
+    if not 1 <= len(settings) <= 4:raise ValueError('Enroll between one and four keys for this account.')
+    credentials=[AttestedCredentialData(s['credential']) for s in settings]
+    ids=[c.credential_id for c in credentials]
+    if len(set(ids))!=len(ids):raise ValueError('Duplicate credential enrollment.')
+    if any(len(s['salt'])!=32 for s in settings):raise ValueError('Invalid key salt.')
+    options,state=service.authenticate_begin(credentials,user_verification='required')
+    request={**options['publicKey'],'hints':['security-key'],'extensions':{
+        'wormwrightRawSalts':{websafe_encode(c.credential_id):s['salt'] for c,s in zip(credentials,settings)}}}
+    assertion=client.get_assertion(request,event=cancelled).get_response(0)
+    service.authenticate_complete(state,credentials,assertion)
+    selected=next((s for c,s in zip(credentials,settings) if c.credential_id==assertion.raw_id),None)
+    output=assertion.client_extension_results.hmac_get_secret
+    if selected is None or output is None or output.output1 is None or len(output.output1)!=32:
+        raise ValueError('The key did not return a valid enrolled credential and unlocking secret.')
+    return selected,output.output1
+
+
+def unlock_any(settings, pin, cancelled):
+    with client_session(pin,cancelled) as (client,interaction):
+        try:return authenticate_any(client,server(),settings,cancelled)
+        except Exception as error:
+            message=pin_failure_message(error)
+            if message:raise ValueError(message) from error
+            raise
+        finally:interaction.pin=None
+
+
+def pin_failure_message(error):
+    from fido2.ctap import CtapError
+    seen=set()
+    while error is not None and id(error) not in seen:
+        seen.add(id(error))
+        if isinstance(error,CtapError):
+            if error.code==CtapError.ERR.PIN_INVALID:return 'The YubiKey PIN was rejected. This attempt stopped without an automatic retry. Check the PIN before trying again.'
+            if error.code==CtapError.ERR.PIN_BLOCKED:return 'The key FIDO2 PIN is blocked. Stop trying PINs and use another enrolled key or your vault password.'
+            if error.code==CtapError.ERR.PIN_AUTH_BLOCKED:return 'The key has temporarily blocked PIN authentication. Remove and reconnect it before using a known correct PIN.'
+        error=getattr(error,'cause',None) or getattr(error,'__cause__',None)
+    return None

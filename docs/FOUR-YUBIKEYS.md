@@ -1,11 +1,12 @@
 # Four named keys per vault account
 
-Desktop 0.3.9, Network Vault preview.15, Pocket test.15.
+Automatic matching: desktop 0.3.11, Network Vault preview.19, Pocket test.19.
+Four-key storage is supported from desktop 0.3.9 and Android .15 onward.
 
 Enroll up to four credentials per vault account, with names such as Laptop,
 Phone, Backup and Spare. Adding a key appends an independent wrapping envelope;
-it never replaces another enrolled key. Select the intended key by name before
-using its PIN. A fifth enrollment is rejected without changing existing keys.
+it never replaces another enrolled key. The authenticator automatically matches the key you use during unlock.
+Enter that key’s PIN; no key-name selection is needed. A fifth enrollment is rejected without changing existing keys.
 
 ## Update and enroll
 
@@ -16,17 +17,18 @@ Existing single-key records are read without changing them; adding, renaming or
 removing a key writes a version-2 key collection. Existing credentials, salts,
 wrapped keys, account passwords and encrypted entries are preserved.
 
-Desktop: unlock normally. Use Add YubiKey, authenticate, give it a unique name,
-Unplug all current YubiKeys first, authorize using your account password, then
-connect only the new key when prompted and perform its PIN/touch enrollment. Repeat for the other keys.
+Desktop: unlock normally and use Add YubiKey. Unplug all current YubiKeys,
+authorize using your account password, give the new key a unique name, and
+connect only the new key when prompted for its PIN/touch enrollment.
 Manage YubiKeys renames/removes a selected enrollment after fresh authentication.
 Only current-account keys are displayed. A legacy key starts as Original key;
 rename it Laptop if appropriate. PINs can be different on each physical key.
 
 Network Android: manage enrollment on desktop and synchronize/import the updated
-vault using the established workflow. Unlock with YubiKey offers a named key
-selector. Then enter that key's PIN and use NFC or USB-C. No PIN is trialled
-against other keys. Normal password unlock remains available.
+vault using the established workflow. Unlock with YubiKey matches the connected
+key automatically. Enter its PIN and use NFC or USB-C. Names are selected only
+when choosing which enrollment to manage. No PIN is trialled against other keys.
+Normal password unlock remains available.
 
 Pocket: unlock normally, then More > Enroll YubiKey. Confirm the alternative
 unlock method, confirm your phone credential, and name/enroll each key. More > Manage

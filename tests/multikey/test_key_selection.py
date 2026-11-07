@@ -14,8 +14,8 @@ PW='Invented-Only-Password!'
 class KeySelection(unittest.TestCase):
  def test_named_selection_and_cancel(self):
   keys=[{'id':'one','label':'Laptop'},{'id':'two','label':'Backup'}]
-  with patch('PySide6.QtWidgets.QInputDialog.getItem',return_value=('Backup',True)):
-   self.assertEqual(choose_key(None,keys),keys[1])
+  with patch('PySide6.QtWidgets.QInputDialog.getItem',return_value=('Backup',True)) as prompt:
+   self.assertEqual(choose_key(None,keys),keys[1]);self.assertEqual(prompt.call_args.args[2],'Which key are you managing?')
   with patch('PySide6.QtWidgets.QInputDialog.getItem',return_value=('',False)):
    self.assertIsNone(choose_key(None,keys))
  def test_desktop_enrollment_appends_without_replace_confirmation(self):
@@ -44,9 +44,9 @@ class KeySelection(unittest.TestCase):
    for label in ['Laptop','Phone','Backup']:
     values[label]=os.urandom(32);w.vault.enroll_yubikey(os.urandom(128),os.urandom(32),values[label],label)
    w.vault.lock()
-   def hardware(settings,pin,event):
-    self.assertEqual(settings['label'],'Backup');return values['Backup']
-   with patch('PySide6.QtWidgets.QInputDialog.getItem',return_value=('Backup',True)),patch('managed_ui.request_key_pin',return_value=('DummyPinOnly',True)),patch('yubikey_auth.unlock',side_effect=hardware),patch.object(w,'key_request',side_effect=lambda f:f(threading.Event())),patch.object(w,'auto_sync'),patch.object(w,'warning') as warning:
-    w.unlock_key();warning.assert_not_called();self.assertTrue(w.vault.unlocked)
+   def hardware(keys,pin,event):
+    self.assertEqual(len(keys),3);return next(k for k in keys if k['label']=='Backup'),values['Backup']
+   with patch('PySide6.QtWidgets.QInputDialog.getItem',return_value=('Backup',True)) as chooser,patch('managed_ui.request_key_pin',return_value=('DummyPinOnly',True)),patch('yubikey_auth.unlock_any',side_effect=hardware),patch.object(w,'key_request',side_effect=lambda f:f(threading.Event())),patch.object(w,'auto_sync'),patch.object(w,'warning') as warning:
+    w.unlock_key();warning.assert_not_called();chooser.assert_not_called();self.assertTrue(w.vault.unlocked)
    w.lock();w.close()
 if __name__=='__main__':unittest.main()

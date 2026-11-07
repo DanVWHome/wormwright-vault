@@ -39,7 +39,7 @@ with tempfile.TemporaryDirectory() as d:
     assert [r['description'] for r in w.records]==['A','B','C']
     response=b'h'*32;w.vault.enroll_yubikey(b'dummy-credential',b's'*32,response)
     # Simulate user choosing enrolled hardware; no USB or real credentials used.
-    with patch('managed_ui.QMessageBox') as box,patch('managed_ui.QInputDialog.getText',return_value=('dummy-pin',True)),patch('yubikey_auth.unlock',return_value=response):
+    with patch('managed_ui.QMessageBox') as box,patch('managed_ui.QInputDialog.getText',return_value=('dummy-pin',True)),patch('yubikey_auth.unlock_any',side_effect=lambda keys,pin,event:(keys[0],response)):
         dialog=box.return_value;key=object();fallback=object();dialog.addButton.side_effect=[key,fallback,object()];dialog.clickedButton.return_value=key
         with patch.object(w,'key_request',side_effect=lambda operation:operation(None)):
             authentication=w.reauthenticate()
@@ -64,7 +64,7 @@ with tempfile.TemporaryDirectory() as d:
         w.export_database();assert question.called
     assert target.read_bytes()==before
     # Failed hardware verification returns no authentication proof.
-    with patch('managed_ui.QMessageBox') as box,patch('managed_ui.QInputDialog.getText',return_value=('dummy-pin',True)),patch('yubikey_auth.unlock',return_value=b'wrong'*6+b'xx'),patch.object(w,'warning'):
+    with patch('managed_ui.QMessageBox') as box,patch('managed_ui.QInputDialog.getText',return_value=('dummy-pin',True)),patch('yubikey_auth.unlock_any',side_effect=lambda keys,pin,event:(keys[0],b'wrong'*6+b'xx')),patch.object(w,'warning'):
         dialog=box.return_value;key=object();dialog.addButton.side_effect=[key,object(),object()];dialog.clickedButton.return_value=key
         with patch.object(w,'key_request',side_effect=lambda operation:operation(None)):
             assert w.reauthenticate() is None

@@ -10,7 +10,7 @@ def request_key_pin(parent, title, label='FIDO2 PIN:'):
 
 
 def choose_key(parent, keys):
-    """Select a named enrollment before requesting its PIN; never trial PINs."""
+    """Select the enrollment to rename or remove, not the key authenticating."""
     from PySide6.QtWidgets import QInputDialog
     if not keys:
         from vault import VaultError
@@ -18,5 +18,5 @@ def choose_key(parent, keys):
     if len(keys) == 1:
         return keys[0]
     names = [k['label'] for k in keys]
-    name, ok = QInputDialog.getItem(parent, 'Choose YubiKey', 'Which key are you using?', names, 0, False)
+    name, ok = QInputDialog.getItem(parent, 'Manage YubiKeys', 'Which key are you managing?', names, 0, False)
     return keys[names.index(name)] if ok else None

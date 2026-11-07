@@ -16,11 +16,11 @@ with tempfile.TemporaryDirectory() as folder:
  assert window.key_unlock_button.isVisible() and not window.master.isVisible()
  window.show_fallback();assert window.master.isVisible()
  window.lock()
- with patch('app.QInputDialog.getText',return_value=('dummy-pin',True)),patch('yubikey_auth.unlock',return_value=response):
+ with patch('app.QInputDialog.getText',return_value=('dummy-pin',True)),patch('yubikey_auth.unlock_any',side_effect=lambda keys,pin,event:(keys[0],response)):
   window.unlock_key()
  assert window.vault.unlocked and not window.key_unlock_button.isVisible()
  window.lock()
- with patch('app.QInputDialog.getText',return_value=('dummy-pin',True)),patch('yubikey_auth.unlock',side_effect=ValueError('Dummy hardware failure')),patch('app.QMessageBox.warning') as warning:
+ with patch('app.QInputDialog.getText',return_value=('dummy-pin',True)),patch('yubikey_auth.unlock_any',side_effect=ValueError('Dummy hardware failure')),patch('app.QMessageBox.warning') as warning:
   window.unlock_key()
  assert not window.vault.unlocked and warning.called
  window.show_fallback();window.master.setText('test-master-passphrase');window.unlock();assert window.vault.unlocked

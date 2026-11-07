@@ -45,6 +45,8 @@ import java.util.concurrent.Executors;
 /** A local, read-only preview. All crypto and SQLite work uses one worker. */
 public class MainActivity extends Activity {
     private ai.wormwright.hardware.YubiKeyUnlock hardware;
+    private String hardwareFailureNotice;
+    private AlertDialog hardwareFailureDialog;
     private boolean usbPermissionPause;
     private static final int IMPORT = 100;
     private static final int EXPORT = 101;
@@ -314,11 +316,21 @@ public class MainActivity extends Activity {
             handler.post(() -> {
                 if (token != generation || !resumed || isFinishing()) return;
                 setBusy(false, "");
-                if (error) { lockNow(errorText); return; }
+                if (error) { lockNow(errorText);if(label.contains("YubiKey"))showHardwareFailure(errorText);return; }
                 try { success.accept(value); }
                 catch (Exception ignored) { lockNow("Cannot read this vault. Import a valid encrypted copy."); }
             });
         });
+    }
+    private void showHardwareFailure(String note) {
+        hardwareFailureNotice=note;
+        if(hardwareFailureDialog!=null&&hardwareFailureDialog.isShowing()){hardwareFailureDialog.setMessage(note);return;}
+        final AlertDialog errorDialog=new AlertDialog.Builder(this).setTitle("YubiKey authentication did not complete").setMessage(note).setPositiveButton("Close",(d,w)->hardwareFailureNotice=null).create();
+        hardwareFailureDialog=errorDialog;
+        hardwareFailureDialog.setOnCancelListener(d->hardwareFailureNotice=null);
+        hardwareFailureDialog.setOnDismissListener(d->{if(hardwareFailureDialog==errorDialog)hardwareFailureDialog=null;});
+        hardwareFailureDialog.setCanceledOnTouchOutside(false);
+        ai.wormwright.hardware.YubiKeyKeyboardGuard.install(hardwareFailureDialog.getWindow());hardwareFailureDialog.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);hardwareFailureDialog.show();
     }
     private void unlockHardware() {
         if(busy||!vaultFile.exists()||hardware.active())return;
@@ -327,7 +339,7 @@ public class MainActivity extends Activity {
         job("Reading YubiKey enrollment…",()->bridge().callAttr("hardware_requests",path,account).toString(),request->{
             final int token=generation;
             hardware.unlockChoices(new JSONArray(request),new ai.wormwright.hardware.YubiKeyUnlock.Callback(){
-                public void failed(String message){if(token==generation&&resumed)status.setText(message);}
+                public void failed(String message){if(token==generation&&resumed)showHardwareFailure(message);}
                 public void complete(JSONObject output){
                     if(token!=generation||!resumed||!path.equals(vaultFile.getAbsolutePath()))return;
                     job("Opening vault with YubiKey…",()->bridge().callAttr("unlock_hardware",path,account,output.getString("request"),output.getString("response")).toString(),result->{
@@ -521,6 +533,7 @@ public class MainActivity extends Activity {
     @Override public void onUserInteraction() { super.onUserInteraction(); resetIdleTimer(); }
     private void lockNow(String message) {
         if(hardware!=null)hardware.cancel();
+        if(hardwareFailureDialog!=null)hardwareFailureDialog.dismiss();
         ++generation; ++searchVersion; unlocked = false; nasRunning = false; setBusy(false, "");
         handler.removeCallbacks(idleLock); handler.removeCallbacks(nasPoll); clearOwnedClipboard();
         if (detailDialog != null) detailDialog.dismiss();
@@ -763,9 +776,9 @@ public class MainActivity extends Activity {
             });
         });
     }
-    @Override protected void onResume() { super.onResume(); resumed = true; maintenance.onResume();usbPermissionPause=false;root.setVisibility(View.VISIBLE);hardware.resume(); if(startupChoicePending){startupChoicePending=false;handler.post(()->{if(resumed&&!busy)listVaults(false);});} }
+    @Override protected void onResume() { super.onResume(); resumed = true; maintenance.onResume();handler.post(()->{if(resumed&&hardwareFailureNotice!=null)showHardwareFailure(hardwareFailureNotice);});usbPermissionPause=false;root.setVisibility(View.VISIBLE);hardware.resume(); if(startupChoicePending){startupChoicePending=false;handler.post(()->{if(resumed&&!busy)listVaults(false);});} }
     @Override protected void onPause() {
-        maintenance.onPause(); resumed = false;if(hardware.pauseForUsbPermission()){usbPermissionPause=true;root.setVisibility(View.INVISIBLE);clearOwnedClipboard();}else {hardware.stop();lockNow("Vault locked. Unlock to continue.");} super.onPause();
+        maintenance.onPause(); resumed = false;if(hardware.pauseForUsbPermission()){usbPermissionPause=true;root.setVisibility(View.INVISIBLE);clearOwnedClipboard();}else {if(hardware.active()||(busy&&progressText.contains("YubiKey")))hardwareFailureNotice="YubiKey authentication was interrupted when the app left the screen. Keep the app open and try again.";hardware.stop();lockNow("Vault locked. Unlock to continue.");} super.onPause();
     }
     @Override protected void onStop(){if(usbPermissionPause){usbPermissionPause=false;hardware.stop();lockNow("Vault locked. Reopen to retry YubiKey authorization.");}super.onStop();}
     @Override public void onBackPressed() {

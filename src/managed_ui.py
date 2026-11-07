@@ -225,12 +225,11 @@ class ManagedWindow(QMainWindow):
                 fallback=choice.addButton('Account Password',QMessageBox.ButtonRole.ActionRole)
                 choice.addButton(QMessageBox.StandardButton.Cancel);choice.setDefaultButton(key);choice.exec()
                 if choice.clickedButton()==key:
-                    settings=choose_key(self,self.vault.yubikey_enrollments())
-                    if settings is None:return None
+                    keys=self.vault.yubikey_enrollments()
                     pin,ok=request_key_pin(self, 'YubiKey authentication', 'FIDO2 PIN:')
                     if not ok:return None
-                    from yubikey_auth import unlock
-                    response=self.key_request(lambda event:unlock(settings,pin,event))
+                    from yubikey_auth import unlock_any
+                    settings,response=self.key_request(lambda event:unlock_any(keys,pin,event))
                     self.vault.verify_yubikey(settings,response)
                     return {'yubikey_settings':settings,'yubikey_response':response}
                 if choice.clickedButton()!=fallback:return None
@@ -839,12 +838,11 @@ class ManagedWindow(QMainWindow):
         return Window.key_request(self,operation)
     def unlock_key(self):
         try:
-            from yubikey_auth import unlock
-            settings=choose_key(self,self.vault.yubikey_enrollments(self.username.text()))
-            if not settings:return
-            pin,ok=request_key_pin(self,'YubiKey — '+settings['label'],'FIDO2 PIN:')
+            from yubikey_auth import unlock_any
+            keys=self.vault.yubikey_enrollments(self.username.text())
+            pin,ok=request_key_pin(self,'Unlock with connected YubiKey','FIDO2 PIN:')
             if not ok:return
-            response=self.key_request(lambda event:unlock(settings,pin,event));self.vault.unlock_yubikey(settings,response)
+            settings,response=self.key_request(lambda event:unlock_any(keys,pin,event));self.vault.unlock_yubikey(settings,response)
             self.master.clear();self.touch();self.history.remember(self.vault.path);managed_locations.remember(vault=self.vault.path);self.update_state();self.refresh();self.complete_lookup();self.auto_sync()
         except Exception as error:self.warning(error)
     def enroll(self):

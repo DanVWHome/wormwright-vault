@@ -18,6 +18,10 @@ class HardwareTests(unittest.TestCase):
   v=ManagedVault(self.path);v.create(PW,managed=managed,username='Owner',vault_name='Invented fixture')
   v.save({'description':'Invented entry','password':'SyntheticSecret-Only'})
   v.enroll_yubikey(self.credential,self.salt,self.secret);v.lock()
+ def test_new_pocket_vault_has_no_pre_enrolled_keys(self):
+  pocket.create(self.path,PW,'Fresh invented vault')
+  self.assertEqual(json.loads(pocket.hardware_key_list()),[])
+  self.assertEqual(json.loads(pocket.hardware_requests(self.path)),[])
  def test_network_unlock_and_password_fallback(self):
   self.create();r=network.hardware_request(self.path,'');records=json.loads(network.unlock_hardware(self.path,'',r,b64(self.secret)))
   self.assertEqual(records[0]['description'],'Invented entry');network.lock()

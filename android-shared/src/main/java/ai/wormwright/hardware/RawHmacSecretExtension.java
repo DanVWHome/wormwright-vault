@@ -23,11 +23,13 @@ public final class RawHmacSecretExtension extends Extension {
         if(!isSupported(session)||options.getExtensions()==null)return null;
         @SuppressWarnings("unchecked") Map<String,Object> ext=(Map<String,Object>)options.getExtensions().get("hmacGetSecret");
         if(ext==null)return null;
-        byte[] salt=com.yubico.yubikit.core.internal.codec.Base64.fromUrlSafeString((String)ext.get("salt1"));
-        if(salt.length!=32)throw new IllegalArgumentException("Expected raw 32-byte salt");
+        @SuppressWarnings("unchecked") Map<String,?> salts=(Map<String,?>)ext.get("saltByCredential");
+        byte[] fixed=salts==null?com.yubico.yubikit.core.internal.codec.Base64.fromUrlSafeString((String)ext.get("salt1")):null;
+        if(fixed!=null&&fixed.length!=32)throw new IllegalArgumentException("Expected raw 32-byte salt");
         final Pair<Map<Integer,?>,byte[]> agreement;
         try{agreement=new ClientPin(session,protocol).getSharedSecret();}catch(Exception e){throw new IllegalStateException("Key agreement failed");}
         return new AuthenticationProcessor((selected,token)->{
+            byte[] salt=salts==null?fixed:CredentialSaltSelector.select(salts,selected==null?null:selected.getId());
             byte[] enc=protocol.encrypt(agreement.second,salt);
             Map<Integer,Object> input=new HashMap<>();input.put(1,agreement.first);input.put(2,enc);input.put(3,protocol.authenticate(agreement.second,enc));input.put(4,protocol.getVersion());
             return Collections.singletonMap(name,input);
