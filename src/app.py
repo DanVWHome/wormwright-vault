@@ -1,6 +1,6 @@
 from website import add_website_action
 from update_check import add_update_actions
-from key_ui import request_key_pin
+from key_ui import request_key_pin, choose_key
 import os
 import sys
 import secrets
@@ -274,7 +274,7 @@ class Window(QMainWindow):
         layout.addLayout(backups)
         authentication = QHBoxLayout()
         authentication.addStretch()
-        for text, method in [('Set Up YubiKey…', self.enroll_key), ('Change Fallback Password…', self.change_fallback)]:
+        for text, method in [('Add YubiKey…', self.enroll_key), ('Manage YubiKeys…', self.manage_keys), ('Change Fallback Password…', self.change_fallback)]:
             button = QPushButton(text)
             button.clicked.connect(method)
             authentication.addWidget(button)
@@ -448,16 +448,14 @@ class Window(QMainWindow):
         return result
 
     def unlock_key(self):
-        pin, ok = request_key_pin(self, 'YubiKey unlock', 'YubiKey FIDO2 PIN:')
-        if not ok:
-            return
+        pin = None
         try:
-            if not pin and sys.platform != 'win32':
-                raise VaultError('Enter your YubiKey PIN.')
             from yubikey_auth import unlock
-            settings = self.vault.yubikey_settings()
-            if settings is None:
-                raise VaultError('No YubiKey is enrolled for this vault.')
+            settings = choose_key(self, self.vault.yubikey_enrollments())
+            if settings is None: return
+            pin, ok = request_key_pin(self, 'YubiKey unlock — '+settings['label'], 'YubiKey FIDO2 PIN:')
+            if not ok: return
+            if not pin and sys.platform != 'win32': raise VaultError('Enter your YubiKey PIN.')
             response = self.key_request(lambda event: unlock(settings, pin, event))
             self.vault.unlock_yubikey(settings, response)
             response = None
@@ -480,10 +478,11 @@ class Window(QMainWindow):
         try:
             self.vault.verify_password(password)
             password = None
-            if self.vault.yubikey_settings() is not None:
-                answer = QMessageBox.question(self, 'Replace enrolled key?', 'This replaces the key enrolled for this vault. The fallback password will continue to work. Continue?', QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
-                if answer != QMessageBox.StandardButton.Yes:
-                    return
+            keys = self.vault.yubikey_enrollments()
+            from hardware_keys import label_for
+            name, ok = QInputDialog.getText(self, 'Name this key', 'Key name (Laptop, Phone, Backup…):')
+            if not ok: return
+            name = label_for(keys, name)
             pin, ok = request_key_pin(self, 'Set up YubiKey', 'Existing YubiKey FIDO2 PIN:')
             if not ok:
                 return
@@ -492,15 +491,34 @@ class Window(QMainWindow):
             from yubikey_auth import enroll
             credential, salt, response = self.key_request(lambda event: enroll(pin, event))
             pin = None
-            safety = self.vault.enroll_yubikey(credential, salt, response)
+            safety = self.vault.enroll_yubikey(credential, salt, response, name)
             response = None
             self.update_state()
-            QMessageBox.information(self, 'YubiKey enrolled', 'Your YubiKey is now the primary unlock option. Try PIN + touch.\n\nYour existing vault password remains the fallback.\nSafety backup:\n' + str(safety))
+            QMessageBox.information(self, 'YubiKey enrolled', 'The named key was added. Existing keys still work (up to four total).\n\nYour vault password remains available.\nSafety backup:\n' + str(safety))
         except Exception as error:
             QMessageBox.warning(self, 'YubiKey not enrolled', str(error))
         finally:
             password = None
             pin = None
+
+    def manage_keys(self):
+        try:
+            settings = choose_key(self, self.vault.yubikey_enrollments())
+            if settings is None: return
+            action, ok = QInputDialog.getItem(self, 'Manage '+settings['label'], 'Action:', ['Rename', 'Remove'], 0, False)
+            if not ok: return
+            password, ok = QInputDialog.getText(self, 'Authorize key change', 'Current fallback/master password:', QLineEdit.EchoMode.Password)
+            if not ok: return
+            self.vault.verify_password(password); password = None
+            if action == 'Rename':
+                label, ok = QInputDialog.getText(self, 'Rename key', 'Key name:', text=settings['label'])
+                if not ok: return
+                self.vault.rename_yubikey(settings['id'], label)
+            else:
+                if QMessageBox.question(self, 'Remove key?', 'Remove '+settings['label']+' from this vault? Other keys and the fallback password remain. Older backups and offline copies still retain their enrollments.', QMessageBox.StandardButton.Yes|QMessageBox.StandardButton.No, QMessageBox.StandardButton.No) != QMessageBox.StandardButton.Yes: return
+                self.vault.remove_yubikey(settings['id'])
+            self.update_state();self.auto_sync()
+        except Exception as error: QMessageBox.warning(self, 'Key change failed', str(error))
 
     def change_fallback(self):
         form = QDialog(self)
@@ -855,6 +873,8 @@ class Window(QMainWindow):
             if not ok:
                 return None
         if method == 'YubiKey PIN + Touch':
+            settings = choose_key(self, self.vault.yubikey_enrollments())
+            if settings is None: return None
             pin, ok = request_key_pin(self, 'Authorize CSV export', 'YubiKey FIDO2 PIN:')
             if not ok:
                 return None

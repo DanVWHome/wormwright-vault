@@ -323,13 +323,13 @@ public class MainActivity extends Activity {
         if(busy||!vaultFile.exists()||hardware.active())return;
         final String path=vaultFile.getAbsolutePath(),account=username.getText().toString();
         password.getText().clear();
-        job("Reading YubiKey enrollment…",()->bridge().callAttr("hardware_request",path,account).toString(),request->{
+        job("Reading YubiKey enrollment…",()->bridge().callAttr("hardware_requests",path,account).toString(),request->{
             final int token=generation;
-            hardware.unlock(new JSONObject(request),new ai.wormwright.hardware.YubiKeyUnlock.Callback(){
+            hardware.unlockChoices(new JSONArray(request),new ai.wormwright.hardware.YubiKeyUnlock.Callback(){
                 public void failed(String message){if(token==generation&&resumed)status.setText(message);}
                 public void complete(JSONObject output){
                     if(token!=generation||!resumed||!path.equals(vaultFile.getAbsolutePath()))return;
-                    job("Opening vault with YubiKey…",()->bridge().callAttr("unlock_hardware",path,account,request,output.getString("response")).toString(),result->{
+                    job("Opening vault with YubiKey…",()->bridge().callAttr("unlock_hardware",path,account,output.getString("request"),output.getString("response")).toString(),result->{
                         unlocked=true;sampleMode=false;showEntries(result);resetIdleTimer();
                         if(nasSettings.exists()){refreshNas(false);handler.postDelayed(nasPoll,60000);}
                     },"YubiKey unlock failed. Use the enrolled key or your vault password. Existing vault was kept.");

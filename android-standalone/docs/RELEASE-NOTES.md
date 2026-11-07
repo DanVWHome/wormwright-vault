@@ -1,3 +1,9 @@
+# 0.1.0-test.15
+
+Enroll up to four named keys without replacing existing ones. Select a key before
+PIN entry; manage names/removal after fresh phone authentication. Backup/restore
+preserve the collection. See ../../docs/FOUR-YUBIKEYS.md.
+
 # 0.1.0-test.14
 
 Enroll one YubiKey after fresh phone authentication; unlock with its PIN over

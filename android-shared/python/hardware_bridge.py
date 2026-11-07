@@ -9,6 +9,7 @@ def describe(settings):
     if settings is None:
         raise VaultError('No YubiKey is enrolled for this account. Enroll it on desktop first, or use your password.')
     public = {k: base64.b64encode(settings[k]).decode() for k in ('credential', 'salt')}
+    public.update(id=settings['id'], label=settings['label'])
     # Tie completion to all enrollment fields, including user/wrapped key. Stale
     # operations cannot switch accounts or use a replacement enrollment.
     serialized = {k: base64.b64encode(v).decode() if isinstance(v, bytes) else v for k,v in settings.items()}
@@ -17,7 +18,7 @@ def describe(settings):
 
 
 def current_settings(vault, username, request):
-    settings = vault.yubikey_settings(username)
+    settings = vault.yubikey_settings(username, key_id=json.loads(request).get('id'))
     if json.loads(describe(settings)) != json.loads(request):
         raise VaultError('YubiKey enrollment changed. Start again; vault was kept.')
     return settings
@@ -30,3 +31,7 @@ def response(value):
         return result
     except Exception as e:
         raise VaultError('Invalid hardware unlocking response.') from e
+
+
+def choices(vault, username=''):
+    return json.dumps([json.loads(describe(s)) for s in vault.yubikey_enrollments(username)])

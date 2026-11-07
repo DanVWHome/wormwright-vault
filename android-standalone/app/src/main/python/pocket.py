@@ -199,8 +199,6 @@ def hardware_request(path):
 def enroll_hardware(document):
     import hardware_bridge
     source = require()
-    if source.yubikey_settings() is not None:
-        raise VaultError('This vault already has a key. Replacing it is not supported here; existing enrollment was kept.')
     data = json.loads(document)
     credential = base64.b64decode(data['credential'], validate=True)
     salt = base64.b64decode(data['salt'], validate=True)
@@ -211,8 +209,8 @@ def enroll_hardware(document):
     backup = source.path.with_name(source.path.stem + '-before-yubikey.sqlite')
     with sqlite3.connect(backup) as db:
         source.db.backup(db)
-    source.enroll_yubikey(credential, salt, value)
-    return 'YubiKey enrolled. Phone authentication remains available. Keep a portable backup.'
+    source.enroll_yubikey(credential, salt, value, data.get('label'))
+    return 'YubiKey added. Existing keys and phone authentication remain available. Keep a portable backup.'
 
 
 def unlock_hardware(path, request, value):
@@ -232,7 +230,25 @@ def unlock_hardware(path, request, value):
         raise
 
 
-def prepare_hardware_enrollment():
-    if require().yubikey_settings() is not None:
-        raise VaultError('A key is already enrolled. Existing enrollment was kept; multiple keys are not supported yet.')
-    return ''
+def prepare_hardware_enrollment(label=None):
+    from hardware_keys import label_for
+    return label_for(require().yubikey_enrollments(), label)
+
+
+def hardware_requests(path):
+    import hardware_bridge
+    return hardware_bridge.choices(ManagedVault(path))
+
+
+def hardware_key_list():
+    return json.dumps([{'id':s['id'], 'label':s['label']} for s in require().yubikey_enrollments()])
+
+
+def rename_hardware(key_id, label):
+    require().rename_yubikey(key_id,label)
+    return 'Key renamed.'
+
+
+def remove_hardware(key_id):
+    require().remove_yubikey(key_id)
+    return 'Key removed from this vault. Older backups retain their enrollments.'

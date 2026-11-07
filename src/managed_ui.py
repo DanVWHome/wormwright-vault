@@ -1,7 +1,7 @@
 """Managed-format UI shared by Vault and the optional Vault Manager launcher."""
 from website import add_website_action
 from update_check import add_update_actions
-from key_ui import request_key_pin
+from key_ui import request_key_pin, choose_key
 from pathlib import Path
 import sys
 import tempfile
@@ -120,7 +120,7 @@ class ManagedWindow(QMainWindow):
         for text,callback in [('NAS Sync Settings…',self.sync_settings),('Sync Now',self.sync_now),('Lock Settings…',self.lock_settings)]:
             action=settings_menu.addAction(text);action.triggered.connect(callback);self.settings_actions.append(action)
         settings_menu.addSeparator()
-        for text,callback in [('Set Up YubiKey…',self.enroll),('Change Account Password…',self.change_password)]:
+        for text,callback in [('Add YubiKey…',self.enroll),('Manage YubiKeys…',self.manage_keys),('Change Account Password…',self.change_password)]:
             action=settings_menu.addAction(text);action.triggered.connect(callback);self.controls.append(action)
         help_menu=self.menuBar().addMenu('Help');help_menu.addAction('Searchable Help…',self.show_help);help_menu.addAction('Watch Tutorial…',self.show_tutorial);add_website_action(help_menu,self);add_update_actions(help_menu,self);help_menu.addSeparator();help_menu.addAction('About Wormwright Vault…',self.show_about)
         self.table=QTableWidget(0,6);self.table.setHorizontalHeaderLabels(['Description','Link','User Name','Password','Groups','Duplicate Password'])
@@ -225,6 +225,8 @@ class ManagedWindow(QMainWindow):
                 fallback=choice.addButton('Account Password',QMessageBox.ButtonRole.ActionRole)
                 choice.addButton(QMessageBox.StandardButton.Cancel);choice.setDefaultButton(key);choice.exec()
                 if choice.clickedButton()==key:
+                    settings=choose_key(self,self.vault.yubikey_enrollments())
+                    if settings is None:return None
                     pin,ok=request_key_pin(self, 'YubiKey authentication', 'FIDO2 PIN:')
                     if not ok:return None
                     from yubikey_auth import unlock
@@ -836,22 +838,42 @@ class ManagedWindow(QMainWindow):
         from app import Window
         return Window.key_request(self,operation)
     def unlock_key(self):
-        pin,ok=request_key_pin(self, 'YubiKey', 'FIDO2 PIN:')
-        if not ok:return
         try:
             from yubikey_auth import unlock
-            settings=self.vault.yubikey_settings(self.username.text())
-            if not settings:raise VaultError('No YubiKey enrolled for this account.')
+            settings=choose_key(self,self.vault.yubikey_enrollments(self.username.text()))
+            if not settings:return
+            pin,ok=request_key_pin(self,'YubiKey — '+settings['label'],'FIDO2 PIN:')
+            if not ok:return
             response=self.key_request(lambda event:unlock(settings,pin,event));self.vault.unlock_yubikey(settings,response)
             self.master.clear();self.touch();self.history.remember(self.vault.path);managed_locations.remember(vault=self.vault.path);self.update_state();self.refresh();self.complete_lookup();self.auto_sync()
         except Exception as error:self.warning(error)
     def enroll(self):
         if not self.reauthenticate():return
         try:
+            from hardware_keys import label_for
+            name,ok=QInputDialog.getText(self,'Name this key','Key name (Laptop, Phone, Backup…):')
+            if not ok:return
+            name=label_for(self.vault.yubikey_enrollments(),name)
             pin,ok=request_key_pin(self, 'Enroll YubiKey', 'FIDO2 PIN:')
             if not ok:return
             from yubikey_auth import enroll
-            credential,salt,response=self.key_request(lambda event:enroll(pin,event));self.vault.enroll_yubikey(credential,salt,response);self.update_state();self.auto_sync()
+            credential,salt,response=self.key_request(lambda event:enroll(pin,event));self.vault.enroll_yubikey(credential,salt,response,name);self.update_state();self.auto_sync()
+        except Exception as error:self.warning(error)
+    def manage_keys(self):
+        if not self.reauthenticate():return
+        try:
+            settings=choose_key(self,self.vault.yubikey_enrollments())
+            if settings is None:return
+            action,ok=QInputDialog.getItem(self,'Manage '+settings['label'],'Action:',['Rename','Remove'],0,False)
+            if not ok:return
+            if action=='Rename':
+                label,ok=QInputDialog.getText(self,'Rename key','Key name:',text=settings['label'])
+                if not ok:return
+                self.vault.rename_yubikey(settings['id'],label)
+            else:
+                if QMessageBox.question(self,'Remove key?','Remove '+settings['label']+' from this account? Other keys and the password remain. Older backups/offline copies retain their enrollments.',QMessageBox.StandardButton.Yes|QMessageBox.StandardButton.No,QMessageBox.StandardButton.No)!=QMessageBox.StandardButton.Yes:return
+                self.vault.remove_yubikey(settings['id'])
+            self.update_state();self.auto_sync()
         except Exception as error:self.warning(error)
     def lock_settings(self):
         minutes,ok=QInputDialog.getInt(self,'Lock Settings','Minutes of inactivity (0 = Unlimited):',self.lock_minutes,0,10080)

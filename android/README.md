@@ -1,3 +1,9 @@
+## Four-key update
+
+0.1.0-preview.15 supports up to four named YubiKeys per vault account.
+See [Four-key setup](../docs/FOUR-YUBIKEYS.md). Earlier single-key limitations
+below describe previous builds.
+
 ## YubiKey update
 
 See [Android YubiKey unlock](../docs/ANDROID-YUBIKEY.md) for NFC/USB-C setup,

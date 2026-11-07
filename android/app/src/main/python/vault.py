@@ -116,7 +116,7 @@ class Vault:
         try:
             with closing(sqlite3.connect(destination)) as target:
                 self.db.backup(target)
-            with destination.open('rb') as snapshot:
+            with destination.open('rb+') as snapshot:
                 os.fsync(snapshot.fileno())
         except Exception:
             destination.unlink(missing_ok=True)
@@ -149,21 +149,16 @@ class Vault:
             self.db.executemany('INSERT INTO entries VALUES (?,?)', pending)
         return len(pending), skipped, safety
 
-    def yubikey_settings(self):
-        if not self.path.is_file():
-            return None
-        with closing(sqlite3.connect(self.path.resolve().as_uri() + '?mode=ro', uri=True)) as connection:
-            row = connection.execute("SELECT value FROM metadata WHERE name='yubikey'").fetchone()
-        if row is None:
-            return None
-        settings = json.loads(row[0])
-        if settings.get('version') != 1:
-            raise VaultError('Unsupported YubiKey configuration.')
-        for field in ('credential', 'salt', 'wrapped_key'):
-            settings[field] = base64.b64decode(settings[field], validate=True)
-        if len(settings['salt']) != 32:
-            raise VaultError('Invalid YubiKey configuration.')
-        return settings
+    def yubikey_enrollments(self):
+        from hardware_keys import decode
+        if not self.path.is_file(): return []
+        with closing(sqlite3.connect(self.path.resolve().as_uri() + '?mode=ro', uri=True)) as db:
+            row = db.execute("SELECT value FROM metadata WHERE name='yubikey'").fetchone()
+        return decode(row[0] if row else None, legacy_version=True)
+
+    def yubikey_settings(self, key_id=None):
+        from hardware_keys import select
+        return select(self.yubikey_enrollments(), key_id)
 
     def verify_password(self, password):
         if not self.unlocked:
@@ -183,26 +178,54 @@ class Vault:
             raise VaultError('The YubiKey did not return a valid unlocking secret.')
         return hashlib.sha256(b'Atlas portable YubiKey wrapping key v1\0' + response).digest()
 
-    def enroll_yubikey(self, credential, salt, response):
+    def enroll_yubikey(self, credential, salt, response, label=None):
+        from hardware_keys import decode, encode, append
         if not self.unlocked:
             raise VaultError('The vault locked during enrollment. Unlock and try again.')
         wrapping_key = self._hardware_key(response)
-        if len(salt) != 32:
-            raise VaultError('Invalid YubiKey salt.')
-        settings = {'version': 1, 'credential': base64.b64encode(credential).decode(),
-                    'salt': base64.b64encode(salt).decode(),
-                    'wrapped_key': base64.b64encode(bytes(secret.SecretBox(wrapping_key).encrypt(self.data_key))).decode()}
+        if len(salt) != 32: raise VaultError('Invalid YubiKey salt.')
         safety = self.path.with_name(self.path.stem + '-before-yubikey-' + uuid.uuid4().hex[:12] + '.sqlite')
         self.backup(safety)
-        with self.db:
-            self.db.execute("INSERT INTO metadata VALUES ('yubikey', ?) ON CONFLICT(name) DO UPDATE SET value=excluded.value", (json.dumps(settings).encode(),))
+        try:
+            self.db.execute('BEGIN IMMEDIATE')
+            row = self.db.execute("SELECT value FROM metadata WHERE name='yubikey'").fetchone()
+            rows = decode(row[0] if row else None, legacy_version=True)
+            rows = append(rows, credential, salt, bytes(secret.SecretBox(wrapping_key).encrypt(self.data_key)), label, legacy_version=True)
+            self.db.execute("INSERT INTO metadata VALUES ('yubikey', ?) ON CONFLICT(name) DO UPDATE SET value=excluded.value", (encode(rows),))
+            self.db.commit()
+        except Exception:
+            self.db.rollback(); raise
         return safety
+
+    def remove_yubikey(self, key_id):
+        from hardware_keys import decode, encode
+        if not self.unlocked: raise VaultError('Unlock the vault first.')
+        with self.db:
+            self.db.execute('BEGIN IMMEDIATE')
+            row = self.db.execute("SELECT value FROM metadata WHERE name='yubikey'").fetchone()
+            rows = decode(row[0] if row else None, legacy_version=True)
+            remaining = [r for r in rows if r['id'] != key_id]
+            if len(rows) == len(remaining): raise VaultError('Key enrollment changed. Try again.')
+            if remaining: self.db.execute("UPDATE metadata SET value=? WHERE name='yubikey'", (encode(remaining),))
+            else: self.db.execute("DELETE FROM metadata WHERE name='yubikey'")
+
+    def rename_yubikey(self, key_id, label):
+        from hardware_keys import decode, encode, label_for
+        if not self.unlocked: raise VaultError('Unlock the vault first.')
+        with self.db:
+            self.db.execute('BEGIN IMMEDIATE')
+            row = self.db.execute("SELECT value FROM metadata WHERE name='yubikey'").fetchone()
+            rows = decode(row[0] if row else None, legacy_version=True)
+            selected = next((r for r in rows if r['id'] == key_id), None)
+            if selected is None: raise VaultError('Key enrollment changed. Try again.')
+            selected['label'] = label_for([r for r in rows if r['id'] != key_id], label)
+            self.db.execute("UPDATE metadata SET value=? WHERE name='yubikey'", (encode(rows),))
 
     def verify_yubikey(self, settings, response):
         """Verify a fresh assertion against the currently unlocked vault."""
         if not self.unlocked:
             raise VaultError('Unlock the vault first.')
-        if self.yubikey_settings() != settings:
+        if self.yubikey_settings(settings.get('id')) != settings:
             raise VaultError('YubiKey settings changed. Authenticate again.')
         try:
             key = secret.SecretBox(self._hardware_key(response)).decrypt(settings['wrapped_key'])
@@ -218,7 +241,7 @@ class Vault:
                 raise VaultError('Vault file does not exist.')
             self.db = sqlite3.connect(self.path)
             # Refuse results from an enrollment that changed while waiting for touch.
-            current = self.yubikey_settings()
+            current = self.yubikey_settings(settings.get('id'))
             if current != settings:
                 raise VaultError('YubiKey settings changed. Try unlocking again.')
             self.data_key = secret.SecretBox(self._hardware_key(response)).decrypt(settings['wrapped_key'])
@@ -271,7 +294,7 @@ class Vault:
             candidate.unlock(password)
             restored_key = candidate.data_key
             candidate.lock()
-            with staged.open('rb') as snapshot:
+            with staged.open('rb+') as snapshot:
                 os.fsync(snapshot.fileno())
             safety = self.path.with_name(self.path.stem + '-before-restore-' + uuid.uuid4().hex[:12] + '.sqlite')
             self.backup(safety)

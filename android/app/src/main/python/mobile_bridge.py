@@ -331,3 +331,8 @@ def unlock_hardware(path, username, request, value):
         candidate.lock()
         lock()
         raise
+
+
+def hardware_requests(path, username):
+    import hardware_bridge
+    return hardware_bridge.choices(ManagedVault(path), username)

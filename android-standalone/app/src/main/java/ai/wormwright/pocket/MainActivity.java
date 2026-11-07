@@ -132,10 +132,10 @@ public class MainActivity extends Activity {
             onUserInteraction(); PopupMenu menu = new PopupMenu(this,helpButton);
             if(compact){menu.getMenu().add("Recently deleted");if(!sample){menu.getMenu().add("Export portable backup");menu.getMenu().add("Export for desktop and NAS");menu.getMenu().add("Change optional vault password");}}
             menu.getMenu().add("Create new vault"); menu.getMenu().add("Vaults"); menu.getMenu().add("Rename current vault"); menu.getMenu().add("Delete current vault"); menu.getMenu().add("Delete vault…"); menu.getMenu().add("Delete all phone vaults"); menu.getMenu().add("Delete selected backups");
-            if(unlocked&&!sample)menu.getMenu().add("Enroll YubiKey");
+            if(unlocked&&!sample){menu.getMenu().add("Enroll YubiKey");menu.getMenu().add("Manage YubiKeys");}
             menu.getMenu().add("Backup and recovery"); menu.getMenu().add("About"); menu.getMenu().add("Wormwright Website");
             menu.setOnMenuItemClickListener(item -> { String choice=item.getTitle().toString();
-                if(choice.equals("Enroll YubiKey")) confirmEnrollHardware(); else if(choice.equals("Recently deleted")) recentlyDeleted(); else if(choice.equals("Export portable backup")) export(false); else if(choice.equals("Export for desktop and NAS")) export(true); else if(choice.equals("Change optional vault password")) changePassword(); else if(choice.equals("Create new vault")) newVault(); else if(choice.equals("Vaults")) switchVault(); else if(choice.equals("Rename current vault")) renameVault(); else if(choice.equals("Delete current vault")) deleteCurrentVault(); else if(choice.equals("Delete vault…")) chooseVaultForDeletion(); else if(choice.equals("Delete all phone vaults")) deletePhoneVaults(); else if(choice.equals("Delete selected backups")) maintenance.chooseBackups(); else if (choice.equals("About")) about(); else if (choice.equals("Backup and recovery")) help(); else openWebsite(); return true; }); menu.show();
+                if(choice.equals("Manage YubiKeys")) unlockPersonal(this::manageHardware); else if(choice.equals("Enroll YubiKey")) confirmEnrollHardware(); else if(choice.equals("Recently deleted")) recentlyDeleted(); else if(choice.equals("Export portable backup")) export(false); else if(choice.equals("Export for desktop and NAS")) export(true); else if(choice.equals("Change optional vault password")) changePassword(); else if(choice.equals("Create new vault")) newVault(); else if(choice.equals("Vaults")) switchVault(); else if(choice.equals("Rename current vault")) renameVault(); else if(choice.equals("Delete current vault")) deleteCurrentVault(); else if(choice.equals("Delete vault…")) chooseVaultForDeletion(); else if(choice.equals("Delete all phone vaults")) deletePhoneVaults(); else if(choice.equals("Delete selected backups")) maintenance.chooseBackups(); else if (choice.equals("About")) about(); else if (choice.equals("Backup and recovery")) help(); else openWebsite(); return true; }); menu.show();
         });
         heading.addView(helpButton); root.addView(heading); if(!compact)root.addView(text("Version " + installedVersion())); status = text(""); if(compact)status.setVisibility(View.GONE); root.addView(status);
         progressRow = column(); LinearLayout loading = new LinearLayout(this); loading.setGravity(Gravity.CENTER_VERTICAL);
@@ -205,13 +205,13 @@ public class MainActivity extends Activity {
     private void unlockHardware() {
         if(busy||active==null||hardware.active())return;
         final String slot=active.optString("slot");final String path=slotFile(slot).getPath();
-        task("Reading YubiKey enrollment…",()->call("hardware_request",path),request->{
+        task("Reading YubiKey enrollment…",()->call("hardware_requests",path),request->{
             final int token=epoch;
-            hardware.unlock(new JSONObject(request),new ai.wormwright.hardware.YubiKeyUnlock.Callback(){
+            hardware.unlockChoices(new JSONArray(request),new ai.wormwright.hardware.YubiKeyUnlock.Callback(){
                 public void failed(String note){if(token==epoch&&resumed)message(note);}
                 public void complete(JSONObject output){
                     if(token!=epoch||!resumed||active==null||!slot.equals(active.optString("slot")))return;
-                    task("Opening vault with YubiKey…",()->call("unlock_hardware",path,request,output.getString("response")),result->{sample=false;unlocked=true;vaultScreen();});
+                    task("Opening vault with YubiKey…",()->call("unlock_hardware",path,output.getString("request"),output.getString("response")),result->{sample=false;unlocked=true;vaultScreen();});
                 }
             });
         });
@@ -219,20 +219,60 @@ public class MainActivity extends Activity {
     private void confirmEnrollHardware() {
         if(busy||sample||!unlocked)return;
         dialog=new AlertDialog.Builder(this).setTitle("Enroll a YubiKey for this vault?")
-            .setMessage("This key will unlock this vault over NFC or USB-C with its own PIN, instead of phone authentication and any optional vault password. Phone unlock and portable-backup recovery remain available. Only one key per vault is supported; an existing enrollment will not be replaced. You will authenticate this vault again before enrollment.")
-            .setNegativeButton("Cancel",null).setPositiveButton("Continue",(d,w)->unlockPersonal(()->task("Checking enrollment…",()->call("prepare_hardware_enrollment"),v->enrollHardware()))).create();
+            .setMessage("This key will unlock this vault over NFC or USB-C with its own PIN, instead of phone authentication and any optional vault password. Phone unlock and portable-backup recovery remain available. Up to four named keys can be enrolled; adding one preserves the others. You will authenticate this vault again before enrollment.")
+            .setNegativeButton("Cancel",null).setPositiveButton("Continue",(d,w)->unlockPersonal(this::nameHardware)).create();
         dialog.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);dialog.show();
     }
-    private void enrollHardware() {
+    private void nameHardware() {
+        if(busy||sample||!unlocked)return;
+        LinearLayout fields=column();EditText label=input(fields,"Key name (Laptop, Phone, Backup…)",false);
+        final int token=epoch;
+        final AlertDialog prompt=new AlertDialog.Builder(this).setTitle("Name this YubiKey").setView(fields).setNegativeButton("Cancel",null).setPositiveButton("Continue",null).create();dialog=prompt;
+        prompt.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);prompt.show();
+        prompt.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{
+            if(token!=epoch||busy)return;String name=label.getText().toString().trim();
+            if(name.isEmpty()||name.length()>64){label.setError("Use 1–64 characters.");return;}
+            prompt.dismiss();task("Checking enrollment…",()->call("prepare_hardware_enrollment",name),this::enrollHardware);
+        });
+    }
+    private void enrollHardware(String label) {
         if(busy||sample||!unlocked)return;
         final int token=epoch;final String slot=active.optString("slot");
         hardware.enroll(new ai.wormwright.hardware.YubiKeyUnlock.Callback(){
             public void failed(String note){if(token==epoch&&resumed)message(note);}
             public void complete(JSONObject output){
                 if(token!=epoch||!resumed||!unlocked||!slot.equals(active.optString("slot")))return;
-                task("Saving YubiKey enrollment…",()->call("enroll_hardware",output.toString()),MainActivity.this::message);
+                task("Saving YubiKey enrollment…",()->call("enroll_hardware",output.put("label",label).toString()),MainActivity.this::message);
             }
         });
+    }
+    private void manageHardware() {
+        if(busy||sample||!unlocked)return;
+        task("Reading enrolled keys…",()->call("hardware_key_list"),value->{
+            JSONArray keys=new JSONArray(value);if(keys.length()==0){message("No YubiKeys are enrolled.");return;}
+            String[] labels=new String[keys.length()];for(int i=0;i<labels.length;i++)labels[i]=keys.getJSONObject(i).getString("label");
+            final int token=epoch;
+            dialog=new AlertDialog.Builder(this).setTitle("Manage YubiKeys ("+keys.length()+"/4)").setItems(labels,(d,i)->{
+                if(token!=epoch||!unlocked)return;
+                try{JSONObject key=keys.getJSONObject(i);hardwareAction(key);}catch(Exception e){message("Key selection failed.");}
+            }).setNegativeButton("Cancel",null).create();dialog.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);dialog.show();
+        });
+    }
+    private void hardwareAction(JSONObject key) throws Exception {
+        final String id=key.getString("id"),label=key.getString("label");final int token=epoch;
+        dialog=new AlertDialog.Builder(this).setTitle(label).setItems(new String[]{"Rename","Remove"},(d,i)->{
+            if(token!=epoch||!unlocked)return;
+            if(i==0){
+                LinearLayout fields=column();EditText name=input(fields,"Key name",false);name.setText(label);
+                final AlertDialog prompt=new AlertDialog.Builder(this).setTitle("Rename key").setView(fields).setNegativeButton("Cancel",null).setPositiveButton("Save",null).create();dialog=prompt;prompt.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);prompt.show();
+                prompt.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{
+                    if(token!=epoch||busy)return;String text=name.getText().toString().trim();if(text.isEmpty()||text.length()>64){name.setError("Use 1–64 characters.");return;}
+                    prompt.dismiss();task("Renaming key…",()->call("rename_hardware",id,text),this::message);
+                });
+            }else{
+                dialog=new AlertDialog.Builder(this).setTitle("Remove "+label+"?").setMessage("Remove this key from the current vault? Other keys and phone authentication remain. Older backups and offline copies still retain their enrollments.").setNegativeButton("Cancel",null).setPositiveButton("Remove",(q,w)->{if(token==epoch&&unlocked)task("Removing key…",()->call("remove_hardware",id),this::message);}).create();dialog.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);dialog.show();
+            }
+        }).setNegativeButton("Cancel",null).create();dialog.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);dialog.show();
     }
     private void unlockPersonal() { unlockPersonal(null); }
     private void unlockPersonal(Runnable after) {

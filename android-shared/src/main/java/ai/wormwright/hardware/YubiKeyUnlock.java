@@ -22,6 +22,7 @@ import com.yubico.yubikit.fido.client.BasicWebAuthnClient;
 import com.yubico.yubikit.fido.ctap.Ctap2Session;
 import com.yubico.yubikit.fido.webauthn.*;
 import org.json.JSONObject;
+import org.json.JSONArray;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.security.*;
@@ -47,6 +48,22 @@ public final class YubiKeyUnlock {
     }
     /** request contains public enrollment data only: full credential and salt. */
     public void unlock(JSONObject request, Callback done) { begin(request,false,done); }
+    public void unlockChoices(JSONArray choices, Callback done) {
+        cancel();
+        if(choices.length()==0){done.failed("No YubiKey is enrolled for this account. Use the existing unlock method and enroll a key first.");return;}
+        try {
+            if(choices.length()==1){unlock(choices.getJSONObject(0),done);return;}
+            if(choices.length()>4)throw new IllegalArgumentException();
+            String[] labels=new String[choices.length()];for(int i=0;i<labels.length;i++)labels[i]=choices.getJSONObject(i).getString("label");
+            Attempt selection=new Attempt(new JSONObject(),false,done);current=selection;
+            selection.dialog=new AlertDialog.Builder(activity).setTitle("Which YubiKey are you using?").setItems(labels,(d,i)->{
+                if(current!=selection)return;
+                try{JSONObject request=choices.getJSONObject(i);cancel();unlock(request,done);}catch(Exception e){fail(selection,"Key selection failed.");}
+            }).setNegativeButton("Cancel",(d,w)->fail(selection,"Key selection cancelled.")).create();
+            selection.dialog.setOnCancelListener(d->fail(selection,"Key selection cancelled."));
+            selection.dialog.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);selection.dialog.show();
+        }catch(Exception e){done.failed("Invalid key enrollment list. Existing data was kept.");}
+    }
     public void enroll(Callback done) { begin(new JSONObject(),true,done); }
     private void begin(JSONObject request, boolean enroll, Callback done) {
         cancel();
@@ -113,7 +130,7 @@ public final class YubiKeyUnlock {
                         byte[] full=decode(a.request.getString("credential"));
                         AttestedCredentialData cred=AttestedCredentialData.parseFrom(ByteBuffer.wrap(full));
                         byte[] secret=assertKey(client,cred,decode(a.request.getString("salt")),a);
-                        try{result=new JSONObject().put("response",b64(secret));}finally{Arrays.fill(secret,(byte)0);}
+                        try{result=new JSONObject().put("response",b64(secret)).put("request",a.request.toString());}finally{Arrays.fill(secret,(byte)0);}
                     }
                 }
             } catch(Exception e) {

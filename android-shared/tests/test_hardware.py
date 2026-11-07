@@ -31,7 +31,7 @@ class HardwareTests(unittest.TestCase):
  def test_stale_enrollment_and_request_tampering(self):
   self.create();r=network.hardware_request(self.path,'');changed=json.loads(r);changed['salt']=b64(os.urandom(32))
   with self.assertRaises(VaultError):network.unlock_hardware(self.path,'',json.dumps(changed),b64(self.secret))
-  v=ManagedVault(self.path);v.unlock(PW);v.enroll_yubikey(os.urandom(128),os.urandom(32),os.urandom(32));v.lock()
+  v=ManagedVault(self.path);v.unlock(PW);v.remove_yubikey(json.loads(r)['id']);v.enroll_yubikey(os.urandom(128),os.urandom(32),os.urandom(32));v.lock()
   with self.assertRaises(VaultError):network.unlock_hardware(self.path,'',r,b64(self.secret))
   self.assertIsNone(network._vault)
  def test_managed_account_binding(self):
@@ -42,7 +42,7 @@ class HardwareTests(unittest.TestCase):
   self.assertEqual(len(json.loads(network.unlock_hardware(self.path,'Owner',r,b64(self.secret)))),1)
  def test_pocket_enroll_unlock_export_restore_and_replacement_refusal(self):
   pocket.create(self.path,PW,'Invented Pocket');pocket.save(json.dumps({'description':'Pocket entry','password':'InventedOnly'}))
-  data={'credential':b64(self.credential),'salt':b64(self.salt),'response':b64(self.secret)}
+  data={'credential':b64(self.credential),'salt':b64(self.salt),'response':b64(self.secret),'label':'Phone'}
   pocket.enroll_hardware(json.dumps(data));self.assertTrue(self.path.with_name('vault-before-yubikey.sqlite').exists())
   with self.assertRaises(VaultError):pocket.enroll_hardware(json.dumps(data))
   r=pocket.hardware_request(self.path);pocket.lock();pocket.unlock_hardware(self.path,r,b64(self.secret))
@@ -56,6 +56,19 @@ class HardwareTests(unittest.TestCase):
  def test_pocket_wrong_key_no_session(self):
   self.create();r=pocket.hardware_request(self.path)
   with self.assertRaises(VaultError):pocket.unlock_hardware(self.path,r,b64(os.urandom(32)))
+  self.assertIsNone(pocket._vault)
+ def test_pocket_four_choices_roundtrip_and_selected_revocation(self):
+  pocket.create(self.path,PW,'Four-key Pocket');keys=[]
+  for label in ['Laptop','Phone','Backup','Spare']:
+   value=os.urandom(32);pocket.enroll_hardware(json.dumps({'credential':b64(os.urandom(128)),'salt':b64(os.urandom(32)),'response':b64(value),'label':label}));keys.append(value)
+  choices=json.loads(pocket.hardware_requests(self.path));self.assertEqual([k['label'] for k in choices],['Laptop','Phone','Backup','Spare'])
+  with self.assertRaises(VaultError):pocket.prepare_hardware_enrollment('Fifth')
+  for request,value in zip(choices,keys):pocket.unlock_hardware(self.path,json.dumps(request),b64(value))
+  export=self.path.with_name('four-backup.sqlite');pocket.export(export,PW);pocket.lock()
+  restored=self.path.with_name('four-restored.sqlite');pocket.restore(export,restored,PW,'NewSecret-Only')
+  for request,value in zip(json.loads(pocket.hardware_requests(restored)),keys):pocket.unlock_hardware(restored,json.dumps(request),b64(value))
+  first=json.loads(pocket.hardware_requests(restored))[0];pocket.remove_hardware(first['id']);pocket.lock()
+  with self.assertRaises(VaultError):pocket.unlock_hardware(restored,json.dumps(first),b64(keys[0]))
   self.assertIsNone(pocket._vault)
  def test_no_enrollment_is_read_only(self):
   v=ManagedVault(self.path);v.create(PW,vault_name='Fixture');v.lock();before=self.path.read_bytes()

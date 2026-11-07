@@ -599,7 +599,7 @@ class ManagedVault:
         try:
             with closing(sqlite3.connect(destination)) as target:
                 self.db.backup(target)
-            with destination.open('rb') as stream:
+            with destination.open('rb+') as stream:
                 os.fsync(stream.fileno())
         except Exception:
             destination.unlink(missing_ok=True)
@@ -621,7 +621,7 @@ class ManagedVault:
             restored_session=candidate.session();candidate.lock()
             safety=self.path.with_name(self.path.stem+'-before-restore-'+uuid.uuid4().hex+'.sqlite')
             self.backup(safety)
-            with staged.open('rb') as stream:os.fsync(stream.fileno())
+            with staged.open('rb+') as stream:os.fsync(stream.fileno())
             self.lock();os.replace(staged,self.path);self.resume(restored_session)
             return safety
         finally:candidate.lock();staged.unlink(missing_ok=True)
@@ -644,35 +644,62 @@ class ManagedVault:
             self.lock()
             raise
 
-    def yubikey_settings(self, username=''):
-        if not self.path.is_file():
-            return None
-        with closing(sqlite3.connect(self.path.resolve().as_uri() + '?mode=ro', uri=True)) as db:
-            meta = dict(db.execute('SELECT name,value FROM metadata'))
-            if self.uid:
-                row = db.execute('SELECT id,hardware FROM users WHERE id=?', (self.uid,)).fetchone()
-            elif meta['mode'] == b'personal':
-                row = db.execute('SELECT id,hardware FROM users WHERE id=?', (meta['manager'].decode(),)).fetchone()
-            else:
-                login = hashlib.sha256(meta['vault_id'] + b'\0' + username.strip().casefold().encode()).hexdigest()
-                row = db.execute('SELECT id,hardware FROM users WHERE login=?', (login,)).fetchone()
-        if not row or row[1] is None:
-            return None
-        settings = json.loads(row[1])
-        for field in ('credential', 'salt', 'wrapped_key'):
-            settings[field] = un64(settings[field])
-        settings['user'] = row[0]
-        return settings
+    def _hardware_row(self, db, username=''):
+        meta = dict(db.execute('SELECT name,value FROM metadata'))
+        if self.uid:
+            return db.execute('SELECT id,hardware FROM users WHERE id=?', (self.uid,)).fetchone()
+        if meta['mode'] == b'personal':
+            return db.execute('SELECT id,hardware FROM users WHERE id=?', (meta['manager'].decode(),)).fetchone()
+        login = hashlib.sha256(meta['vault_id'] + b'\0' + username.strip().casefold().encode()).hexdigest()
+        return db.execute('SELECT id,hardware FROM users WHERE login=?', (login,)).fetchone()
 
-    def enroll_yubikey(self, credential, salt, response):
+    def yubikey_enrollments(self, username=''):
+        from hardware_keys import decode
+        if not self.path.is_file(): return []
+        with closing(sqlite3.connect(self.path.resolve().as_uri() + '?mode=ro', uri=True)) as db:
+            row = self._hardware_row(db, username)
+        if not row: return []
+        return [dict(item, user=row[0]) for item in decode(row[1])]
+
+    def yubikey_settings(self, username='', key_id=None):
+        from hardware_keys import select
+        return select(self.yubikey_enrollments(username), key_id)
+
+    def enroll_yubikey(self, credential, salt, response, label=None):
         from vault import Vault
+        from hardware_keys import decode, encode, append
         if not self.unlocked or len(salt) != 32:
             raise VaultError('Unlock the account and use a valid YubiKey salt.')
         self._refresh_cap()
-        settings = {'credential': b64(credential), 'salt': b64(salt),
-                    'wrapped_key': b64(secret.SecretBox(Vault._hardware_key(response)).encrypt(pack(self.material)))}
         with self.db:
-            self.db.execute('UPDATE users SET hardware=? WHERE id=?', (pack(settings),self.uid))
+            self.db.execute('BEGIN IMMEDIATE')
+            row = self.db.execute('SELECT hardware FROM users WHERE id=?', (self.uid,)).fetchone()
+            rows = decode(row[0])
+            rows = append(rows, credential, salt, bytes(secret.SecretBox(Vault._hardware_key(response)).encrypt(pack(self.material))), label)
+            self.db.execute('UPDATE users SET hardware=? WHERE id=?', (encode(rows), self.uid))
+
+    def remove_yubikey(self, key_id):
+        from hardware_keys import decode, encode
+        if not self.unlocked: raise VaultError('Unlock the account first.')
+        self._refresh_cap()
+        with self.db:
+            self.db.execute('BEGIN IMMEDIATE')
+            rows = decode(self.db.execute('SELECT hardware FROM users WHERE id=?', (self.uid,)).fetchone()[0])
+            remaining = [r for r in rows if r['id'] != key_id]
+            if len(remaining) == len(rows): raise VaultError('Key enrollment changed. Try again.')
+            self.db.execute('UPDATE users SET hardware=? WHERE id=?', (encode(remaining) if remaining else None, self.uid))
+
+    def rename_yubikey(self, key_id, label):
+        from hardware_keys import decode, encode, label_for
+        if not self.unlocked: raise VaultError('Unlock the account first.')
+        self._refresh_cap()
+        with self.db:
+            self.db.execute('BEGIN IMMEDIATE')
+            rows = decode(self.db.execute('SELECT hardware FROM users WHERE id=?', (self.uid,)).fetchone()[0])
+            selected = next((r for r in rows if r['id'] == key_id), None)
+            if selected is None: raise VaultError('Key enrollment changed. Try again.')
+            selected['label'] = label_for([r for r in rows if r['id'] != key_id], label)
+            self.db.execute('UPDATE users SET hardware=? WHERE id=?', (encode(rows), self.uid))
 
     def unlock_yubikey(self, settings, response):
         from vault import Vault
@@ -680,7 +707,7 @@ class ManagedVault:
         try:
             self._connect()
             self.uid = settings['user']
-            if self.yubikey_settings() != settings:
+            if self.yubikey_settings(key_id=settings.get('id')) != settings:
                 raise VaultError('YubiKey enrollment changed. Try again.')
             self.material = json.loads(secret.SecretBox(Vault._hardware_key(response)).decrypt(settings['wrapped_key']))
             self._refresh_cap()
@@ -691,7 +718,7 @@ class ManagedVault:
 
     def verify_yubikey(self, settings, response):
         from vault import Vault
-        if not self.unlocked or settings != self.yubikey_settings():
+        if not self.unlocked or settings != self.yubikey_settings(key_id=settings.get('id')):
             raise VaultError('Authenticate the current account again.')
         material = secret.SecretBox(Vault._hardware_key(response)).decrypt(settings['wrapped_key'])
         if not hmac.compare_digest(material, pack(self.material)):
