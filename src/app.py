@@ -444,7 +444,7 @@ class Window(QMainWindow):
                 if task.cancelled.is_set(): return
                 title, text = ENROLLMENT_STEPS[step]
                 progress.setWindowTitle(title)
-                progress.setLabelText(text)
+                progress.setLabelText(title + '\nFollow the Windows security-key prompts.')
                 answer = QMessageBox.information(progress, title, text, QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel)
                 if answer != QMessageBox.StandardButton.Ok: task.cancelled.set()
             # The hardware worker waits for the UI explanation to be acknowledged

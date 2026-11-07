@@ -22,6 +22,7 @@ class GuidanceTests(unittest.TestCase):
         host=Host();events=[]
         def explain(parent,title,text,*buttons):
             self.assertEqual(threading.current_thread(),threading.main_thread())
+            self.assertLess(parent.sizeHint().width(), 800)
             events.append(title);return QMessageBox.StandardButton.Ok
         def operation(cancelled,stage):
             stage(1);events.append('create');stage(2);events.append('verify');return 'complete'
