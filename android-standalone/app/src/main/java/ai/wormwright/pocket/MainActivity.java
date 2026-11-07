@@ -55,7 +55,7 @@ public class MainActivity extends Activity {
     private PyObject engine() { return Python.getInstance().getModule("pocket"); }
     private String call(String name, Object... args) { PyObject result = engine().callAttr(name, args); return result == null ? "" : result.toString(); }
     @Override public void onCreate(Bundle state) {
-        super.onCreate(state); hardware=new ai.wormwright.hardware.YubiKeyUnlock(this); maintenance=new DestructiveActions(this); getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
+        super.onCreate(state);ai.wormwright.hardware.YubiKeyKeyboardGuard.install(getWindow()); hardware=new ai.wormwright.hardware.YubiKeyUnlock(this); maintenance=new DestructiveActions(this); getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
         getWindow().setDecorFitsSystemWindows(false);
         base = getNoBackupFilesDir();
         try { active = readActive(); startupChoicePending=savedVaults().size()>1; } catch (Exception e) { active = null; }
@@ -105,7 +105,7 @@ public class MainActivity extends Activity {
             ui.post(() -> {
                 if (generation != epoch || !resumed || isFinishing()) return;
                 setBusy(false, "");
-                if (problem != null) { message(problem); return; }
+                if (problem != null) { if(label.contains("YubiKey")||label.contains("enrollment")||label.contains("enrolled keys"))showHardwareFailure(problem);else message(problem); return; }
                 try { done.accept(value); } catch (Exception e) { message(safeError(e)); }
             });
         });
@@ -137,7 +137,7 @@ public class MainActivity extends Activity {
             if(unlocked&&!sample){menu.getMenu().add("Enroll YubiKey");menu.getMenu().add("Manage YubiKeys");}
             menu.getMenu().add("Backup and recovery"); menu.getMenu().add("About"); menu.getMenu().add("Wormwright Website");
             menu.setOnMenuItemClickListener(item -> { String choice=item.getTitle().toString();
-                if(choice.equals("Manage YubiKeys")) authorizeHardware(this::manageHardware); else if(choice.equals("Enroll YubiKey")) confirmEnrollHardware(); else if(choice.equals("Recently deleted")) recentlyDeleted(); else if(choice.equals("Export portable backup")) export(false); else if(choice.equals("Export for desktop and NAS")) export(true); else if(choice.equals("Change optional vault password")) changePassword(); else if(choice.equals("Create new vault")) newVault(); else if(choice.equals("Vaults")) switchVault(); else if(choice.equals("Rename current vault")) renameVault(); else if(choice.equals("Delete current vault")) deleteCurrentVault(); else if(choice.equals("Delete vault…")) chooseVaultForDeletion(); else if(choice.equals("Delete all phone vaults")) deletePhoneVaults(); else if(choice.equals("Delete selected backups")) maintenance.chooseBackups(); else if (choice.equals("About")) about(); else if (choice.equals("Backup and recovery")) help(); else openWebsite(); return true; }); menu.show();
+                if(choice.equals("Manage YubiKeys")) manageHardware(); else if(choice.equals("Enroll YubiKey")) confirmEnrollHardware(); else if(choice.equals("Recently deleted")) recentlyDeleted(); else if(choice.equals("Export portable backup")) export(false); else if(choice.equals("Export for desktop and NAS")) export(true); else if(choice.equals("Change optional vault password")) changePassword(); else if(choice.equals("Create new vault")) newVault(); else if(choice.equals("Vaults")) switchVault(); else if(choice.equals("Rename current vault")) renameVault(); else if(choice.equals("Delete current vault")) deleteCurrentVault(); else if(choice.equals("Delete vault…")) chooseVaultForDeletion(); else if(choice.equals("Delete all phone vaults")) deletePhoneVaults(); else if(choice.equals("Delete selected backups")) maintenance.chooseBackups(); else if (choice.equals("About")) about(); else if (choice.equals("Backup and recovery")) help(); else openWebsite(); return true; }); menu.show();
         });
         heading.addView(helpButton); root.addView(heading); if(!compact)root.addView(text("Version " + installedVersion())); status = text(""); if(compact)status.setVisibility(View.GONE); root.addView(status);
         progressRow = column(); LinearLayout loading = new LinearLayout(this); loading.setGravity(Gravity.CENTER_VERTICAL);
@@ -210,10 +210,10 @@ public class MainActivity extends Activity {
         task("Reading YubiKey enrollment…",()->call("hardware_requests",path),request->{
             final int token=epoch;
             hardware.unlockChoices(new JSONArray(request),new ai.wormwright.hardware.YubiKeyUnlock.Callback(){
-                public void failed(String note){if(token==epoch&&resumed)message(note);}
+                public void failed(String note){if(token==epoch&&resumed)showHardwareFailure(note);}
                 public void complete(JSONObject output){
                     if(token!=epoch||!resumed||active==null||!slot.equals(active.optString("slot")))return;
-                    task("Opening vault with YubiKey…",()->call("unlock_hardware",path,output.getString("request"),output.getString("response")),result->{sample=false;unlocked=true;vaultScreen();});
+                    task("Opening vault with YubiKey…",()->call("unlock_hardware",path,output.getString("request"),output.getString("response")),result->{sample=false;unlocked=true;vaultScreen();message("Vault unlocked with YubiKey.");});
                 }
             });
         });
@@ -223,7 +223,7 @@ public class MainActivity extends Activity {
         dialog=new AlertDialog.Builder(this).setTitle("Enroll a YubiKey for this vault?")
             .setMessage("This key will unlock this vault over NFC or USB-C with its own PIN, instead of phone authentication and any optional vault password. Phone unlock and portable-backup recovery remain available. Up to four named keys can be enrolled; adding one preserves the others. Confirm your phone credential before enrollment. You do not need to re-enter the optional vault password.")
             .setNegativeButton("Cancel",null).setPositiveButton("Continue",(d,w)->authorizeHardware(this::nameHardware)).create();
-        dialog.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);dialog.show();
+        ai.wormwright.hardware.YubiKeyKeyboardGuard.install(dialog.getWindow());dialog.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);dialog.show();
     }
     /** The vault is already unlocked. Fresh device authentication authorizes only
      * this hardware-management action; it does not decrypt the password envelope again. */
@@ -237,9 +237,9 @@ public class MainActivity extends Activity {
                 // Verify the authenticated Keystore operation, discarding the envelope.
                 byte[] envelope=DeviceKey.finish(slot,c,decode(active.getString("wrapped")));
                 java.util.Arrays.fill(envelope,(byte)0);
-                if(!hardwareAuthorization||token!=epoch||!slot.equals(active.optString("slot")))return;
+                if(!hardwareAuthorization||token!=epoch||!slot.equals(active.optString("slot"))){lock("Phone authorization expired. Retry the action.");return;}
                 hardwareAuthorization=false;ui.removeCallbacks(hardwareAuthorizationTimeout);
-                unlocked=true;vaultScreen();onUserInteraction();after.run();
+                unlocked=true;root.setVisibility(View.VISIBLE);onUserInteraction();after.run();
             });
         } catch(Exception e) { lock("Phone authorization failed. Unlock to retry."); }
     }
@@ -248,7 +248,7 @@ public class MainActivity extends Activity {
         LinearLayout fields=column();EditText label=input(fields,"Key name (Laptop, Phone, Backup…)",false);
         final int token=epoch;
         final AlertDialog prompt=new AlertDialog.Builder(this).setTitle("Name this YubiKey").setView(fields).setNegativeButton("Cancel",null).setPositiveButton("Continue",null).create();dialog=prompt;
-        prompt.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);prompt.show();
+        ai.wormwright.hardware.YubiKeyKeyboardGuard.install(prompt.getWindow());prompt.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);prompt.show();
         prompt.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{
             if(token!=epoch||busy)return;String name=label.getText().toString().trim();
             if(name.isEmpty()||name.length()>64){label.setError("Use 1–64 characters.");return;}
@@ -259,23 +259,35 @@ public class MainActivity extends Activity {
         if(busy||sample||!unlocked)return;
         final int token=epoch;final String slot=active.optString("slot");
         hardware.enroll(new ai.wormwright.hardware.YubiKeyUnlock.Callback(){
-            public void failed(String note){if(token==epoch&&resumed)message(note);}
+            public void failed(String note){if(token==epoch&&resumed)showHardwareFailure(note);}
             public void complete(JSONObject output){
                 if(token!=epoch||!resumed||!unlocked||!slot.equals(active.optString("slot")))return;
-                task("Saving YubiKey enrollment…",()->call("enroll_hardware",output.put("label",label).toString()),MainActivity.this::message);
+                task("Saving YubiKey enrollment…",()->call("enroll_hardware",output.put("label",label).toString()),MainActivity.this::showEnrollmentResult);
             }
         });
+    }
+    private void showHardwareFailure(String note) {
+        dialog=new AlertDialog.Builder(this).setTitle("YubiKey operation stopped").setMessage(note).setPositiveButton("Close",null).create();
+        ai.wormwright.hardware.YubiKeyKeyboardGuard.install(dialog.getWindow());dialog.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);dialog.show();
+    }
+    private void showEnrollmentResult(String note) {
+        dialog=new AlertDialog.Builder(this).setTitle("YubiKey saved and verified").setMessage(note).setPositiveButton("View enrolled keys",(d,w)->manageHardware()).setNegativeButton("Close",null).create();
+        ai.wormwright.hardware.YubiKeyKeyboardGuard.install(dialog.getWindow());dialog.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);dialog.show();
     }
     private void manageHardware() {
         if(busy||sample||!unlocked)return;
         task("Reading enrolled keys…",()->call("hardware_key_list"),value->{
-            JSONArray keys=new JSONArray(value);if(keys.length()==0){message("No YubiKeys are enrolled.");return;}
+            JSONArray keys=new JSONArray(value);
+            if(keys.length()==0){
+                dialog=new AlertDialog.Builder(this).setTitle("YubiKeys (0/4)").setMessage("No YubiKeys are enrolled in this vault yet.").setPositiveButton("Add YubiKey",(d,w)->confirmEnrollHardware()).setNegativeButton("Close",null).create();
+                ai.wormwright.hardware.YubiKeyKeyboardGuard.install(dialog.getWindow());dialog.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);dialog.show();return;
+            }
             String[] labels=new String[keys.length()];for(int i=0;i<labels.length;i++)labels[i]=keys.getJSONObject(i).getString("label");
             final int token=epoch;
             dialog=new AlertDialog.Builder(this).setTitle("Manage YubiKeys ("+keys.length()+"/4)").setItems(labels,(d,i)->{
                 if(token!=epoch||!unlocked)return;
-                try{JSONObject key=keys.getJSONObject(i);hardwareAction(key);}catch(Exception e){message("Key selection failed.");}
-            }).setNegativeButton("Cancel",null).create();dialog.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);dialog.show();
+                try{JSONObject key=keys.getJSONObject(i);authorizeHardware(()->{try{hardwareAction(key);}catch(Exception error){message("Key selection failed.");}});}catch(Exception e){message("Key selection failed.");}
+            }).setNegativeButton("Cancel",null).create();ai.wormwright.hardware.YubiKeyKeyboardGuard.install(dialog.getWindow());dialog.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);dialog.show();
         });
     }
     private void hardwareAction(JSONObject key) throws Exception {
@@ -284,15 +296,15 @@ public class MainActivity extends Activity {
             if(token!=epoch||!unlocked)return;
             if(i==0){
                 LinearLayout fields=column();EditText name=input(fields,"Key name",false);name.setText(label);
-                final AlertDialog prompt=new AlertDialog.Builder(this).setTitle("Rename key").setView(fields).setNegativeButton("Cancel",null).setPositiveButton("Save",null).create();dialog=prompt;prompt.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);prompt.show();
+                final AlertDialog prompt=new AlertDialog.Builder(this).setTitle("Rename key").setView(fields).setNegativeButton("Cancel",null).setPositiveButton("Save",null).create();dialog=prompt;ai.wormwright.hardware.YubiKeyKeyboardGuard.install(prompt.getWindow());prompt.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);prompt.show();
                 prompt.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{
                     if(token!=epoch||busy)return;String text=name.getText().toString().trim();if(text.isEmpty()||text.length()>64){name.setError("Use 1–64 characters.");return;}
                     prompt.dismiss();task("Renaming key…",()->call("rename_hardware",id,text),this::message);
                 });
             }else{
-                dialog=new AlertDialog.Builder(this).setTitle("Remove "+label+"?").setMessage("Remove this key from the current vault? Other keys and phone authentication remain. Older backups and offline copies still retain their enrollments.").setNegativeButton("Cancel",null).setPositiveButton("Remove",(q,w)->{if(token==epoch&&unlocked)task("Removing key…",()->call("remove_hardware",id),this::message);}).create();dialog.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);dialog.show();
+                dialog=new AlertDialog.Builder(this).setTitle("Remove "+label+"?").setMessage("Remove this key from the current vault? Other keys and phone authentication remain. Older backups and offline copies still retain their enrollments.").setNegativeButton("Cancel",null).setPositiveButton("Remove",(q,w)->{if(token==epoch&&unlocked)task("Removing key…",()->call("remove_hardware",id),this::message);}).create();ai.wormwright.hardware.YubiKeyKeyboardGuard.install(dialog.getWindow());dialog.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);dialog.show();
             }
-        }).setNegativeButton("Cancel",null).create();dialog.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);dialog.show();
+        }).setNegativeButton("Cancel",null).create();ai.wormwright.hardware.YubiKeyKeyboardGuard.install(dialog.getWindow());dialog.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);dialog.show();
     }
     private void unlockPersonal() { unlockPersonal(null); }
     private void unlockPersonal(Runnable after) {
@@ -360,7 +372,7 @@ public class MainActivity extends Activity {
                 prompt.dismiss();
                 try { done.accept(value); } catch (Exception e) { message(safeError(e)); }
             });
-        }); prompt.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE); prompt.show();
+        }); ai.wormwright.hardware.YubiKeyKeyboardGuard.install(prompt.getWindow());prompt.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE); prompt.show();
     }
 
     private void vaultScreen() {
@@ -427,7 +439,7 @@ public class MainActivity extends Activity {
             final AlertDialog detail = new AlertDialog.Builder(this).setTitle(record.optString("description")).setView(scroll).setPositiveButton("Done",null).create();
             dialog = detail;
             detail.setOnDismissListener(d -> { secret.setText(""); view.removeAllViews(); if (dialog == detail) dialog = null; });
-            detail.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE); detail.show();
+            ai.wormwright.hardware.YubiKeyKeyboardGuard.install(detail.getWindow());detail.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE); detail.show();
         });
     }
     private void confirmDelete(String id) {
@@ -438,7 +450,7 @@ public class MainActivity extends Activity {
                 }).create();
         dialog = confirmation;
         confirmation.setOnDismissListener(d -> { if (dialog == confirmation) dialog = null; });
-        confirmation.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE); confirmation.show();
+        ai.wormwright.hardware.YubiKeyKeyboardGuard.install(confirmation.getWindow());confirmation.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE); confirmation.show();
     }
     private void edit(JSONObject record) {
         LinearLayout fields=column(); String[] keys={"description","user_name","password","link","notes"}; EditText[] inputs=new EditText[keys.length];
@@ -462,13 +474,13 @@ public class MainActivity extends Activity {
                 if(inputs[0].getText().toString().trim().isEmpty()){inputs[0].setError("Description required");return;}
                 try { for(int i=0;i<keys.length;i++)record.put(keys[i],inputs[i].getText().toString()); editor.dismiss(); task("Saving entry…", ()->call("save",record.toString()),r->vaultScreen()); } catch(Exception e){message(safeError(e));}
             });
-        }); editor.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE); editor.show();
+        }); ai.wormwright.hardware.YubiKeyKeyboardGuard.install(editor.getWindow());editor.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE); editor.show();
     }
 
     private void recentlyDeleted() {
         task(()->call("deleted"),v->{ LinearLayout list=column();JSONArray records=new JSONArray(v);
             for(int i=0;i<records.length();i++){JSONObject r=records.getJSONObject(i);button(list,"Restore "+r.getString("description"),()->{dialog.dismiss();task(()->call("recover",r.optString("id")),x->vaultScreen());});}
-            if(records.length()==0)list.addView(text("No deleted entries."));dialog=new AlertDialog.Builder(this).setTitle("Recently deleted").setView(list).setPositiveButton("Close",null).create();dialog.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE); dialog.show(); });
+            if(records.length()==0)list.addView(text("No deleted entries."));dialog=new AlertDialog.Builder(this).setTitle("Recently deleted").setView(list).setPositiveButton("Close",null).create();ai.wormwright.hardware.YubiKeyKeyboardGuard.install(dialog.getWindow());dialog.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE); dialog.show(); });
     }
     private void copy(String value) {
         ClipboardManager c=(ClipboardManager)getSystemService(CLIPBOARD_SERVICE); ClipData clip=ClipData.newPlainText("Wormwright Pocket",value);
@@ -522,7 +534,7 @@ public class MainActivity extends Activity {
         final AlertDialog prompt=new AlertDialog.Builder(this).setTitle("Create new vault")
             .setMessage("Create a separate empty personal vault. Your current vault is kept and can be reopened using Switch personal vault. Export a backup before testing. This new vault is independent of NAS copies.")
             .setNegativeButton("Cancel",null).setPositiveButton("Create",(d,w)->{lock("Creating a separate new vault.");createOrRestore(null,null);}).create();
-        dialog=prompt;prompt.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);prompt.show();
+        dialog=prompt;ai.wormwright.hardware.YubiKeyKeyboardGuard.install(prompt.getWindow());prompt.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);prompt.show();
     }
     private String vaultLabel(JSONObject state) {
         if(state==null)return "No selected vault";
@@ -549,7 +561,7 @@ public class MainActivity extends Activity {
             try{for(JSONObject state:savedVaults())if(!state.optString("slot").equals(exceptSlot)&&value.equalsIgnoreCase(state.optString("name",""))){name.setError("That vault name is already used. Choose a different name.");return;}
                 prompt.dismiss();done.accept(value);
             }catch(Exception e){message(safeError(e));}
-        }));prompt.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);prompt.show();
+        }));ai.wormwright.hardware.YubiKeyKeyboardGuard.install(prompt.getWindow());prompt.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);prompt.show();
     }
     private void renameVault() {
         if(busy)return;
@@ -566,7 +578,7 @@ public class MainActivity extends Activity {
                 .setItems(labels.toArray(new String[0]),(d,index)->{JSONObject chosen=states.get(index);
                     if(deleting){deleteVault(chosen);return;}
                     lock("Selected "+vaultLabel(chosen)+". Authenticate to open it.");try{publish(chosen);home("Selected "+vaultLabel(chosen)+". Authenticate to open it.");unlockPersonal();}catch(Exception e){message(safeError(e));}
-                }).setNegativeButton("Cancel",null).create();dialog=chooser;chooser.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);chooser.show();
+                }).setNegativeButton("Cancel",null).create();dialog=chooser;ai.wormwright.hardware.YubiKeyKeyboardGuard.install(chooser.getWindow());chooser.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);chooser.show();
         }catch(Exception e){message(safeError(e));}
     }
     private void switchVault(){vaultChooser(false);}
@@ -578,7 +590,7 @@ public class MainActivity extends Activity {
     }
     private void deletionStart(String title,String scope,Runnable action) {
         final AlertDialog prompt=new AlertDialog.Builder(this).setTitle(title).setMessage(scope).setNegativeButton("Cancel",null).setPositiveButton("Continue",(d,w)->action.run()).create();dialog=prompt;
-        prompt.setOnDismissListener(d->{if(dialog==prompt)dialog=null;});prompt.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);prompt.show();
+        prompt.setOnDismissListener(d->{if(dialog==prompt)dialog=null;});ai.wormwright.hardware.YubiKeyKeyboardGuard.install(prompt.getWindow());prompt.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);prompt.show();
     }
     private void authorizeVaultDeletion(JSONObject state) {
         if(busy)return;
@@ -641,10 +653,10 @@ public class MainActivity extends Activity {
             .setMessage("Your personal password vault\n\nVersion " + installedVersion() + "\n\nhttps://wormwright.com/")
             .setPositiveButton("Website",(d,w) -> openWebsite()).setNegativeButton("Close",null).create();
         dialog=about; about.setOnDismissListener(d -> { if(dialog==about) dialog=null; });
-        about.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE); about.show();
+        ai.wormwright.hardware.YubiKeyKeyboardGuard.install(about.getWindow());about.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE); about.show();
     }
     private void help() {
-        dialog=new AlertDialog.Builder(this).setTitle("Recovery and migration").setMessage("Phone authentication unlocks only this local vault. Exported backups require their separate password or generated recovery key on a replacement phone. Keep the backup and secret separately; losing the phone and all backup secrets makes recovery impossible.\n\nExports remain wherever you save them until you delete them. Wormwright Pocket does not automatically rotate or delete exported backups. Use Help → Delete selected backups to choose exported files for separately authorized deletion. Deleted entries remain recoverable. Uninstalling clears app-private vaults and device keys, but does not delete exported documents.\n\nExport for desktop and NAS creates a signed format-2 personal vault; use its chosen master password (Owner account). Transfer it, open it on desktop, configure SMB NAS sync, then import a copy in the existing companion and complete initial NAS pairing. The phone vault stays independent. Format 2 retains deleted entries but has no per-entry edit history.\n\nSupport: danvanwormer@pm.me").setPositiveButton("Close",null).create();dialog.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE); dialog.show();
+        dialog=new AlertDialog.Builder(this).setTitle("Recovery and migration").setMessage("Phone authentication unlocks only this local vault. Exported backups require their separate password or generated recovery key on a replacement phone. Keep the backup and secret separately; losing the phone and all backup secrets makes recovery impossible.\n\nExports remain wherever you save them until you delete them. Wormwright Pocket does not automatically rotate or delete exported backups. Use Help → Delete selected backups to choose exported files for separately authorized deletion. Deleted entries remain recoverable. Uninstalling clears app-private vaults and device keys, but does not delete exported documents.\n\nExport for desktop and NAS creates a signed format-2 personal vault; use its chosen master password (Owner account). Transfer it, open it on desktop, configure SMB NAS sync, then import a copy in the existing companion and complete initial NAS pairing. The phone vault stays independent. Format 2 retains deleted entries but has no per-entry edit history.\n\nSupport: danvanwormer@pm.me").setPositiveButton("Close",null).create();ai.wormwright.hardware.YubiKeyKeyboardGuard.install(dialog.getWindow());dialog.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE); dialog.show();
     }
     private void lock(String note) { lock(note,false); }
     private void lock(String note,boolean keepAuthentication) {

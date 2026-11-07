@@ -54,7 +54,7 @@ final class DestructiveActions {
             if(!resumed||token!=generation||!review.isShowing())return;
             if(!"DELETE".equalsIgnoreCase(typed.getText().toString().trim())){typed.setError("Type the word DELETE (any capitalization).");return;}
             review.dismiss();generation++;action.run();
-        }));review.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);review.show();
+        }));ai.wormwright.hardware.YubiKeyKeyboardGuard.install(review.getWindow());review.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);review.show();
     }
     void chooseBackups() {
         Intent picker=new Intent(Intent.ACTION_OPEN_DOCUMENT).setType("*/*").addCategory(Intent.CATEGORY_OPENABLE)

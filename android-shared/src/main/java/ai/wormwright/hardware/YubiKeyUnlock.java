@@ -77,7 +77,7 @@ public final class YubiKeyUnlock {
                 try{JSONObject request=choices.getJSONObject(i);cancel();unlock(request,done);}catch(Exception e){fail(selection,"Key selection failed.");}
             }).setNegativeButton("Cancel",(d,w)->fail(selection,"Key selection cancelled.")).create();
             selection.dialog.setOnCancelListener(d->fail(selection,"Key selection cancelled."));
-            selection.dialog.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);selection.dialog.show();
+            YubiKeyKeyboardGuard.install(selection.dialog.getWindow());selection.dialog.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);selection.dialog.show();
         }catch(Exception e){done.failed("Invalid key enrollment list. Existing data was kept.");}
     }
     public void enroll(Callback done) { begin(new JSONObject(),true,done); }
@@ -85,19 +85,19 @@ public final class YubiKeyUnlock {
         cancel();
         Attempt a=new Attempt(request,enroll,done);current=a;
         LinearLayout view=new LinearLayout(activity);view.setOrientation(LinearLayout.VERTICAL);view.setPadding(32,16,32,16);
-        TextView note=new TextView(activity);note.setText("Enter this YubiKey’s FIDO2 PIN. Then plug it into USB-C or hold it against the phone’s NFC reader until finished. For USB, touch the gold contact when asked.");view.addView(note);
+        TextView note=new TextView(activity);a.note=note;note.setText("Enter this YubiKey’s FIDO2 PIN. Then plug it into USB-C or hold it against the phone’s NFC reader until finished. For USB, touch the gold contact when asked.");view.addView(note);
         EditText input=new EditText(activity);input.setHint("YubiKey PIN");input.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD);input.setSaveEnabled(false);input.setImportantForAutofill(android.view.View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS);view.addView(input);
         a.dialog=new AlertDialog.Builder(activity).setTitle(enroll?"Enroll YubiKey":"Unlock with YubiKey").setView(view)
             .setNegativeButton("Cancel",(d,w)->fail(a,"YubiKey operation cancelled. Existing unlock methods remain available."))
             .setPositiveButton("Continue",null).create();
         a.dialog.setOnCancelListener(d->fail(a,"YubiKey operation cancelled."));
-        a.dialog.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
+        YubiKeyKeyboardGuard.install(a.dialog.getWindow());a.dialog.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
         a.dialog.show();
         a.dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{
             if(input.length()<4){input.setError("Enter the key’s PIN (at least 4 characters).");return;}
             a.pin=new char[input.length()];android.text.TextUtils.getChars(input.getText(),0,input.length(),a.pin,0);input.getText().clear();
-            input.setVisibility(android.view.View.GONE);a.dialog.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(false);
-            note.setText("Connect one YubiKey over USB-C, or hold it against the NFC reader. Keep it in place. Touch the gold contact if requested.");
+            input.setVisibility(android.view.View.GONE);a.dialog.getButton(AlertDialog.BUTTON_POSITIVE).setVisibility(android.view.View.GONE);
+            note.setText("Waiting for your YubiKey. Connect it over USB-C or hold it against the NFC reader. When the key flashes, touch its gold contact. No more on-screen confirmation is needed.");
             try { a.manager=new YubiKitManager(activity);
                 a.manager.startUsbDiscovery(new UsbConfiguration().handlePermissions(false), device->ui.post(()->usbConnect(a,device)));
             } catch(RuntimeException e){fail(a,"USB key access is unavailable. Check device permissions and retry.");return;}
@@ -129,8 +129,12 @@ public final class YubiKeyUnlock {
             ((UsbManager)activity.getSystemService(Context.USB_SERVICE)).requestPermission(device.getUsbDevice(),permission);
         }catch(RuntimeException e){a.permissionPending=false;fail(a,"USB permission could not be requested. Existing vault data was kept.");}
     }
+    private void progress(Attempt a,String stage,String message) {
+        a.stage=stage;ui.post(()->{if(current==a&&!a.cancelled&&a.note!=null)a.note.setText(message);});
+    }
     private void connect(Attempt a,YubiKeyDevice device) {
         if(current!=a || a.cancelled || !a.claimed.compareAndSet(false,true))return;
+        progress(a,"CONNECT","Key connected. Reading its FIDO2 application…");
         Ctap2Session.create(device, value->{
             JSONObject result=null;String error=null;
             try(Ctap2Session session=value.getValue()) {
@@ -149,6 +153,7 @@ public final class YubiKeyUnlock {
                             Collections.singletonList(new PublicKeyCredentialParameters("public-key",-7)),60000L,null,
                             new AuthenticatorSelectionCriteria("cross-platform","discouraged","required"),"none",
                             Extensions.fromMap(Collections.singletonMap("hmacCreateSecret",true)));
+                        progress(a,"CREATE","Creating the vault credential. Wait for the key to flash, then touch its gold contact.");
                         PublicKeyCredential registration=client.makeCredential(data,options,RP_ID,a.pin,null,a.command);
                         AuthenticatorAttestationResponse response=(AuthenticatorAttestationResponse)registration.getResponse();
                         byte[] auth=response.getAuthenticatorData().getBytes();
@@ -161,19 +166,23 @@ public final class YubiKeyUnlock {
                             .put(cred.getAaguid()).putShort((short)cred.getCredentialId().length).put(cred.getCredentialId()).put(Cbor.encode(cred.getCosePublicKey())).array();
                         byte[] salt=random(32);
                         // A verified assertion proves the new credential works before vault metadata is changed.
+                        progress(a,"VERIFY-NEW","Checking the new credential. Keep the key connected; touch again when it flashes.");
                         byte[] secret=assertKey(client,cred,salt,a);
                         try{result=new JSONObject().put("credential",b64(full)).put("salt",b64(salt)).put("response",b64(secret));}
                         finally{Arrays.fill(secret,(byte)0);}
                     } else {
                         byte[] full=decode(a.request.getString("credential"));
                         AttestedCredentialData cred=AttestedCredentialData.parseFrom(ByteBuffer.wrap(full));
+                        progress(a,"UNLOCK","Authenticating the enrolled key. Touch its gold contact when it flashes.");
                         byte[] secret=assertKey(client,cred,decode(a.request.getString("salt")),a);
                         try{result=new JSONObject().put("response",b64(secret)).put("request",a.request.toString());}finally{Arrays.fill(secret,(byte)0);}
                     }
                 }
             } catch(Exception e) {
                 // Never log exceptions, PINs, CTAP payloads or hmac-secret output.
-                error="YubiKey authentication failed. Check the key and PIN, then retry explicitly. Wrong PINs consume the key’s limited attempts; the app never retries automatically. Existing vault data was kept.";
+                String code="";
+                for(Throwable cause=e;cause!=null;cause=cause.getCause())if(cause instanceof com.yubico.yubikit.core.fido.CtapException){code=String.format(java.util.Locale.ROOT," / CTAP %02X",((com.yubico.yubikit.core.fido.CtapException)cause).getCtapError());break;}
+                error="The key operation did not complete. Support code: "+a.stage+code+". Existing vault data was kept. Check USB access and wait for the key to flash before touching it. Do not repeatedly retry an uncertain PIN.";
             } finally { a.session=null;if(a.pin!=null)Arrays.fill(a.pin,'\0'); }
             final JSONObject output=result;final String problem=error;
             ui.post(()->{if(current!=a||a.cancelled)return;
@@ -214,7 +223,12 @@ public final class YubiKeyUnlock {
     private static byte[] decode(String v){return Base64.decode(v,Base64.DEFAULT);}
     private final class Attempt {
         final JSONObject request;final boolean enroll;final Callback done;final AtomicBoolean claimed=new AtomicBoolean();
-        final CommandState command=new CommandState();volatile boolean cancelled;char[] pin;volatile Ctap2Session session;
+        volatile String stage="DISCOVERY";TextView note;
+        final CommandState command=new CommandState(){
+            @Override public void onKeepAliveStatus(byte status){
+                if(status==STATUS_UPNEEDED)ui.post(()->{if(current==Attempt.this&&!cancelled&&note!=null){dialog.setTitle("Touch your YubiKey now");note.setTextSize(22);note.setTypeface(null,android.graphics.Typeface.BOLD);note.setText(stage.equals("VERIFY-NEW")?"Touch the gold contact again now to verify the new key.":"The key is ready. Touch its flashing gold contact to continue.");}});
+            }
+        };volatile boolean cancelled;char[] pin;volatile Ctap2Session session;
         YubiKitManager manager;AlertDialog dialog;Runnable timeout,pending;
         boolean permissionPending;BroadcastReceiver permissionReceiver;
         void unregisterPermission(){if(permissionReceiver!=null){try{activity.unregisterReceiver(permissionReceiver);}catch(IllegalArgumentException ignored){}permissionReceiver=null;}}

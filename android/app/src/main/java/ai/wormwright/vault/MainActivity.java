@@ -84,7 +84,7 @@ public class MainActivity extends Activity {
     };
 
     @Override public void onCreate(Bundle state) {
-        super.onCreate(state); hardware=new ai.wormwright.hardware.YubiKeyUnlock(this); maintenance=new DestructiveActions(this);
+        super.onCreate(state);ai.wormwright.hardware.YubiKeyKeyboardGuard.install(getWindow()); hardware=new ai.wormwright.hardware.YubiKeyUnlock(this); maintenance=new DestructiveActions(this);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
         vaultFile = new File(getNoBackupFilesDir(), "vault.db");
         try{android.util.AtomicFile pointer=new android.util.AtomicFile(new File(getNoBackupFilesDir(),"selected-vault.json"));
@@ -186,7 +186,7 @@ public class MainActivity extends Activity {
             String[] labels=new String[result.length()];for(int i=0;i<labels.length;i++)labels[i]=result.getJSONObject(i).getString("label");
             final AlertDialog chooser=new AlertDialog.Builder(this).setTitle(deleting?"Select one vault to delete":"Vaults — select to open").setItems(labels,(d,index)->{
                 try{JSONObject chosen=result.getJSONObject(index);selectPhoneVault(new File(chosen.getString("path")),chosen.getString("name"),"Selected “"+(chosen.getString("name").isEmpty()?"Unnamed vault":chosen.getString("name"))+"”. Unlock to open it.");if(deleting)deletePhoneVault();}catch(Exception e){maintenance.notice("Could not select the vault. Its files were kept.");}
-            }).setNegativeButton("Cancel",null).create();editorDialog=chooser;chooser.setOnDismissListener(d->{if(editorDialog==chooser)editorDialog=null;});chooser.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);chooser.show();
+            }).setNegativeButton("Cancel",null).create();editorDialog=chooser;chooser.setOnDismissListener(d->{if(editorDialog==chooser)editorDialog=null;});ai.wormwright.hardware.YubiKeyKeyboardGuard.install(chooser.getWindow());chooser.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);chooser.show();
         },"Could not read the vault list. Your files were kept.");
     }
     private void createPhoneVault() {
@@ -205,7 +205,7 @@ public class MainActivity extends Activity {
             File target=vaultFile.exists()?new File(new File(new File(getNoBackupFilesDir(),"vaults"),UUID.randomUUID().toString()),"vault.db"):vaultFile;
             prompt.dismiss();lockNow("Creating a separate named vault. Existing vaults are kept.");
             job("Creating vault…",()->{target.getParentFile().mkdirs();bridge().callAttr("create_personal",target.getAbsolutePath(),secret,name);return "";},r->selectPhoneVault(target,name,"New personal vault created. Unlock with its master password; account name can stay blank."),"Could not create the vault. Existing vaults were kept.");
-        }));prompt.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);prompt.show();
+        }));ai.wormwright.hardware.YubiKeyKeyboardGuard.install(prompt.getWindow());prompt.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);prompt.show();
     }
     private void renamePhoneVault() {
         if(busy)return;
@@ -218,7 +218,7 @@ public class MainActivity extends Activity {
             if(token!=generation||!unlocked||busy)return;String value=name.getText().toString().trim();
             if(value.isEmpty()||value.length()>80){name.setError("Enter a vault name of 1–80 characters.");return;}
             prompt.dismiss();job("Saving vault name…",()->{bridge().callAttr("rename_vault",value);return bridge().callAttr("list_entries","").toString();},this::showEntries,"Cannot rename. Shared NAS vaults must be named in the desktop Manager.");
-        }));prompt.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);prompt.show();
+        }));ai.wormwright.hardware.YubiKeyKeyboardGuard.install(prompt.getWindow());prompt.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);prompt.show();
     }
     private void deletePhoneVault() {
         if(busy)return;
@@ -235,7 +235,7 @@ public class MainActivity extends Activity {
             job("Verifying authorization…",()->bridge().callAttr("verify_deletion",vaultFile.getAbsolutePath(),name,password).toString(),r->maintenance.authenticate(()->maintenance.confirm("Delete current vault","Permanently delete only “"+(r.isEmpty()?"Unnamed vault":r)+"”, its private phone copy, NAS pairing and connection credentials. Other phone vaults, exported backups and the NAS master are kept.",()->{
                 job("Deleting phone vault…",()->{bridge().callAttr("lock");nasSettings.clear();bridge().callAttr("delete_phone_copy",vaultFile.getAbsolutePath());return "";},done->{selectedVaultName="";saveSelectedVault(vaultFile,"");lockNow("Current phone vault deleted. Other vaults are kept. Choose Vaults to open another, or create a new vault.");},"Deletion did not fully complete. Check the phone copy and connection settings before continuing.");
             })),"Authentication failed. Nothing was deleted.");
-        }));prompt.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);prompt.show();
+        }));ai.wormwright.hardware.YubiKeyKeyboardGuard.install(prompt.getWindow());prompt.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);prompt.show();
     }
     private String installedVersion() {
         try { return getPackageManager().getPackageInfo(getPackageName(),0).versionName; }
@@ -428,7 +428,7 @@ public class MainActivity extends Activity {
             detailDialog = new AlertDialog.Builder(this).setTitle(record.optString("description"))
                 .setView(scroll).setPositiveButton("Done", null).create();
             detailDialog.setOnDismissListener(dialog -> { secret.setText(""); panel.removeAllViews(); detailDialog = null; });
-            detailDialog.show(); detailDialog.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
+            detailDialog.show(); ai.wormwright.hardware.YubiKeyKeyboardGuard.install(detailDialog.getWindow());detailDialog.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
         }, "Cannot open this entry. Please unlock again.");
     }
     private void copyValue(String value) {
@@ -563,7 +563,7 @@ public class MainActivity extends Activity {
                     }, "Could not remove NAS settings.");
                 }).create();
         nasDialog.setOnDismissListener(d -> { pass.getText().clear(); saved.remove("password"); form.removeAllViews(); nasDialog = null; });
-        nasDialog.show(); nasDialog.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
+        nasDialog.show(); ai.wormwright.hardware.YubiKeyKeyboardGuard.install(nasDialog.getWindow());nasDialog.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
         nasDialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
             try {
                 String secret = pass.getText().toString();
@@ -654,7 +654,7 @@ public class MainActivity extends Activity {
                 .setView(scroll).setNegativeButton("Cancel",null).setPositiveButton("Save",null).create();
             editorDialog=dialog;
             dialog.setOnDismissListener(d->{ for(EditText field:fields) field.getText().clear(); form.removeAllViews(); if(editorDialog==dialog) editorDialog=null; });
-            dialog.show(); dialog.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
+            dialog.show(); ai.wormwright.hardware.YubiKeyKeyboardGuard.install(dialog.getWindow());dialog.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{
                 if(token!=generation || !unlocked) return;
                 try {
@@ -689,7 +689,7 @@ public class MainActivity extends Activity {
                     "Could not delete this entry. Check your permissions and unlock again.");
             }).create();
         editorDialog=dialog; dialog.setOnDismissListener(d->{if(editorDialog==dialog) editorDialog=null;});
-        dialog.show(); dialog.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
+        dialog.show(); ai.wormwright.hardware.YubiKeyKeyboardGuard.install(dialog.getWindow());dialog.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
     }
     private void reviewConflict(int index) throws Exception {
         if(conflictReview==null || !unlocked) return;
@@ -711,7 +711,7 @@ public class MainActivity extends Activity {
             .setNeutralButton("Cancel",(d,w)->{conflictReview=null; conflictChoices=null; status.setText("Sync paused. Both copies are preserved.");}).create();
         dialog.setCancelable(false); conflictDialog=dialog;
         dialog.setOnDismissListener(d->{if(conflictDialog==dialog) conflictDialog=null;});
-        dialog.show(); dialog.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
+        dialog.show(); ai.wormwright.hardware.YubiKeyKeyboardGuard.install(dialog.getWindow());dialog.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
     }
     private void refreshNas(boolean manual) { refreshNas(manual,"",""); }
     private void refreshNas(boolean manual,String choices,String expected) {
