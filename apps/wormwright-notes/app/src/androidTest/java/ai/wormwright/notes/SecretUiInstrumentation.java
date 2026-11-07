@@ -35,7 +35,7 @@ public final class SecretUiInstrumentation extends Instrumentation {
             waitFor(()->main(()->activity.currentSecret&&activity.title!=null&&BODY.equals(activity.body.getText().toString())),15000);
             check(main(()->TITLE.equals(activity.title.getText().toString())&&activity.checklistMode),"unlocked checklist contents");
             main(()->{activity.shareNote();return null;});waitFor(()->main(()->!activity.currentSecret&&activity.title==null),10000);
-            key(4);waitFor(()->main(()->activity.resumed),10000);
+            closeShareSheet();
             check(main(()->activity.title==null&&activity.unlockedId==-1),"share exit relocked editor");
             main(()->{activity.editor(id);return null;});waitForCredential();cancelCredential();
             result.putString("stream","PASS real Android credential-only PIN, cancel, wrong PIN, encrypted secret checklist, sharing and relock\n");finish(-1,result);
@@ -57,6 +57,12 @@ public final class SecretUiInstrumentation extends Instrumentation {
     }
     boolean credentialWindow(){AccessibilityNodeInfo root=getUiAutomation().getRootInActiveWindow();return root!=null&&root.getPackageName()!=null&&!root.getPackageName().toString().equals(getTargetContext().getPackageName())&&editable(root)!=null;}
     void waitForCredential()throws Exception{waitFor(this::credentialWindow,15000);}
+    void closeShareSheet()throws Exception{
+        waitFor(()->{AccessibilityNodeInfo root=getUiAutomation().getRootInActiveWindow();return root!=null&&"com.android.intentresolver".contentEquals(root.getPackageName()==null?"":root.getPackageName());},10000);
+        try{getUiAutomation().waitForIdle(300,5000);}catch(java.util.concurrent.TimeoutException busy){}
+        for(int i=0;i<3;i++){key(4);try{waitFor(()->main(()->activity.resumed),1500);return;}catch(AssertionError pending){}}
+        throw new AssertionError("Share sheet did not close");
+    }
     void cancelCredential()throws Exception{
         for(int i=0;i<3;i++){key(4);try{waitFor(()->main(()->activity.resumed&&!activity.authenticating),1000);return;}catch(AssertionError pending){}}
         throw new AssertionError("Credential prompt did not cancel");
