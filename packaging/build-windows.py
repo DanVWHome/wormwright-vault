@@ -34,7 +34,8 @@ def main():
     for license_name in ('LICENSE', 'LICENSING.md'):
         shutil.copy2(ROOT / license_name, docs / license_name)
     shutil.copy2(ROOT / 'docs/WINDOWS.md', bundle / 'README.md')
-    shutil.copy2(ROOT / 'docs/RELEASE-0.3.8.md', docs)
+    for name in ('RELEASE-0.3.11.md', 'DESKTOP-PREVIEWS-0.3.11.md', 'FOUR-YUBIKEYS.md'):
+        shutil.copy2(ROOT / 'docs' / name, docs / name)
     shutil.copytree(ROOT / 'docs/third-party', docs / 'third-party', dirs_exist_ok=True)
     for name in ['PySide6-Essentials', 'PySide6-Addons', 'shiboken6', 'PyNaCl',
                  'cryptography', 'fido2', 'cffi', 'pycparser', 'pyinstaller']:
