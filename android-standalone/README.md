@@ -184,3 +184,7 @@ Choose **More → Save backup to NAS**, set and confirm a separate backup passwo
 To restore, copy the chosen backup from the NAS to your phone, then use **Restore portable encrypted backup** and its backup secret. Your phone PIN is not its recovery password. These are independent snapshots; there is no automatic sync, sharing, scheduling or backup pruning.
 
 The app now requests Android INTERNET permission for this optional NAS connection. Existing offline use, phone/YubiKey unlocking, and vault encryption are unchanged.
+
+### Password entry fixes (test.23)
+
+Reopening NAS settings leaves the password editor empty and masked. Leave it blank to keep the saved NAS password, or enter a replacement. Forget settings removes the saved login. NAS and backup-secret fields opt out of password-manager autofill, keyboard suggestions/learning and saved view state.

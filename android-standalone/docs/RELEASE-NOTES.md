@@ -1,3 +1,7 @@
+# Wormwright Pocket 0.1.0-test.23
+
+NAS settings never put a saved password back into the editor. The empty masked password field keeps the existing saved password unless a replacement is entered. NAS and backup-password editors explicitly disable autofill, content capture, suggestions, keyboard learning and saved view state. Backup confirmation remains within Pocket without a password-manager handoff. Existing NAS backups, credentials, vaults and keys are retained. Install over the current app without uninstalling.
+
 # Wormwright Pocket 0.1.0-test.22
 
 Adds optional manual encrypted backups to a home NAS, matching Notes’ saved SMB connection and independent snapshot workflow. More contains NAS backup settings and Save backup to NAS. Each backup is separately password protected, uniquely named, read back for byte verification, and published only after verification. Earlier backups are kept. Failed connections leave your phone vault intact. Saved NAS login can be forgotten.

@@ -355,13 +355,14 @@ public class MainActivity extends Activity {
         });
     }
     private EditText input(LinearLayout parent, String hint, boolean secret) {
-        EditText field = new EditText(this); field.setHint(hint); field.setSingleLine(secret);
-        field.setInputType(secret ? InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD : InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE);
+        EditText field = secret ? new PrivatePasswordInput(this) : new EditText(this); field.setHint(hint); if(!secret)field.setSingleLine(false);
+        if(!secret)field.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE);
         field.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS);
         parent.addView(field); return field;
     }
     private void password(String title, boolean confirmation, boolean optional, PasswordDone done) {
-        LinearLayout fields = column(); fields.setPadding(dp(20),dp(8),dp(20),dp(8));
+        android.view.autofill.AutofillManager autofill=getSystemService(android.view.autofill.AutofillManager.class);if(autofill!=null)autofill.cancel();
+        LinearLayout fields = column(); fields.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS); fields.setImportantForContentCapture(View.IMPORTANT_FOR_CONTENT_CAPTURE_NO_EXCLUDE_DESCENDANTS); fields.setPadding(dp(20),dp(8),dp(20),dp(8));
         if(optional) fields.addView(text("Leave blank to use phone authentication only. If you add a password, enter it in both fields (at least 12 characters)."));
         EditText first = input(fields, "Password or recovery key", true);
         EditText second = confirmation ? input(fields, "Confirm password", true) : null;
@@ -515,14 +516,14 @@ public class MainActivity extends Activity {
         String[] keys={"host","share","folder","user","domain","password"};
         String[] labels={"NAS address (for example 192.168.1.10)","Share name","Folder within share (optional)","Username","Domain (optional)","NAS password"};
         EditText[] fields=new EditText[keys.length];
-        for(int i=0;i<keys.length;i++){form.addView(text(labels[i]));fields[i]=input(form,labels[i],i==5);fields[i].setSingleLine(true);fields[i].setText(saved.optString(keys[i]));}
+        for(int i=0;i<keys.length;i++){form.addView(text(labels[i]));fields[i]=input(form,labels[i],i==5);if(i!=5){fields[i].setSingleLine(true);fields[i].setText(saved.optString(keys[i]));}else if(!saved.optString("password").isEmpty())fields[i].setHint("Password saved — leave blank to keep it");}
         form.addView(text("NAS login is stored encrypted on this phone. The backup password is chosen separately and is never saved here."));
-        ScrollView scroll=new ScrollView(this);scroll.addView(form);final int token=epoch;
+        ScrollView scroll=new ScrollView(this);scroll.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS);scroll.setImportantForContentCapture(View.IMPORTANT_FOR_CONTENT_CAPTURE_NO_EXCLUDE_DESCENDANTS);scroll.addView(form);final int token=epoch;
         final AlertDialog prompt=new AlertDialog.Builder(this).setTitle("NAS backup settings").setView(scroll).setNegativeButton("Cancel",null).setNeutralButton("Forget settings",null).setPositiveButton("Save",null).create();dialog=prompt;
         prompt.setOnDismissListener(d->{fields[5].setText("");if(dialog==prompt)dialog=null;});
         prompt.setOnShowListener(d->{
             prompt.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{if(token!=epoch||!unlocked)return;try{
-                JSONObject values=new JSONObject();for(int i=0;i<keys.length;i++)values.put(keys[i],i==5?fields[i].getText().toString():fields[i].getText().toString().trim());
+                JSONObject values=new JSONObject();for(int i=0;i<keys.length;i++)values.put(keys[i],i==5?(fields[i].length()==0?saved.optString("password"):fields[i].getText().toString()):fields[i].getText().toString().trim());
                 NasBackup.validate(values);storage.save(values);prompt.dismiss();message("NAS backup settings saved on this phone.");
             }catch(Exception e){fields[0].setError("Check address, share, username and folder. Use a share name without smb:// or slashes.");}});
             prompt.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener(v->{if(token!=epoch||!unlocked)return;try{storage.clear();prompt.dismiss();message("NAS settings forgotten. Existing backups remain on the NAS.");}catch(Exception e){message("Could not forget NAS settings.");}});
