@@ -1,0 +1,58 @@
+name: Capture Wormwright Notes screenshots
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  screenshots:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+      - name: Build screenshot driver and unchanged preview app
+        run: |
+          sdkmanager 'platforms;android-35' 'build-tools;35.0.0' 'emulator' 'system-images;android-35;default;x86_64'
+          gradle -p apps/wormwright-notes assembleDebug assembleDebugAndroidTest --no-daemon
+      - name: Capture real screens with fictional sample data
+        timeout-minutes: 10
+        run: |
+          sudo chmod a+rw /dev/kvm
+          export PATH="$ANDROID_HOME/platform-tools:$PATH"
+          export ANDROID_AVD_HOME="$RUNNER_TEMP/notes-screenshots-avd"
+          mkdir -p "$ANDROID_AVD_HOME" notes-screenshots
+          echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd -n notes-screenshots -k 'system-images;android-35;default;x86_64' --device pixel_7
+          "$ANDROID_HOME/emulator/emulator" -avd notes-screenshots -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot -accel on > notes-screenshots/emulator.txt 2>&1 &
+          adb wait-for-device
+          timeout 180 bash -c 'until [ "$(adb shell getprop sys.boot_completed | tr -d "\r")" = 1 ]; do sleep 2; done'
+          adb shell svc power stayon true
+          adb shell settings put system screen_off_timeout 1800000
+          adb shell input keyevent 224
+          adb shell input keyevent 82
+          adb shell settings put global sysui_demo_allowed 1
+          adb shell am broadcast -a com.android.systemui.demo -e command clock -e hhmm 0941
+          adb shell am broadcast -a com.android.systemui.demo -e command battery -e level 100 -e plugged false
+          adb shell am broadcast -a com.android.systemui.demo -e command notifications -e visible false
+          adb install apps/wormwright-notes/app/build/outputs/apk/debug/app-debug.apk
+          adb install apps/wormwright-notes/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+          adb shell am instrument -w -e screenshots true ai.wormwright.notes.test/ai.wormwright.notes.SecretUiInstrumentation | tee notes-screenshots/capture.txt
+          grep -q 'PASS website screenshots captured' notes-screenshots/capture.txt
+          adb pull /sdcard/Android/data/ai.wormwright.notes/files/screenshots/. notes-screenshots/
+          test -s notes-screenshots/notes-overview.png
+          test -s notes-screenshots/notes-checklist.png
+          test -s notes-screenshots/notes-writing.png
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: wormwright-notes-screenshots
+          path: notes-screenshots/
+          retention-days: 30
