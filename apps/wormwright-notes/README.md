@@ -1,4 +1,4 @@
-# Wormwright Notes — 0.1.0-preview.4
+# Wormwright Notes — 0.1.0-preview.5
 
 Offline Android notes and checklists with autosave, search, pins, Trash, sharing and manual NAS backups. No ads, purchases, analytics or app account. Ordinary notes require Android 8 or later; secret notes require Android 11 or later with a secure phone screen lock.
 
@@ -21,20 +21,20 @@ Secret title/content is encrypted in the app database using a phone-bound Androi
 - Choose **Password** to protect a backup with a separate password of at least 12 characters. Existing password-protected backups remain supported.
 - Choose **YubiKey** to protect it for all currently registered keys. Authenticate with one of those keys using its FIDO2 PIN and USB-C or NFC. Any of the included keys independently restores that same file on another phone.
 - **Plain JSON** is available only when no secret notes exist. Public JSON remains compatible with previous Notes versions.
-- Backups containing any secret notes, including Trash, also require phone authentication before export. Their entire `.wwnotes` file is encrypted.
-- Restore a `.wwnotes` file using its password or an included YubiKey, depending on how it was created. If it contains secret notes, confirm the receiving phone's screen lock. Restored secrets remain locked.
+- Backups containing any secret notes, including Trash, encrypt the entire `.wwnotes` file. Password and YubiKey backup/restore do not add a phone-PIN prompt. Opening individual secret notes still requires the phone screen lock.
+- Restore a `.wwnotes` file using its password or an included YubiKey, depending on how it was created. Secret imports require a configured screen lock, without prompting for it during restore. Restored secrets remain locked until opened.
 
 Keep the backup password separately. Your phone PIN cannot recover a protected backup on a replacement phone. Uninstalling removes the local notes and phone key; a usable protected backup and its separate password are required for recovery.
 
 ## Up to four backup YubiKeys
 
-Open **More → YubiKey backup keys**, confirm your phone screen lock, then **+ Register YubiKey**. Name each key. Use its existing FIDO2 PIN and follow the USB-C touch or NFC hold prompts. Notes creates a separate credential and does not alter Vault credentials, reset the key, change its PIN, or write OTP slots. A physical key already registered in this list is rejected; use a different physical key for an independent spare.
+Open **More → YubiKey backup keys**, then **+ Register YubiKey**. Name each key. If keys are already registered, authenticate with one first to authorize the change. Use the new key’s existing FIDO2 PIN and follow the USB-C touch or NFC prompts. NFC registration uses two taps: create the credential, remove the key, then enter its PIN again and tap the same key to verify it. Nothing is saved until verification succeeds. This uses a fresh NFC connection and does not retry PIN failures automatically. Notes creates a separate credential and does not alter Vault credentials, reset the key, change its PIN, or write OTP slots. A physical key already registered in this list is rejected; use a different physical key for an independent spare.
 
 Register up to four keys before making a YubiKey backup. Every new file includes all currently registered keys. Adding a key does not change older files: make a new backup to include it. Removing a registration affects future files only; older backups still accept their original keys. You can rename and remove keys from the management screen.
 
-Restore on a replacement phone by selecting the backup file and using any included key. No prior phone registration or phone-specific encryption key is needed. After restoring, you may remember the authenticated public registrations for future backups on the new phone, subject to its four-key limit and phone authentication. The phone stores no YubiKey PIN, hmac-secret output or private backup encryption key.
+Restore on a replacement phone by selecting the backup file and using any included key. No prior phone registration or phone-specific encryption key is needed. After restoring, you may remember the authenticated public registrations for future backups on the new phone, subject to its four-key limit. Renaming/removing registrations requires an existing registered YubiKey, without an additional phone PIN. The phone stores no YubiKey PIN, hmac-secret output or private backup encryption key.
 
-Password and YubiKey are separate backup choices. A password-only file still needs its password; a YubiKey-only file needs one of the keys included when it was created. Keep an independent spare key and verify it by restoring a test backup. Hardware USB-C/NFC operation in Notes preview 4 still requires testing with your physical keys; the transport is adapted from Vault's existing implementation.
+Password and YubiKey are separate backup choices. A password-only file still needs its password; a YubiKey-only file needs one of the keys included when it was created. Keep an independent spare key and verify it by restoring a test backup. USB registration and subsequent NFC use were confirmed by the user in preview 4. The revised two-tap NFC registration in preview 5 still needs verification with physical hardware.
 
 ## Your NAS
 
@@ -46,7 +46,7 @@ Saved NAS credentials are separately encrypted on this phone and excluded from a
 
 ## Install or update
 
-Download `Wormwright-Notes-0.1.0-preview.4.apk` from [the Notes page](https://wormwright.com/notes.html), open it on your phone and approve installation. Back up notes first, then install over the existing app. The package and signing identity match previews 1 and 2. Do not uninstall to update.
+Download `Wormwright-Notes-0.1.0-preview.5.apk` from [the Notes page](https://wormwright.com/notes.html), open it on your phone and approve installation. Back up notes first, then install over the existing app. The package and signing identity match the earlier previews. Do not uninstall to update.
 
 The app upgrades its database in place while preserving existing notes, checklists, pins and Trash. User reports confirmed preview 2 working, including sharing and NAS backups. The user reported preview 3 looks good. New YubiKey backup hardware operation still needs verification with the user's physical keys; automated regression results are recorded with the release.
 

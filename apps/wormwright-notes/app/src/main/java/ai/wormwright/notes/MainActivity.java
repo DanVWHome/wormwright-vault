@@ -338,6 +338,16 @@ public class MainActivity extends Activity {
     }
     byte[] backupBytes(boolean includeSecrets)throws Exception{
         boolean secretPresent=hasSecrets();if(secretPresent&&(!includeSecrets||!resumed||credentialEpoch!=accessEpoch))throw new SecurityException("Secret backup needs authentication and encryption");
+        return snapshotBytes();
+    }
+    interface BackupProtection{byte[] seal(byte[] plain)throws Exception;}
+    byte[] protectedBackup(BackupProtection protection)throws Exception{
+        if(!resumed)throw new SecurityException("Backup needs the foreground app");
+        byte[] plain=snapshotBytes();
+        try{return protection.seal(plain);}finally{Arrays.fill(plain,(byte)0);}
+    }
+    private byte[] snapshotBytes()throws Exception{
+        boolean secretPresent=hasSecrets();
         JSONObject backup=new JSONObject();backup.put("format",secretPresent?"wormwright-notes-v2":"wormwright-notes-v1");JSONArray notes=new JSONArray();
         try(Cursor c=db.rawQuery("SELECT id,title,body,pinned,deleted,updated,secret FROM notes",null)){
             while(c.moveToNext()){
@@ -376,13 +386,13 @@ public class MainActivity extends Activity {
                 else if(n==1)hardwareBackups().createBackup(nas);
                 else try{deliverBackup(backupBytes(false),nas,false);}catch(Exception e){toast("Could not prepare backup");}
             }).setNegativeButton("Cancel",null).show();
-        if(hasSecrets())requestCredential(choose);else choose.run();
+        choose.run();
     }
     void passwordBackup(boolean nas){
         passwordDialog(true,password->{
-            Runnable protect=()->{try{byte[] plain=backupBytes(hasSecrets());runBackupTask(()->{try{return BackupEnvelope.encrypt(plain,password);}finally{Arrays.fill(password,'\0');Arrays.fill(plain,(byte)0);}},bytes->deliverBackup(bytes,nas,true));}
-                catch(Exception e){Arrays.fill(password,'\0');toast("Could not read notes for backup");}};
-            if(!hasSecrets()||(resumed&&credentialEpoch==accessEpoch))protect.run();else requestCredential(protect);
+            long epoch=accessEpoch;
+            runBackupTask(()->{try{return protectedBackup(plain->BackupEnvelope.encrypt(plain,password));}finally{Arrays.fill(password,'\0');}},
+                bytes->{if(resumed&&accessEpoch==epoch)deliverBackup(bytes,nas,true);else Arrays.fill(bytes,(byte)0);});
         });
     }
     boolean nasBusy=false;
@@ -415,7 +425,8 @@ public class MainActivity extends Activity {
                 .setNegativeButton("Cancel",null).setPositiveButton("Restore",(d,w)->{
                     try{restoreNotes(notes);home();toast("Notes restored");afterRestore.run();}catch(Exception e){toast("Restore failed; no notes added");}
                 }).show();
-            if(secrets)requestCredential(confirm);else confirm.run();
+            if(secrets&&!screenLockAvailable()){toast("Set a phone screen lock before restoring secret notes. It will be used when you open them.");return;}
+            confirm.run();
         }catch(Exception e){toast("Could not read this backup");}finally{Arrays.fill(bytes,(byte)0);}
     }
     void restoreNotes(JSONArray notes)throws Exception{

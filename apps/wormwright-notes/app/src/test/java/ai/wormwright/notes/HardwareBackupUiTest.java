@@ -15,6 +15,7 @@ import static org.junit.Assert.*;
 public class HardwareBackupUiTest {
  public static class Host extends SecretNotesTest.TestActivity {
   byte[] delivered,restored;boolean protectedFile;
+  @Override void passwordDialog(boolean confirm,PasswordAction action){action.run("A separate long password".toCharArray());}
   @Override void runBackupTask(BackupTask task,BytesAction done){try{done.run(task.run());}catch(Exception e){throw new RuntimeException(e);}}
   @Override void deliverBackup(byte[] bytes,boolean nas,boolean protectedBackup){delivered=bytes;protectedFile=protectedBackup;}
   @Override void offerRestore(byte[] bytes,boolean encrypted,Runnable after){restored=bytes.clone();Arrays.fill(bytes,(byte)0);}
@@ -66,7 +67,36 @@ public class HardwareBackupUiTest {
   store.value=state(1);note();ui.createBackup(false);long epoch=host.accessEpoch;device.permission=true;controller.pause();assertEquals(epoch,host.accessEpoch);assertEquals(0,device.stops);
   controller.stop();assertTrue(host.accessEpoch>epoch);assertTrue(device.stops>0);YubiKeyUnlock.Callback pending=device.callback;controller.start().resume();pending.complete(response(1));assertNull(host.delivered);
  }
- @Test public void managerAlwaysRequiresFreshPhoneAuthentication()throws Exception{
-  ui.manage();assertNotNull(host.requested);host.answerCredential(false);assertNull(store.value);
+ @Test public void managerDoesNotRequireRedundantPhoneAuthentication()throws Exception{
+  ui.manage();assertNull(host.requested);assertNotNull(ShadowAlertDialog.getLatestAlertDialog());assertNull(store.value);
  }
+ void secret()throws Exception{
+  host.secretCipher=new NoteCipher(()->SecretNotesTest.key);
+  if(SecretNotesTest.key==null)SecretNotesTest.createKey();
+  note();long id;try(android.database.Cursor c=host.db.rawQuery("SELECT id FROM notes",null)){c.moveToFirst();id=c.getLong(0);}
+  host.makeSecret(id);host.home();host.credentialEpoch=-1;
+ }
+ @Test public void secretKeyBackupNeedsKeyProofButNoPhonePrompt()throws Exception{
+  secret();store.value=state(1);ui.createBackup(false);assertNull(host.requested);assertNull(host.delivered);
+  device.callback.complete(response(1));assertNotNull(host.delivered);assertNull(host.requested);assertNull(host.title);
+  String restored=new String(KeyBackupEnvelope.decrypt(host.delivered,fixture.record(1).getString("id"),fixture.response(1)),StandardCharsets.UTF_8);
+  assertTrue(restored.contains("milk"));assertTrue(restored.contains("\"secret\":true"));
+  try{host.backupBytes(false);fail();}catch(SecurityException expected){}
+ }
+ @Test public void secretPasswordBackupHasNoPhonePromptOrPlaintextFile()throws Exception{
+  secret();host.passwordBackup(false);assertNull(host.requested);assertTrue(host.protectedFile);assertNotNull(host.delivered);
+  assertFalse(new String(host.delivered,StandardCharsets.UTF_8).contains("milk"));
+  assertTrue(new String(BackupEnvelope.decrypt(host.delivered,"A separate long password".toCharArray()),StandardCharsets.UTF_8).contains("milk"));assertNull(host.title);
+ }
+ @Test public void secretBackupChooserDoesNotAskPhonePinOrOfferPlainJson()throws Exception{
+  secret();host.startBackup(false);assertNull(host.requested);AlertDialog dialog=ShadowAlertDialog.getLatestAlertDialog();
+  assertEquals(2,dialog.getListView().getAdapter().getCount());assertEquals("Password",dialog.getListView().getAdapter().getItem(0));assertEquals("YubiKey",dialog.getListView().getAdapter().getItem(1));
+ }
+ @Test public void existingKeyListChangesRequireRegisteredKeyInsteadOfPhonePin()throws Exception{
+  store.value=state(1);boolean[] ran={false};ui.authorizeKeys(()->ran[0]=true);assertNull(host.requested);assertFalse(ran[0]);
+  ShadowAlertDialog.getLatestAlertDialog().getButton(-1).performClick();Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();assertEquals(1,device.unlocks);
+  JSONObject wrong=response(1);wrong.put("response",KeyBackupEnvelope.b64(fixture.response(2)));device.callback.complete(wrong);assertFalse(ran[0]);
+  ui.authorizeKeys(()->ran[0]=true);ShadowAlertDialog.getLatestAlertDialog().getButton(-1).performClick();Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();device.callback.complete(response(1));assertTrue(ran[0]);assertNull(host.requested);
+ }
+
 }

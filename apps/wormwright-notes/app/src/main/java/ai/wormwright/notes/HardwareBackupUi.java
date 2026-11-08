@@ -31,8 +31,19 @@ public final class HardwareBackupUi {
     void stop(){generation++;transport.stop();}
     void dispose(){generation++;transport.dispose();}
     JSONObject state()throws Exception{return BackupKeyRegistry.valid(store.load());}
-    void phone(Runnable action){if(host.resumed&&host.credentialEpoch==host.accessEpoch)action.run();else host.requestCredential(action);}
-    public void manage(){host.requestCredential(this::showManager);}
+    void authorizeKeys(Runnable action){
+        try{JSONArray keys=state().getJSONArray("keys");if(keys.length()==0){action.run();return;}
+            long token=++generation;
+            new AlertDialog.Builder(host).setTitle("Authorize key-list change")
+                .setMessage("First authenticate with a currently registered YubiKey. To add a key, you will then connect the new one.")
+                .setNegativeButton("Cancel",null).setPositiveButton("Continue",(d,w)->transport.unlock(keys,new YubiKeyUnlock.Callback(){
+                    public void complete(JSONObject result){byte[] response=null;try{response=KeyBackupEnvelope.bytes(result.getString("response"),32);result.remove("response");if(token!=generation||!host.resumed)return;KeyBackupEnvelope.verifyResponse(selected(keys,result),response);action.run();}
+                        catch(Exception e){host.toast("Key list unchanged: authentication failed");}finally{if(response!=null)Arrays.fill(response,(byte)0);result.remove("response");}}
+                    public void failed(String message){if(token==generation&&host.resumed)host.toast(message);}
+                })).show();
+        }catch(Exception e){host.toast("Could not authorize key-list change");}
+    }
+    public void manage(){showManager();}
     void showManager(){
         try{JSONObject data=state();JSONArray keys=data.getJSONArray("keys");String[] labels=new String[keys.length()+1];
             for(int i=0;i<keys.length();i++)labels[i]=keys.getJSONObject(i).getString("label");labels[keys.length()]=keys.length()<4?"+ Register YubiKey":"Four keys registered";
@@ -47,15 +58,15 @@ public final class HardwareBackupUi {
         AlertDialog dialog=new AlertDialog.Builder(host).setTitle(title).setView(input).setNegativeButton("Cancel",null).setPositiveButton("Save",null).create();
         dialog.setOnShowListener(d->dialog.getButton(-1).setOnClickListener(v->{String label=input.getText().toString().trim();if(label.isEmpty()||label.length()>40){input.setError("Use 1–40 characters");return;}dialog.dismiss();success.accept(label);}));dialog.show();
     }
-    void register(){phone(()->{
+    void register(){
         try{JSONObject before=state();JSONArray keys=before.getJSONArray("keys");if(keys.length()>=4){host.toast("Four keys are already registered");return;}
             labelDialog("Name this YubiKey","",label->{
                 new AlertDialog.Builder(host).setTitle("Register a backup YubiKey?")
-                    .setMessage("Use a different physical key for each slot. Enter its FIDO2 PIN, connect USB-C or hold it at the NFC reader, and follow the touch prompts. Notes creates a separate credential; Vault enrollments remain unchanged. Make a new backup after adding a key so it can restore that backup.")
-                    .setNegativeButton("Cancel",null).setPositiveButton("Register",(d,w)->phone(()->enroll(label,before))).show();
+                    .setMessage("Use a different physical key for each slot. Enter its FIDO2 PIN, connect USB-C or hold it at the NFC reader, and follow the prompts. NFC registration uses two taps, with removal and PIN entry between them. Notes creates a separate credential; Vault enrollments remain unchanged. Make a new backup after adding a key so it can restore that backup.")
+                    .setNegativeButton("Cancel",null).setPositiveButton("Register",(d,w)->authorizeKeys(()->enroll(label,before))).show();
             });
         }catch(Exception e){host.toast("Could not prepare key registration");}
-    });}
+    }
     void enroll(String label,JSONObject before){
         try{JSONArray choices=before.getJSONArray("keys");int revision=before.getInt("revision");long token=++generation;
             transport.enroll(choices,new YubiKeyUnlock.Callback(){
@@ -74,9 +85,9 @@ public final class HardwareBackupUi {
     void keyOptions(JSONObject key)throws Exception{
         String id=key.getString("id"),label=key.getString("label");
         new AlertDialog.Builder(host).setTitle(label).setItems(new String[]{"Rename","Remove from future backups"},(d,n)->{
-            if(n==0)labelDialog("Rename YubiKey",label,name->phone(()->{try{store.save(BackupKeyRegistry.rename(state(),id,name));showManager();}catch(Exception e){host.toast("Could not rename key");}}));
+            if(n==0)labelDialog("Rename YubiKey",label,name->authorizeKeys(()->{try{store.save(BackupKeyRegistry.rename(state(),id,name));showManager();}catch(Exception e){host.toast("Could not rename key");}}));
             else new AlertDialog.Builder(host).setTitle("Remove "+label+"?").setMessage("New backups will no longer include this key. Older backups still accept their original keys. This does not erase or reset the physical YubiKey.")
-                .setNegativeButton("Cancel",null).setPositiveButton("Remove",(x,w)->phone(()->{try{store.save(BackupKeyRegistry.remove(state(),id));showManager();}catch(Exception e){host.toast("Could not remove key registration");}})).show();
+                .setNegativeButton("Cancel",null).setPositiveButton("Remove",(x,w)->authorizeKeys(()->{try{store.save(BackupKeyRegistry.remove(state(),id));showManager();}catch(Exception e){host.toast("Could not remove key registration");}})).show();
         }).show();
     }
     JSONObject selected(JSONArray choices,JSONObject result)throws Exception{
@@ -85,15 +96,13 @@ public final class HardwareBackupUi {
         throw new SecurityException("Unknown key response");
     }
     public void createBackup(boolean nas){
-        if(host.hasSecrets()&&(!host.resumed||host.credentialEpoch!=host.accessEpoch)){host.requestCredential(()->createBackup(nas));return;}
         try{JSONArray keys=state().getJSONArray("keys");if(keys.length()==0){new AlertDialog.Builder(host).setTitle("Register a YubiKey first").setMessage("Register up to four keys for encrypted backups. Password backups remain available.").setNegativeButton("Cancel",null).setPositiveButton("Register keys",(d,w)->manage()).show();return;}
             long token=++generation;
             transport.unlock(keys,new YubiKeyUnlock.Callback(){
                 public void complete(JSONObject result){byte[] response=null;
                     try{response=KeyBackupEnvelope.bytes(result.getString("response"),32);result.remove("response");if(token!=generation||!host.resumed)return;
                         KeyBackupEnvelope.verifyResponse(selected(keys,result),response);
-                        byte[] plain=host.backupBytes(host.hasSecrets());
-                        host.runBackupTask(()->{try{return KeyBackupEnvelope.encrypt(plain,keys);}finally{Arrays.fill(plain,(byte)0);}},bytes->{if(token==generation&&host.resumed)host.deliverBackup(bytes,nas,true);else Arrays.fill(bytes,(byte)0);});
+                        host.runBackupTask(()->host.protectedBackup(plain->KeyBackupEnvelope.encrypt(plain,keys)),bytes->{if(token==generation&&host.resumed)host.deliverBackup(bytes,nas,true);else Arrays.fill(bytes,(byte)0);});
                     }catch(Exception e){host.toast("Could not create a YubiKey backup. No unencrypted backup was written.");}finally{if(response!=null)Arrays.fill(response,(byte)0);result.remove("response");}
                 }
                 public void failed(String message){if(token==generation&&host.resumed)host.toast(message);}
@@ -116,6 +125,6 @@ public final class HardwareBackupUi {
     void remember(JSONArray choices){
         new AlertDialog.Builder(host).setTitle("Remember these backup keys?")
             .setMessage("Keep the public registrations from this backup so you can use these keys for new backups on this phone. No YubiKey PIN or private encryption key is stored. Up to four keys total.")
-            .setNegativeButton("Not now",null).setPositiveButton("Remember",(d,w)->host.requestCredential(()->{try{store.save(BackupKeyRegistry.merge(state(),choices));host.toast("Backup keys remembered");}catch(Exception e){host.toast("Key list was not changed. There may be more than four keys or a conflicting registration.");}})).show();
+            .setNegativeButton("Not now",null).setPositiveButton("Remember",(d,w)->{try{store.save(BackupKeyRegistry.merge(state(),choices));host.toast("Backup keys remembered");}catch(Exception e){host.toast("Key list was not changed. There may be more than four keys or a conflicting registration.");}}).show();
     }
 }

@@ -49,7 +49,7 @@ public final class SecretUiInstrumentation extends Instrumentation {
             String sdkJson=new com.squareup.moshi.Moshi.Builder().build().adapter(java.util.Map.class).toJson(java.util.Collections.singletonMap("sdk","Notes"));
             check(sdkJson.contains("Notes"),"SDK JSON runtime dependencies");
             check(com.yubico.yubikit.fido.Cbor.encode(java.util.Collections.singletonMap(1,"Notes")).length>0,"SDK CBOR runtime");
-            main(()->{activity.hardwareBackups().manage();return null;});enterPin("246813");
+            main(()->{activity.hardwareBackups().manage();return null;});
             waitFor(()->button(getUiAutomation().getRootInActiveWindow(),"Close")!=null,10000);tapText("Close");
             main(()->{activity.hardwareBackups().enroll("Disposable emulator key",BackupKeyRegistry.empty());return null;});
             waitFor(()->button(getUiAutomation().getRootInActiveWindow(),"Continue")!=null,10000);tapText("Cancel");

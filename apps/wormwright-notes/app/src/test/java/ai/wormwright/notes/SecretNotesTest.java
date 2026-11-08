@@ -110,4 +110,14 @@ public class SecretNotesTest {
         JSONObject plain=new JSONObject().put("format","wormwright-notes-v1").put("notes",new JSONArray().put(note));
         activity.offerRestore(plain.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8),false);assertEquals(0,count());
     }
+    @Test public void protectedSecretRestoreNeedsNoPhonePromptButOpeningStillDoes()throws Exception{
+        org.robolectric.Shadows.shadowOf((android.app.KeyguardManager)activity.getSystemService(android.content.Context.KEYGUARD_SERVICE)).setIsDeviceSecure(true);
+        JSONObject n=new JSONObject().put("title","restored secret").put("body","hidden pears").put("pinned",0).put("deleted",0).put("updated",1).put("secret",true);
+        JSONObject backup=new JSONObject().put("format","wormwright-notes-v2").put("notes",new JSONArray().put(n));
+        activity.offerRestore(backup.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8),true);assertNull(activity.requested);
+        ShadowAlertDialog.getLatestAlertDialog().getButton(-1).performClick();Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();assertEquals(1,count());assertNull(activity.title);
+        long id;try(Cursor c=activity.db.rawQuery("SELECT id FROM notes",null)){c.moveToFirst();id=c.getLong(0);}
+        activity.editor(id);assertNotNull(activity.requested);assertNull(activity.title);
+    }
+
 }

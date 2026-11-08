@@ -2,7 +2,7 @@ plugins { id 'com.android.application' }
 android {
  namespace 'ai.wormwright.notes'
  compileSdk 35
- defaultConfig { applicationId 'ai.wormwright.notes'; testInstrumentationRunner 'ai.wormwright.notes.SecretUiInstrumentation'; minSdk 26; targetSdk 35; versionCode 4; versionName '0.1.0-preview.4' }
+ defaultConfig { applicationId 'ai.wormwright.notes'; testInstrumentationRunner 'ai.wormwright.notes.SecretUiInstrumentation'; minSdk 26; targetSdk 35; versionCode 5; versionName '0.1.0-preview.5' }
  testOptions { unitTests.includeAndroidResources = true }
  compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
 }

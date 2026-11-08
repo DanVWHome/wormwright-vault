@@ -94,7 +94,7 @@ public final class YubiKeyUnlock {
         cancel();
         Attempt a=new Attempt(request,enroll,done);current=a;
         LinearLayout view=new LinearLayout(activity);view.setOrientation(LinearLayout.VERTICAL);view.setPadding(32,16,32,16);
-        TextView note=new TextView(activity);a.note=note;note.setText("Connect your YubiKey over USB-C or hold it against the NFC reader, and enter its PIN. Either order works. Keep an NFC key in place until the backup operation finishes.");view.addView(note);
+        TextView note=new TextView(activity);a.note=note;note.setText("Connect your YubiKey over USB-C or hold it against the NFC reader, and enter its PIN. Either order works. Keep an NFC key in place until the current tap finishes. Registration uses two taps, with removal and PIN entry between them.");view.addView(note);
         YubiKeyPinInput pinEntry=new YubiKeyPinInput(activity);EditText input=pinEntry.input;view.addView(pinEntry);
         a.dialog=new AlertDialog.Builder(activity).setTitle(enroll?"Enroll YubiKey":"Unlock with YubiKey").setView(view)
             .setNegativeButton("Cancel",(d,w)->fail(a,"YubiKey operation cancelled. Existing unlock methods remain available."))
@@ -161,7 +161,7 @@ public final class YubiKeyUnlock {
         else if(a.note!=null)a.note.setText(device.getTransport()==com.yubico.yubikit.core.Transport.NFC?"NFC key detected. Keep it here and enter its PIN.":"YubiKey connected. Enter its PIN and continue.");
     }
     private void progress(Attempt a,String stage,String message) {
-        a.stage=stage;ui.post(()->{if(current==a&&!a.cancelled&&a.note!=null)a.note.setText(a.nfc?"Keep the YubiKey against the phone until the backup operation finishes. No gold-contact touch is needed for NFC.":message);});
+        a.stage=stage;ui.post(()->{if(current==a&&!a.cancelled&&a.note!=null)a.note.setText(a.nfc?"Keep the YubiKey against the phone until the current tap finishes. No gold-contact touch is needed for NFC.":message);});
     }
     private void connect(Attempt a,YubiKeyDevice device) {
         if(current!=a || a.cancelled || !a.claimed.compareAndSet(false,true))return;
@@ -208,9 +208,15 @@ public final class YubiKeyUnlock {
                         byte[] salt=random(32);
                         // A verified assertion proves the new credential works before backup registration is changed.
                         progress(a,"VERIFY-NEW","Checking the new credential. Keep the key connected; touch again when it flashes.");
+                        if(a.nfc){
+                            // NFC enrollment ends here. Verification must use a fresh physical tap,
+                            // connection, client and PIN exchange, never the makeCredential session.
+                            result=new JSONObject().put("credential",b64(full)).put("salt",b64(salt));
+                        }else{
                         byte[] secret=assertKey(client,cred,salt,a,operationPin);
                         try{result=new JSONObject().put("credential",b64(full)).put("salt",b64(salt)).put("response",b64(secret));}
                         finally{Arrays.fill(secret,(byte)0);}
+                        }
                     } else {
                         JSONArray choices=a.request.optJSONArray("choices");if(choices==null)choices=new JSONArray().put(a.request);
                         List<AttestedCredentialData> credentials=new ArrayList<>();Map<String,JSONObject> requests=new HashMap<>();Map<String,Object> salts=new HashMap<>();
@@ -237,9 +243,31 @@ public final class YubiKeyUnlock {
             final JSONObject output=result;final String problem=error;
             ui.post(()->{if(current!=a||a.cancelled)return;
                 Runnable finish=()->{if(current!=a||a.cancelled)return;current=null;a.close(true);if(problem!=null)a.done.failed(problem);else a.done.complete(output);};
-                if(foreground)finish.run();else a.pending=finish;
+                if(problem==null&&a.enroll&&a.nfc){
+                    Runnable next=()->awaitEnrollmentRemoval(a,(NfcYubiKeyDevice)device,output);
+                    if(foreground)next.run();else a.pending=next;
+                }else if(foreground)finish.run();else a.pending=finish;
             });
         });
+    }
+    private void awaitEnrollmentRemoval(Attempt a,NfcYubiKeyDevice device,JSONObject registration){
+        if(current!=a||a.cancelled||!foreground)return;
+        a.dialog.setTitle("First tap complete");
+        a.note.setText("Remove the YubiKey from the phone. Next, enter its PIN again and tap the same key to verify it. It is not registered until verification succeeds.");
+        // The SDK waits for physical removal; merely reconnecting IsoDep does not power-cycle NFC.
+        device.remove(()->ui.post(()->{
+            if(current!=a||a.cancelled||!foreground)return;
+            current=null;a.close(false);
+            begin(registration,false,new Callback(){
+                public void complete(JSONObject assertion){
+                    try{registration.put("response",assertion.getString("response"));assertion.remove("response");a.done.complete(registration);}
+                    catch(Exception e){a.done.failed("The new key could not be verified. No key was added.");}
+                }
+                public void failed(String message){a.done.failed(message+" No key was added. Start registration again when ready.");}
+            });
+            Attempt verification=current;
+            if(verification!=null){verification.dialog.setTitle("Verify new YubiKey · second tap");verification.note.setText("Enter the same key’s PIN again, choose Continue, then tap it against the phone. This final check registers the key.");}
+        }));
     }
     /** Own the physical connection before constructing the session (which does
      * I/O). Cancellation can abort GetInfo/PIN exchange too. The owner closes
