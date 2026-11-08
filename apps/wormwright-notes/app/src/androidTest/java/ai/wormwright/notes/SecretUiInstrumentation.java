@@ -20,7 +20,15 @@ public final class SecretUiInstrumentation extends Instrumentation {
         Bundle result=new Bundle();
         try{
             activity=(MainActivity)startActivitySync(new Intent(getTargetContext(),MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
-            waitFor(()->main(()->activity.resumed),10000);
+            android.app.KeyguardManager screen=(android.app.KeyguardManager)getTargetContext().getSystemService(android.content.Context.KEYGUARD_SERVICE);
+            key(224);
+            waitFor(()->screen.isKeyguardLocked()||main(()->activity.resumed),30000);
+            if(screen.isKeyguardLocked()){
+                // The disposable emulator can finish booting locked after locksettings set-pin.
+                key(82);SystemClock.sleep(600);shell("input text 246813");key(66);
+                waitFor(()->!screen.isKeyguardLocked(),15000);
+            }
+            waitFor(()->main(()->activity.resumed),30000);
             main(()->{activity.editor(-1);activity.title.setText(TITLE);activity.body.setText(BODY);check(activity.save(),"initial save");id=activity.editing;activity.confirmMakeSecret();return null;});
             tapText("Make secret");waitForCredential();cancelCredential();
             check(!main(()->activity.isSecret(id)),"cancel did not create a secret");
@@ -38,6 +46,9 @@ public final class SecretUiInstrumentation extends Instrumentation {
             closeShareSheet();
             check(main(()->activity.title==null&&activity.unlockedId==-1),"share exit relocked editor");
             main(()->{activity.editor(id);return null;});waitForCredential();cancelCredential();
+            String sdkJson=new com.squareup.moshi.Moshi.Builder().build().adapter(java.util.Map.class).toJson(java.util.Collections.singletonMap("sdk","Notes"));
+            check(sdkJson.contains("Notes"),"SDK JSON runtime dependencies");
+            check(com.yubico.yubikit.fido.Cbor.encode(java.util.Collections.singletonMap(1,"Notes")).length>0,"SDK CBOR runtime");
             main(()->{activity.hardwareBackups().manage();return null;});enterPin("246813");
             waitFor(()->button(getUiAutomation().getRootInActiveWindow(),"Close")!=null,10000);tapText("Close");
             main(()->{activity.hardwareBackups().enroll("Disposable emulator key",BackupKeyRegistry.empty());return null;});

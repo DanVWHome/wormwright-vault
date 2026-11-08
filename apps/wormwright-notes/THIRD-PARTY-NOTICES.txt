@@ -3,9 +3,11 @@ Wormwright Notes includes the following libraries:
 SMBJ 0.14.0 and asn-one 0.6.0 — Apache License 2.0 — https://github.com/hierynomus/smbj
 Bouncy Castle 1.79 — Bouncy Castle License (MIT style) — https://www.bouncycastle.org/licence.html
 MBassador 1.3.0 — MIT License — https://github.com/bennidi/mbassador
-SLF4J API/NOP 2.0.9 — MIT License — https://www.slf4j.org/license.html
+SLF4J API/NOP 2.0.17 — MIT License — https://www.slf4j.org/license.html
 
 Retained license files are in licenses/ and the original library JARs.
 
 YubiKit Android/Core/FIDO 2.9.0 — Apache License 2.0 — https://github.com/Yubico/yubikit-android
 The Android transport JAR is extracted from the upstream Android AAR, with the unused UI package omitted. Notes uses its own dialogs and requires no upstream UI resources.
+
+YubiKit runtime dependencies: Moshi 1.15.2, Okio JVM 3.7.0, Kotlin stdlib 1.9.21 (JDK7/JDK8 adapters 1.8.21), JetBrains annotations 13.0, SpotBugs annotations 4.8.6 and JSR-305 3.0.2. These retain their upstream licenses. See licenses/ and docs/YUBIKIT-DEPENDENCIES.txt.

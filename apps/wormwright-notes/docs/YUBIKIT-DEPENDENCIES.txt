@@ -1,0 +1,20 @@
+YubiKit 2.9.0 and complete FIDO runtime dependency set.
+Resolved with Gradle from official Maven artifacts; Android AAR transport classes are retained without its unused UI package.
+
+ace2a10dc8e2d5fd34925ecac03e4988b2c0f851650c94b8cef49ba1bd111478  annotations-13.0.jar
+e4f70fd92849b52240048b8ebace0c9a17d3bb7b9c882b3c7778cec3458495f5  asn-one-0.6.0.jar
+0d81ecc3124536b539bce9aa3fe9621b7f84c9cee371b635a5b31c78b79ab1da  bcprov-jdk18on-1.79.jar
+010e9fedb8696456d9e0cf3e3c1220f73a049bbec199b66a10619322fb58aace  core-2.9.0.jar
+addce9669689bec3d9c02b1018c1049caa37a86724314306f3c581459aede72e  fido-2.9.0.jar
+766ad2a0783f2687962c8ad74ceecc38a28b9f72a2d085ee438b7813e928d0c7  jsr305-3.0.2.jar
+3b479313ab6caea4e5e25d3dee8ca80c302c89ba73e1af4dafaa100f6ef9296a  kotlin-stdlib-1.9.21.jar
+33d148db0e11debd0d90677d28242bced907f9c77730000fd597867089039d86  kotlin-stdlib-jdk7-1.8.21.jar
+3db752a30074f06ee6c57984aa6f27da44f4d2bbc7f5442651f6988f1cb2b7d7  kotlin-stdlib-jdk8-1.8.21.jar
+f065031a490c88c9b20d34f3c9c4eb6e0dffe329c090788c383574e1ac7c6bba  mbassador-1.3.0.jar
+767f7592c6c61eb693549a26d333c121f5383826bd287b899867aa326dae55e4  moshi-1.15.2.jar
+d8b35adc28768f43ae5afe6a7d1aa2a878ba51e0b96a4f308811f3b1f5b13e55  okio-jvm-3.7.0.jar
+7b751d952061954d5abfed7181c1f645d336091b679891591d63329c622eb832  slf4j-api-2.0.17.jar
+3716f83649ec66161a2edefd4f49df34d1dd1c51cdcf941996c6987260f0a829  slf4j-nop-2.0.17.jar
+f5cd63af2f343bfa13d41dbf50cfd251d2b99c4118fbe82b0e94ee0f93d1cc14  smbj-0.14.0.jar
+4548b74a815ed44f5480ca4f06204a8b00809dc7e5f6a825a9edf18f40377b65  spotbugs-annotations-4.8.6.jar
+78d40c7bf8765b5904c35cbba58e0ebb6cfa4a56479b2953ce3f94173ff353b4  yubikit-android-2.9.0.jar
