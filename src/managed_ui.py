@@ -194,7 +194,7 @@ class ManagedWindow(QMainWindow):
         self.master.setVisible(password_visible and not missing);self.unlock_button.setVisible(password_visible and not missing);self.unlock_button.setText('Unlock Vault')
         self.key_button.setVisible(not unlocked and has_key);self.fallback.setVisible(not unlocked and has_key and not self.password_fallback)
         self.manager_row.setVisible(self.vault.manager);self.search.setEnabled(unlocked)
-        for button in self.controls:button.setEnabled(unlocked and not self.task)
+        for button in self.controls:button.setEnabled(unlocked and not self.task and (button.text() not in ('Add','Edit','Clone','Delete','Restore') or self.vault.can_edit))
         self.management_menu.menuAction().setVisible(self.vault.manager)
         for action in self.management_actions:action.setEnabled(unlocked and not self.task)
         for action in self.location_actions+self.settings_actions:action.setEnabled(not self.task)
@@ -363,7 +363,7 @@ class ManagedWindow(QMainWindow):
         finally:self.table.blockSignals(False);self.table.setUpdatesEnabled(True)
 
     def edit_record(self,record=None):
-        if not self.vault.unlocked or self.task:return
+        if not self.vault.unlocked or self.task or not self.vault.can_edit:return
         from app import EntryDialog
         dialog=EntryDialog(self,record);self.dialog=dialog
         group_widget=None
@@ -393,7 +393,7 @@ class ManagedWindow(QMainWindow):
         record=self.selected()
         restoring=bool(record and record.get('deleted') and self.vault.manager)
         self.delete_button.setText('Restore' if restoring else 'Delete')
-        self.delete_button.setEnabled(bool(record) and self.vault.unlocked and not self.task and not self.dialog)
+        self.delete_button.setEnabled(bool(record) and self.vault.can_edit and not self.task and not self.dialog)
         if self.companion:
             self.companion.delete_button.setText(self.delete_button.text())
 
@@ -635,7 +635,7 @@ class ManagedWindow(QMainWindow):
             uid=item.data(Qt.ItemDataRole.UserRole);admin=self.vault.administration()
             names=sorted(g['name'] for g in admin['groups'].values() if uid in g['members'])
             records=[r for r in self.vault.entries() if uid in self.vault._recipients(r)]
-            user_details.setText(f'{len(names)} groups • {len(records)} accessible entries\nIndividual exclusions can further restrict access.')
+            user_details.setText(f'{len(names)} groups • {len(records)} accessible entries\nIndividual exclusions can further restrict access.\nPermissions: {"View only" if admin["users"][uid]["identity"].get("view_only",False) else "Can edit"}')
         def show_group():
             item=groups.currentItem()
             if not item:group_details.setText('Select a group to see its members and entry counts.');return
@@ -670,6 +670,7 @@ class ManagedWindow(QMainWindow):
             name=QLineEdit();password=QLineEdit();password.setEchoMode(QLineEdit.EchoMode.Password);confirm=QLineEdit();confirm.setEchoMode(QLineEdit.EchoMode.Password)
             labels=self.vault.available_groups();choices=groups_list(labels,[g for g,n in labels.items() if n=='Generic'])
             form.addRow('Username:',name);form.addRow('Password:',password);form.addRow('Confirm:',confirm);form.addRow('Groups:',choices)
+            view_only=QCheckBox('View only — can view and copy entries');view_only.setObjectName('new_user_view_only');form.addRow('Permissions:',view_only)
             warning=QLabel('Group members receive entries in those groups. Review the access list before creating the account.');warning.setWordWrap(True);form.addRow(warning)
             buttons=QDialogButtonBox(QDialogButtonBox.StandardButton.Ok|QDialogButtonBox.StandardButton.Cancel);form.addRow(buttons);buttons.accepted.connect(form_dialog.accept);buttons.rejected.connect(form_dialog.reject)
             try:
@@ -681,7 +682,7 @@ class ManagedWindow(QMainWindow):
                 text=QLabel(f'This user will receive {len(records)} entries through their groups.\n\n'+('\n'.join(' '.join(r['description'].split())[:100] for r in records[:5]) or '(No current entries)')+('\n…' if len(records)>5 else ''));text.setWordWrap(True);review_layout.addWidget(text)
                 full=QPushButton('View Full List…');full.clicked.connect(lambda:self.review_list('Entries to share',['Description','Link','User Name'],[[r.get(k,'') for k in ('description','link','user_name')] for r in records],review));review_layout.addWidget(full)
                 buttons=QDialogButtonBox(QDialogButtonBox.StandardButton.Yes|QDialogButtonBox.StandardButton.Cancel);review_layout.addWidget(buttons);buttons.button(QDialogButtonBox.StandardButton.Yes).setText('Create Account');buttons.accepted.connect(review.accept);buttons.rejected.connect(review.reject)
-                if review.exec()==QDialog.DialogCode.Accepted:self.vault.add_user(name.text(),password.text(),gids)
+                if review.exec()==QDialog.DialogCode.Accepted:self.vault.add_user(name.text(),password.text(),gids,view_only=view_only.isChecked())
                 review.deleteLater()
             finally:password.clear();confirm.clear();form_dialog.deleteLater()
         def selected_user():
@@ -700,12 +701,24 @@ class ManagedWindow(QMainWindow):
             current=self.vault.administration()['users'][self.vault.uid]['identity']['name']
             name,ok=QInputDialog.getText(dialog,'Rename Manager','Manager username:',text=current)
             if ok:self.vault.rename_manager(name);self.username.setText(name.strip())
+        def permissions():
+            uid=selected_user()
+            if uid==self.vault.uid:
+                QMessageBox.information(dialog,'Manager permissions','The Manager always has editing access.');return
+            identity=self.vault.administration()['users'][uid]['identity']
+            d=QDialog(dialog);d.setWindowTitle('User Permissions');form=QFormLayout(d)
+            view_only=QCheckBox('View only — can view and copy, but cannot add, edit or delete entries')
+            view_only.setObjectName('user_view_only');view_only.setChecked(identity.get('view_only',False));form.addRow(view_only)
+            note=QLabel('Applies on desktop and Android after syncing. Update all devices before enabling. Offline copies keep their previous permissions until synced.');note.setWordWrap(True);form.addRow(note)
+            buttons=QDialogButtonBox(QDialogButtonBox.StandardButton.Save|QDialogButtonBox.StandardButton.Cancel);form.addRow(buttons);buttons.accepted.connect(d.accept);buttons.rejected.connect(d.reject)
+            if d.exec()==QDialog.DialogCode.Accepted:self.vault.set_view_only(uid,view_only.isChecked())
+            d.deleteLater()
         def reset():
             uid=selected_user();password=self.new_password('Reset account password')
             if password is not None:self.vault.reset_password(uid,password)
         def disable():
             uid=selected_user();identity=self.vault.administration()['users'][uid]['identity'];self.vault.set_disabled(uid,not identity['disabled'])
-        for buttons in [[('Add User…',user_form),('Assign Groups…',memberships)], [('Reset Password…',reset),('Disable / Enable',disable)]]:
+        for buttons in [[('Add User…',user_form),('Assign Groups…',memberships)], [('Permissions…',permissions),('Reset Password…',reset),('Disable / Enable',disable)]]:
             row=QHBoxLayout()
             for text,callback in buttons:
                 b=QPushButton(text);b.clicked.connect(lambda checked=False,f=callback:action(f));row.addWidget(b)

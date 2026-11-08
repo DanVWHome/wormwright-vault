@@ -433,8 +433,9 @@ public class MainActivity extends Activity {
             panel.addView(reveal);
             panel.addView(button("Copy password", () -> copyValue(record.optString("password"))));
             panel.addView(button("Copy username", () -> copyValue(record.optString("user_name"))));
-            panel.addView(button("Edit entry", () -> { if (detailDialog != null) detailDialog.dismiss(); openEditor(record); }));
-            panel.addView(button("Delete entry", () -> confirmDelete(record)));
+            if (record.optBoolean("view_only", false)) panel.addView(label("View only — managed on desktop", 15));
+            if (!record.optBoolean("view_only", false)) panel.addView(button("Edit entry", () -> { if (detailDialog != null) detailDialog.dismiss(); openEditor(record); }));
+            if (!record.optBoolean("view_only", false)) panel.addView(button("Delete entry", () -> confirmDelete(record)));
             if (!record.optString("notes").isEmpty()) panel.addView(label(record.optString("notes"), 16));
             ScrollView scroll = new ScrollView(this); scroll.addView(panel);
             detailDialog = new AlertDialog.Builder(this).setTitle(record.optString("description"))
@@ -625,7 +626,7 @@ public class MainActivity extends Activity {
         if (!unlocked || busy || nasRunning || conflictReview != null) return;
         job(() -> bridge().callAttr("editing_info").toString(), value -> {
             JSONObject info = new JSONObject(value);
-            if (!info.getBoolean("can_edit")) { status.setText("Complete the first NAS sync before editing."); return; }
+            if (!info.getBoolean("can_edit")) { status.setText(info.optBoolean("view_only", false) ? "Your account is view only. You can view and copy passwords." : "Complete the first NAS sync before editing."); return; }
             LinearLayout form=column(); form.setPadding(dp(20),dp(8),dp(20),dp(8));
             String[] names={"description","link","user_name","password","notes"};
             String[] labels={"Description","Website","Username","Password","Notes"};

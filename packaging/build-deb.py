@@ -72,6 +72,8 @@ printf '%s\\n' 'Desktop launcher enabled for this login and future logins.'
     docs = stage / 'usr/share/doc/vanwormai-vault'
     docs.mkdir(parents=True)
     shutil.copy2(ROOT / 'README.md', docs / 'README.md')
+    shutil.copy2(ROOT / 'docs/VIEW-ONLY-USERS.md', docs / 'VIEW-ONLY-USERS.md')
+    shutil.copy2(ROOT / 'docs/RELEASE-0.3.12.md', docs / 'RELEASE-0.3.12.md')
     shutil.copy2(ROOT / 'docs/INTEGRATION.txt', docs / 'INTEGRATION.txt')
     notices = docs / 'third-party'
     for license_name in ('LICENSE', 'LICENSING.md'):

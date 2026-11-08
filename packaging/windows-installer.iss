@@ -1,9 +1,9 @@
-#define AppVersion "0.3.11"
+#define AppVersion "0.3.12"
 [Setup]
 AppId={{A42A398C-91E7-4C36-A1E4-AB351BE3DF27}
 AppName=Wormwright Vault
 AppVersion={#AppVersion}
-AppVerName=Wormwright Vault 0.3.11
+AppVerName=Wormwright Vault 0.3.12
 AppPublisher=Wormwright
 AppPublisherURL=https://wormwright.com
 DefaultDirName={localappdata}\Programs\Wormwright Vault
@@ -14,7 +14,7 @@ ArchitecturesInstallIn64BitMode=x64compatible
 MinVersion=10.0
 LicenseFile=..\installer-input\WormwrightVault\docs\LICENSE
 OutputDir=..\dist-installer
-OutputBaseFilename=wormwright-vault_0.3.11_windows_x64_setup
+OutputBaseFilename=wormwright-vault_0.3.12_windows_x64_setup
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern

@@ -6,7 +6,7 @@ import sys
 import tempfile
 
 checks = Path(__file__).resolve().parent / 'checks'
-names = ['vault', 'managed_vault', 'sync', 'managed_sync', 'merge_sync',
+names = ['view_only', 'view_only_ui', 'view_only_sync', 'vault', 'managed_vault', 'sync', 'managed_sync', 'merge_sync',
          'sync_settings_baseline', 'sync_lock_cleanup', 'gvfs_upload', 'conflicts', 'history', 'backup', 'import',
          'export', 'fido_protocol', 'windows_control', 'windows_local_sync', 'windows_debug', 'update_check', 'vault_cleanup', 'vault_names', 'password_focus']
 if sys.platform != 'win32':

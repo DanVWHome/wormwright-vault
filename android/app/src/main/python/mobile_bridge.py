@@ -79,7 +79,9 @@ def detail(entry_id):
     record = _vault._record(str(entry_id))
     if record.get('deleted'):
         raise VaultError('Entry is unavailable.')
-    return json.dumps({k: record.get(k, '') for k in ('id', 'description', 'user_name', 'link', 'password', 'notes', 'groups')}, ensure_ascii=False)
+    result={k: record.get(k, '') for k in ('id', 'description', 'user_name', 'link', 'password', 'notes', 'groups')}
+    result['view_only']=not _vault.can_edit
+    return json.dumps(result, ensure_ascii=False)
 
 
 def lock():
@@ -93,13 +95,13 @@ def lock():
 def editing_info():
     if not session_ready(): raise VaultError('Unlock first.')
     paired = mobile_sync.read_config(_vault.path)
-    return json.dumps({'can_edit': not isinstance(_vault, ReadOnlyVault) and (_sample or Path(str(_vault.path)+'.local-only').is_file() or bool(paired and paired.get('paired'))),
-                       'manager': _vault.manager, 'groups': _vault.available_groups()})
+    return json.dumps({'can_edit': _vault.can_edit and not isinstance(_vault, ReadOnlyVault) and (_sample or Path(str(_vault.path)+'.local-only').is_file() or bool(paired and paired.get('paired'))),
+                       'view_only': not _vault.can_edit, 'manager': _vault.manager, 'groups': _vault.available_groups()})
 
 
 def save_entry(document):
     if not json.loads(editing_info())['can_edit']:
-        raise VaultError('Complete the first NAS sync before editing this phone copy.')
+        raise VaultError('Your account is view only.' if not _vault.can_edit else 'Complete the first NAS sync before editing this phone copy.')
     if _pending is not None: raise VaultError('Wait for sync to finish before editing.')
     record = json.loads(document)
     return _vault.save(record)
@@ -107,7 +109,7 @@ def save_entry(document):
 
 def delete_entry(entry_id):
     if not json.loads(editing_info())['can_edit']:
-        raise VaultError('Complete the first NAS sync before editing.')
+        raise VaultError('Your account is view only.' if not _vault.can_edit else 'Complete the first NAS sync before editing.')
     if _pending is not None: raise VaultError('Wait for sync to finish before deleting.')
     _vault.delete(str(entry_id))
 

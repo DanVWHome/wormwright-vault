@@ -231,7 +231,10 @@ class ManagedVault:
     def _check_authority(self):
         document = json.loads(self.meta['authority'])
         data = verify(self.meta['verify'].decode(), document)
-        if data != {'vault': self.meta['vault_id'].decode(), 'hash': self._authority_hash()}:
+        expected = {'vault': self.meta['vault_id'].decode(), 'hash': self._authority_hash()}
+        if 'features' in data:
+            expected['features'] = ['view-only-users-v1']
+        if data != expected:
             raise VaultError('The vault access policy was changed or damaged.')
         if 'display_name' in self.meta:self.display_name # Authenticate optional names without changing format-2 policy signatures.
 
@@ -241,6 +244,8 @@ class ManagedVault:
             self.db.execute('UPDATE groups SET payload=? WHERE id=?', (self._encode(group), gid))
         graph = {uid: {k: data['identity'][k] for k in ('id', 'box', 'sign', 'disabled')}
                  for uid, data in admin['users'].items()}
+        for uid, data in admin['users'].items():
+            graph[uid]['view_only'] = bool(data['identity'].get('view_only', False))
         groups = {gid: group['members'] for gid, group in admin['groups'].items()}
         excluded = {}
         for rule in admin['exclusions']:
@@ -252,7 +257,13 @@ class ManagedVault:
                    'groups': groups, 'labels': labels, 'excluded': excluded}
             directory = SealedBox(PublicKey(un64(graph[uid]['box']))).encrypt(pack(sign(self._signer(), cap)))
             self.db.execute('UPDATE users SET directory=? WHERE id=?', (directory, uid))
-        authority = pack(sign(self._signer(), {'vault': self.meta['vault_id'].decode(), 'hash': self._authority_hash()}))
+        policy = {'vault': self.meta['vault_id'].decode(), 'hash': self._authority_hash()}
+        # Keep this compatibility barrier once enabled: old engines reject the
+        # extra signed field rather than silently granting write access.
+        previous = json.loads(self.meta['authority'])['data'] if 'authority' in self.meta else {}
+        if 'features' in previous or any(u.get('view_only') for u in graph.values()):
+            policy['features'] = ['view-only-users-v1']
+        authority = pack(sign(self._signer(), policy))
         self.db.execute("INSERT INTO metadata VALUES ('authority',?) ON CONFLICT(name) DO UPDATE SET value=excluded.value", (authority,))
         self.meta['authority'] = authority
 
@@ -349,6 +360,8 @@ class ManagedVault:
     def _can_write(self, record, uid):
         if uid == self.meta['manager'].decode():
             return True
+        if self.cap['graph'][uid].get('view_only', False):
+            return False
         if uid in self.cap['excluded'].get(record['id'], []) or self.cap['graph'][uid]['disabled']:
             return False
         return uid == record['creator'] or any(uid in self.cap['groups'].get(gid, []) for gid in record['groups'])
@@ -392,10 +405,28 @@ class ManagedVault:
         self.db.execute('INSERT INTO entries VALUES (?,?) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload',
                         (record['id'], pack(envelope)))
 
+    @property
+    def can_edit(self):
+        if not self.unlocked:
+            return False
+        self._refresh_cap()
+        return self.manager or not self.cap['graph'][self.uid].get('view_only', False)
+
+    def set_view_only(self, uid, view_only):
+        admin = self.administration()
+        if uid == self.meta['manager'].decode() or uid not in admin['users']:
+            raise VaultError('Choose an ordinary user; the Manager always has editing access.')
+        data = admin['users'][uid]
+        data['identity']['view_only'] = bool(view_only)
+        self._management_change(lambda: self.db.execute(
+            'UPDATE users SET recovery=? WHERE id=?', (self._encode(data), uid)))
+
     def save(self, record):
         if not self.unlocked:
             raise VaultError('Unlock first.')
         self._refresh_cap()
+        if not self.can_edit:
+            raise VaultError('Your account is view only. You can view and copy entries, but cannot change them.')
         incoming = dict(record)
         existing = self._record(incoming['id']) if incoming.get('id') else None
         if existing and (not self._can_write(existing, self.uid) or (existing.get('deleted') and not self.manager)):
@@ -456,7 +487,7 @@ class ManagedVault:
                 self._write(record)
         self._refresh_cap()
 
-    def add_user(self, name, password, groups=None):
+    def add_user(self, name, password, groups=None, *, view_only=False):
         self._admin_box()
         if not name.strip():
             raise VaultError('Enter a username.')
@@ -469,6 +500,10 @@ class ManagedVault:
         uid = identifier()
         def operation():
             self._insert_user(uid, name.strip(), password, self._new_material())
+            if view_only:
+                data=self.administration()['users'][uid]
+                data['identity']['view_only']=True
+                self.db.execute('UPDATE users SET recovery=? WHERE id=?',(self._encode(data),uid))
             for gid in selected:
                 group = dict(admin['groups'][gid])
                 group['members'] = group['members'] + [uid]
