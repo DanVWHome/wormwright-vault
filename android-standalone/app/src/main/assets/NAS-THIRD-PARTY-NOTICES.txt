@@ -1,0 +1,1 @@
+SMBJ 0.14.0 and asn-one 0.6.0: Apache 2.0. Bouncy Castle 1.79: Bouncy Castle License. MBassador 1.3.0 and SLF4J API/NOP 2.0.9: MIT. Retained upstream license texts are in licenses/. NAS backup and settings code adapted from Wormwright Notes (GPLv3).

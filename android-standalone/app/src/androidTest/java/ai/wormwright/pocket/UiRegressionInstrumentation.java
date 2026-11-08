@@ -13,6 +13,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 /** Real Android dialog/message-loop regression checks; invented sample data only. */
 public class UiRegressionInstrumentation extends Instrumentation {
     private MainActivity activity;
+    private boolean nasBackupOnly;
     private boolean rotationOnly;
     private boolean layoutOnly;
     private boolean editorsOnly;
@@ -21,13 +22,15 @@ public class UiRegressionInstrumentation extends Instrumentation {
     private String lockMethod = "lock";
     private String sampleButton = "Open invented sample vault";
     private String jobMethod = "task";
-    @Override public void onCreate(Bundle args) { super.onCreate(args);layoutOnly=args!=null&&"true".equals(args.getString("layoutOnly"));rotationOnly=args!=null&&"true".equals(args.getString("rotationOnly"));editorsOnly=args!=null&&"true".equals(args.getString("editorsOnly")); confirmationOnly=args!=null&&"true".equals(args.getString("confirmationOnly")); start(); }
+    @Override public void onCreate(Bundle args) { super.onCreate(args);nasBackupOnly=args!=null&&"true".equals(args.getString("nasBackupOnly"));layoutOnly=args!=null&&"true".equals(args.getString("layoutOnly"));rotationOnly=args!=null&&"true".equals(args.getString("rotationOnly"));editorsOnly=args!=null&&"true".equals(args.getString("editorsOnly")); confirmationOnly=args!=null&&"true".equals(args.getString("confirmationOnly")); start(); }
     @Override public void onStart() {
         Bundle result=new Bundle();
         try {
             unlockFixtureScreen();
             activity=(MainActivity)startActivitySync(new Intent(getTargetContext(),MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
-            waitForIdleSync();capture("01-home");
+            waitForIdleSync();
+            if(nasBackupOnly){nasBackupFlow();result.putString("stream","PASS Pocket NAS backup: settings validation/encryption/cancel/forget, encrypted verified independent SMB snapshots, duplicate blocking, failure cleanup, restore compatibility and locked guard\n");runOnMainSync(()->activity.finish());finish(Activity.RESULT_OK,result);return;}
+            capture("01-home");
             runOnMainSync(()->findButton(root(),"Create personal vault").performClick());capture("03-name");
             setVaultName("Practice vault");capture("04-optional-password");
             runOnMainSync(()->dialog().getButton(AlertDialog.BUTTON_POSITIVE).performClick());confirmPin();await(()->unlocked()&&!busy(),"practice vault created");
@@ -49,6 +52,27 @@ public class UiRegressionInstrumentation extends Instrumentation {
             runOnMainSync(()->invoke("about"));capture("15-about");
             result.putString("stream","PASS Pocket tutorial captures\n");finish(Activity.RESULT_OK,result);
         }catch(Throwable error){result.putString("stream",android.util.Log.getStackTraceString(error));finish(Activity.RESULT_CANCELED,result);}
+    }
+    private String statusText(){try{return ((TextView)field("status")).getText().toString();}catch(Exception e){throw new RuntimeException(e);}}
+    private void nasBackupFlow() throws Exception {
+        runOnMainSync(()->findButton(root(),sampleButton).performClick());await(()->unlocked()&&!busy()&&hasEntryRows(),"sample opens");
+        runOnMainSync(()->{try{Field f=MainActivity.class.getDeclaredField("sample");f.setAccessible(true);f.set(activity,false);f=MainActivity.class.getDeclaredField("active");f.setAccessible(true);f.set(activity,new org.json.JSONObject().put("name","Invented NAS test vault"));invoke("vaultScreen");invoke("backupToNas");}catch(Exception e){throw new RuntimeException(e);}});
+        waitForIdleSync();check(dialog()!=null,"missing settings opens setup");
+        final List<EditText> fields=new ArrayList<>();runOnMainSync(()->collectInputs(dialog().getWindow().getDecorView(),fields));check(fields.size()==6,"NAS form fields");
+        runOnMainSync(()->{dialog().getButton(-1).performClick();check(fields.get(0).getError()!=null,"missing settings rejected");
+            String[] values={"10.0.2.2","pocket-test","backups","runner","","Synthetic2468Test"};for(int i=0;i<6;i++)fields.get(i).setText(values[i]);fields.get(2).setText("../outside");dialog().getButton(-1).performClick();check(dialog().isShowing(),"unsafe path rejected");fields.get(2).setText("backups");dialog().getButton(-1).performClick();});waitForIdleSync();
+        NasSettings store=new NasSettings(activity);check(store.load().getString("password").equals("Synthetic2468Test"),"keystore settings roundtrip");
+        String raw=new String(java.nio.file.Files.readAllBytes(new java.io.File(activity.getNoBackupFilesDir(),"nas-settings.enc").toPath()),java.nio.charset.StandardCharsets.UTF_8);check(!raw.contains("Synthetic2468Test")&&!raw.contains("10.0.2.2"),"settings encrypted on disk");
+        runOnMainSync(()->invoke("configureNasBackup"));waitForIdleSync();runOnMainSync(()->dialog().getButton(-2).performClick());check(store.exists(),"Cancel preserves saved settings");
+        for(int pass=0;pass<2;pass++){
+            runOnMainSync(()->invoke("backupToNas"));waitForIdleSync();runOnMainSync(()->{List<EditText> secret=new ArrayList<>();collectInputs(dialog().getWindow().getDecorView(),secret);secret.get(0).setText("InventedBackupSecret-2468");secret.get(1).setText("InventedBackupSecret-2468");dialog().getButton(-1).performClick();invoke("backupToNas");check(dialog()==null,"busy prevents duplicate backup prompt");});
+            await(()->!busy()&&statusText().contains("NAS backup saved and verified"),"NAS backup succeeds");
+        }
+        org.json.JSONObject bad=store.load();bad.put("password","wrong-test-password");store.save(bad);
+        runOnMainSync(()->invoke("backupToNas"));waitForIdleSync();runOnMainSync(()->{List<EditText> secret=new ArrayList<>();collectInputs(dialog().getWindow().getDecorView(),secret);for(EditText field:secret)field.setText("InventedBackupSecret-2468");dialog().getButton(-1).performClick();});await(()->!busy()&&statusText().contains("NAS backup failed"),"failed login is visible");
+        for(java.io.File file:activity.getNoBackupFilesDir().listFiles())check(!file.getName().startsWith("export-"),"temporary export removed on success and failure");
+        runOnMainSync(()->invoke("configureNasBackup"));waitForIdleSync();runOnMainSync(()->dialog().getButton(-3).performClick());check(!store.exists(),"forget settings removes saved login");
+        runOnMainSync(()->findButton(root(),"Lock vault").performClick());runOnMainSync(()->invoke("backupToNas"));check(!busy()&&dialog()==null,"locked vault cannot start NAS backup");
     }
     private void callExport(boolean migration){runOnMainSync(()->{try{Method m=MainActivity.class.getDeclaredMethod("export",boolean.class);m.setAccessible(true);m.invoke(activity,migration);}catch(Exception e){throw new RuntimeException(e);}});}
     private void capture(String name)throws Exception{

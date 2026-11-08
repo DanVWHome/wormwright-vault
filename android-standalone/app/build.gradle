@@ -6,8 +6,8 @@ android {
         applicationId 'ai.wormwright.vault.standalone'
         minSdk 30
         targetSdk 36
-        versionCode 21
-        versionName '0.1.0-test.21'
+        versionCode 22
+        versionName '0.1.0-test.22'
         testInstrumentationRunner 'ai.wormwright.pocket.UiRegressionInstrumentation'
         ndk { abiFilters 'arm64-v8a', 'x86_64' }
     }
@@ -40,6 +40,8 @@ android {
     compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
 }
 dependencies {
+    implementation "com.hierynomus:smbj:0.14.0"
+    testImplementation "org.json:json:20240303"
     implementation "com.yubico.yubikit:android:2.9.0"
     implementation "com.yubico.yubikit:fido:2.9.0"
     implementation "org.slf4j:slf4j-nop:2.0.9"
