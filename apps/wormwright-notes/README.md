@@ -34,7 +34,7 @@ Register up to four keys before making a YubiKey backup. Every new file includes
 
 Restore on a replacement phone by selecting the backup file and using any included key. No prior phone registration or phone-specific encryption key is needed. After restoring, you may remember the authenticated public registrations for future backups on the new phone, subject to its four-key limit. Renaming/removing registrations requires an existing registered YubiKey, without an additional phone PIN. The phone stores no YubiKey PIN, hmac-secret output or private backup encryption key.
 
-Password and YubiKey are separate backup choices. A password-only file still needs its password; a YubiKey-only file needs one of the keys included when it was created. Keep an independent spare key and verify it by restoring a test backup. USB registration and subsequent NFC use were confirmed by the user in preview 4. The revised two-tap NFC registration in preview 5 still needs verification with physical hardware.
+Password and YubiKey are separate backup choices. A password-only file still needs its password; a YubiKey-only file needs one of the keys included when it was created. Keep an independent spare key and verify it by restoring a test backup. The user confirmed on physical hardware that preview 5 successfully registered a YubiKey over NFC, created a YubiKey-protected backup, removed the key registration from the app, and saved a backup to NAS. Removing a registration leaves existing backup files unchanged.
 
 ## Your NAS
 
@@ -48,7 +48,7 @@ Saved NAS credentials are separately encrypted on this phone and excluded from a
 
 Download `Wormwright-Notes-0.1.0-preview.5.apk` from [the Notes page](https://wormwright.com/notes.html), open it on your phone and approve installation. Back up notes first, then install over the existing app. The package and signing identity match the earlier previews. Do not uninstall to update.
 
-The app upgrades its database in place while preserving existing notes, checklists, pins and Trash. User reports confirmed preview 2 working, including sharing and NAS backups. The user reported preview 3 looks good. New YubiKey backup hardware operation still needs verification with the user's physical keys; automated regression results are recorded with the release.
+The app upgrades its database in place while preserving existing notes, checklists, pins and Trash. User reports confirmed preview 2 working, including sharing and NAS backups. The user reported preview 3 looks good. The user confirmed on physical hardware that preview 5 successfully registered a YubiKey over NFC, created a YubiKey-protected backup, removed the key registration from the app, and saved a backup to NAS. Automated regression results are recorded with the release. This user confirmation covers backup creation, not restoration.
 
 ## Build and tests
 
