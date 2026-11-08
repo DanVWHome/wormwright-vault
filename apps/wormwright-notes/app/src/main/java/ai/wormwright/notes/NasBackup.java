@@ -32,7 +32,7 @@ public final class NasBackup {
     public static String upload(JSONObject settings,byte[] snapshot) throws Exception {
         String folder=folder(settings.getString("folder"));
         String prefix=folder.isEmpty()?"":folder+"\\";
-        String name="wormwright-notes-"+new java.text.SimpleDateFormat("yyyyMMdd-HHmmss",Locale.US).format(new Date())+"-"+UUID.randomUUID().toString().substring(0,8)+(BackupEnvelope.isEncrypted(snapshot)?".wwnotes":".json");
+        String name="wormwright-notes-"+new java.text.SimpleDateFormat("yyyyMMdd-HHmmss",Locale.US).format(new Date())+"-"+UUID.randomUUID().toString().substring(0,8)+((BackupEnvelope.isEncrypted(snapshot)||KeyBackupEnvelope.isEncrypted(snapshot))?".wwnotes":".json");
         String temp=prefix+"."+name+".partial", target=prefix+name;
         SmbConfig config=SmbConfig.builder().withSigningRequired(true).withTimeout(15,TimeUnit.SECONDS).withSoTimeout(15,TimeUnit.SECONDS).withBufferSize(65536).build();
         char[] password=settings.getString("password").toCharArray();

@@ -1,5 +1,15 @@
 # Changes
 
+## 0.1.0-preview.4 — November 7, 2026
+
+- Adds Password and YubiKey choices for encrypted file and NAS backups.
+- Registers, renames and removes up to four independent backup YubiKeys using Vault-derived native USB-C/NFC transport and existing FIDO2 PINs.
+- Wraps each backup for all currently registered keys, so any one can restore it on another phone.
+- Stores only authenticated public registrations on the phone; hardware-derived private backup keys are never saved.
+- Restores using the file's embedded registrations and optionally remembers them on the replacement phone.
+- Preserves public JSON, previous password backups, phone-PIN secret notes, sharing, NAS settings and signing identity.
+
+
 ## 0.1.0-preview.3 — November 7, 2026
 
 - Adds secret notes and checklists, unlocked with the phone's PIN, pattern or password through Android's credential-only prompt.

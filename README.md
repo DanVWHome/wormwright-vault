@@ -30,7 +30,7 @@ A separate notes and checklist app, with offline autosave, search, pins, trash,
 file backup/restore and manual SMB NAS backups. No ads or in-app purchases.
 
 - [Download and install Wormwright Notes](https://wormwright.com/notes.html)
-- [Notes preview 0.1.0-preview.3](https://github.com/DanVWHome/wormwright-vault/releases/tag/notes-v0.1.0-preview.3)
+- [Notes preview 0.1.0-preview.4](https://github.com/DanVWHome/wormwright-vault/releases/tag/notes-v0.1.0-preview.4)
 - [Notes source, build and backup instructions](apps/wormwright-notes/README.md)
 
 This is a separate app; it does not open or modify Vault databases.

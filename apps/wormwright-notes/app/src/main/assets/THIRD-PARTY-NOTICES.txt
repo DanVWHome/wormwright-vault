@@ -6,3 +6,6 @@ MBassador 1.3.0 — MIT License — https://github.com/bennidi/mbassador
 SLF4J API/NOP 2.0.9 — MIT License — https://www.slf4j.org/license.html
 
 Retained license files are in licenses/ and the original library JARs.
+
+YubiKit Android/Core/FIDO 2.9.0 — Apache License 2.0 — https://github.com/Yubico/yubikit-android
+The Android transport JAR is extracted from the upstream Android AAR, with the unused UI package omitted. Notes uses its own dialogs and requires no upstream UI resources.

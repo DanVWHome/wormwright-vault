@@ -13,7 +13,8 @@ tree=ET.parse('app/src/main/AndroidManifest.xml');tree.getroot().set('package','
 PY
 "$TOOLS/aapt2" compile --dir app/src/main/res -o "$BUILD_DIR/resources.zip"
 "$TOOLS/aapt2" link -o "$BUILD_DIR/base.apk" -I "$PLATFORM" -A app/src/main/assets --manifest "$BUILD_DIR/AndroidManifest.xml" "$BUILD_DIR/resources.zip"
-javac -encoding UTF-8 -source 17 -target 17 -classpath "$PLATFORM:app/libs/*" -d "$BUILD_DIR/classes" app/src/main/java/ai/wormwright/notes/*.java
+find app/src/main/java -name '*.java' > "$BUILD_DIR/java-sources.txt"
+javac -encoding UTF-8 -source 17 -target 17 -classpath "$PLATFORM:app/libs/*" -d "$BUILD_DIR/classes" @"$BUILD_DIR/java-sources.txt"
 jar cf "$BUILD_DIR/classes.jar" -C "$BUILD_DIR/classes" .
 "$TOOLS/d8" --lib "$PLATFORM" --min-api 26 --output "$BUILD_DIR/dex" "$BUILD_DIR/classes.jar" app/libs/*.jar
 python3 - "$BUILD_DIR" <<'PY'
@@ -28,6 +29,6 @@ SIGNING_KEY="${SIGNING_KEY:-$BUILD_DIR/preview.jks}"
 if [[ ! -f "$SIGNING_KEY" ]]; then
  keytool -genkeypair -keystore "$SIGNING_KEY" -storepass android -keypass android -alias preview -keyalg RSA -keysize 3072 -validity 10000 -dname 'CN=Wormwright Notes Preview' >/dev/null 2>&1
 fi
-"$TOOLS/apksigner" sign --ks "$SIGNING_KEY" --ks-key-alias preview --ks-pass pass:android --key-pass pass:android --out "$BUILD_DIR/Wormwright-Notes-0.1.0-preview.3.apk" "$BUILD_DIR/aligned.apk"
-"$TOOLS/apksigner" verify --verbose "$BUILD_DIR/Wormwright-Notes-0.1.0-preview.3.apk"
-printf '\nBuilt: %s\n' "$BUILD_DIR/Wormwright-Notes-0.1.0-preview.3.apk"
+"$TOOLS/apksigner" sign --ks "$SIGNING_KEY" --ks-key-alias preview --ks-pass pass:android --key-pass pass:android --out "$BUILD_DIR/Wormwright-Notes-0.1.0-preview.4.apk" "$BUILD_DIR/aligned.apk"
+"$TOOLS/apksigner" verify --verbose "$BUILD_DIR/Wormwright-Notes-0.1.0-preview.4.apk"
+printf '\nBuilt: %s\n' "$BUILD_DIR/Wormwright-Notes-0.1.0-preview.4.apk"

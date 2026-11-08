@@ -38,7 +38,12 @@ public final class SecretUiInstrumentation extends Instrumentation {
             closeShareSheet();
             check(main(()->activity.title==null&&activity.unlockedId==-1),"share exit relocked editor");
             main(()->{activity.editor(id);return null;});waitForCredential();cancelCredential();
-            result.putString("stream","PASS real Android credential-only PIN, cancel, wrong PIN, encrypted secret checklist, sharing and relock\n");finish(-1,result);
+            main(()->{activity.hardwareBackups().manage();return null;});enterPin("246813");
+            waitFor(()->button(getUiAutomation().getRootInActiveWindow(),"Close")!=null,10000);tapText("Close");
+            main(()->{activity.hardwareBackups().enroll("Disposable emulator key",BackupKeyRegistry.empty());return null;});
+            waitFor(()->button(getUiAutomation().getRootInActiveWindow(),"Continue")!=null,10000);tapText("Cancel");
+            check(main(()->activity.hardwareBackups().state().getJSONArray("keys").length()==0),"cancel did not register a key");
+            result.putString("stream","PASS real Android credential-only PIN, cancel, wrong PIN, encrypted secret checklist, sharing, relock and native YubiKey dialog cancellation\n");finish(-1,result);
         }catch(Throwable error){
             StringWriter trace=new StringWriter();error.printStackTrace(new PrintWriter(trace));
             result.putString("stream","FAIL secret-note device regression\n"+trace+"\n"+tree(getUiAutomation().getRootInActiveWindow(),0));finish(1,result);

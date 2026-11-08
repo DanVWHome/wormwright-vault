@@ -21,6 +21,8 @@ import java.util.*;
 
 public class MainActivity extends Activity {
     SQLiteDatabase db;
+    HardwareBackupUi backupHardware;
+    HardwareBackupUi hardwareBackups(){if(backupHardware==null)backupHardware=new HardwareBackupUi(this);return backupHardware;}
     NoteCipher secretCipher=new NoteCipher(new PhoneSecrets());
     boolean currentSecret=false, resumed=false, authenticating=false;
     long unlockedId=-1, draftId=-1;
@@ -76,13 +78,14 @@ public class MainActivity extends Activity {
         root.addView(label(trash?"Restore notes or remove them permanently.":"A little space for your thoughts.",15));
         LinearLayout actions=new LinearLayout(this);
         actions.addView(button(trash?"Back to notes":"+ New note",()->{if(trash){trash=false;home();}else new AlertDialog.Builder(this).setTitle("Create").setItems(new String[]{"Note","Checklist"},(d,n)->{editor(-1);if(n==1){body.setText("[ ] ");checklistMode=true;showChecklist();save();}}).show();}));
-        actions.addView(button("More",()->new AlertDialog.Builder(this).setItems(new String[]{"Back up all notes","Restore backup","Open trash","About","NAS settings","Save backup to NAS"},(d,n)->{
+        actions.addView(button("More",()->new AlertDialog.Builder(this).setItems(new String[]{"Back up all notes","Restore backup","Open trash","About","NAS settings","Save backup to NAS","YubiKey backup keys"},(d,n)->{
             if(n==0)startBackup(false);
             if(n==1) startActivityForResult(new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*"),11);
             if(n==2){trash=true;home();}
             if(n==4)nasSettings();
             if(n==5)startBackup(true);
-            if(n==3)new AlertDialog.Builder(this).setTitle("Wormwright Notes").setMessage("No ads. No purchases. No account.\n\nNotes stay in this app on your phone. Use backup to keep a separate copy. Uninstalling removes local notes.\n\nVersion 0.1.0-preview.3").setPositiveButton("OK",null).show();
+            if(n==6)hardwareBackups().manage();
+            if(n==3)new AlertDialog.Builder(this).setTitle("Wormwright Notes").setMessage("No ads. No purchases. No account.\n\nNotes stay in this app on your phone. Use backup to keep a separate copy. Uninstalling removes local notes.\n\nVersion 0.1.0-preview.4").setPositiveButton("OK",null).show();
         }).show()));root.addView(actions);
         EditText search=new EditText(this);search.setSingleLine();search.setHint("Search notes");search.setText(query);root.addView(search);
         ScrollView scroll=new ScrollView(this);cards=column();scroll.addView(cards);root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
@@ -186,17 +189,21 @@ public class MainActivity extends Activity {
     }).show();}
     @Override public void onBackPressed(){if(editing!=-1||title!=null){if(save()){title=null;body=null;home();}}else if(trash){trash=false;home();}else super.onBackPressed();}
     @Override protected void onPause(){
-        resumed=false;accessEpoch++;
+        boolean usbOverlay=backupHardware!=null&&backupHardware.pauseForUsbPermission();
+        resumed=false;if(!usbOverlay)accessEpoch++;
+        if(backupHardware!=null&&!usbOverlay)backupHardware.stop();
         if(currentSecret)concealSecret();else if(title!=null)save();
         if(!authenticating)afterCredential=null;
         super.onPause();
     }
     @Override protected void onResume(){
-        super.onResume();resumed=true;if(!currentSecret)allowPublicScreenshotsAfterFrame();
+        super.onResume();resumed=true;if(backupHardware!=null)backupHardware.resume();if(!currentSecret)allowPublicScreenshotsAfterFrame();
         Runnable action=afterCredential;afterCredential=null;
         if(action!=null&&!((KeyguardManager)getSystemService(KEYGUARD_SERVICE)).isKeyguardLocked()){credentialEpoch=accessEpoch;action.run();}
     }
+    @Override protected void onStop(){accessEpoch++;if(backupHardware!=null)backupHardware.stop();super.onStop();}
     @Override protected void onDestroy(){
+        if(backupHardware!=null)backupHardware.dispose();
         credentialGeneration++;afterCredential=null;
         if(credentialSignal!=null)credentialSignal.cancel();
         handler.removeCallbacksAndMessages(null);super.onDestroy();
@@ -223,7 +230,8 @@ public class MainActivity extends Activity {
             if(in==null)throw new IOException();byte[] buf=new byte[8192];int count;
             while((count=in.read(buf))!=-1){if(bytes.size()+count>20*1024*1024)throw new IOException();bytes.write(buf,0,count);}}
             byte[] backup=bytes.toByteArray();
-            if(BackupEnvelope.isEncrypted(backup))passwordDialog(false,password->runBackupTask(()->{
+            if(KeyBackupEnvelope.isEncrypted(backup))hardwareBackups().restore(backup);
+            else if(BackupEnvelope.isEncrypted(backup))passwordDialog(false,password->runBackupTask(()->{
                 try{return BackupEnvelope.decrypt(backup,password);}finally{Arrays.fill(password,'\0');}
             },plain->offerRestore(plain,true)));
             else offerRestore(backup,false);
@@ -296,7 +304,7 @@ public class MainActivity extends Activity {
     }
     void confirmMakeSecret(){
         new AlertDialog.Builder(this).setTitle("Make this note secret?")
-            .setMessage("Its title and text will be hidden until you enter your phone screen lock. It locks again when you leave it. Backups that contain secret notes require a separate backup password. Older backups remain unchanged.")
+            .setMessage("Its title and text will be hidden until you enter your phone screen lock. It locks again when you leave it. Backups that contain secret notes need a separate backup password or a registered YubiKey. Older backups remain unchanged.")
             .setNegativeButton("Cancel",null).setPositiveButton("Make secret",(d,w)->{
                 if(!save())return;
                 if(editing==-1){ContentValues v=new ContentValues();v.put("title","");v.put("body","");v.put("updated",System.currentTimeMillis());editing=db.insertOrThrow("notes",null,v);}
@@ -362,15 +370,20 @@ public class MainActivity extends Activity {
             catch(Exception e){runOnUiThread(()->{if(isDestroyed()||isFinishing())return;progress.dismiss();toast("Could not unlock or prepare this backup. Check its password and file.");});}},"protected-backup").start();
     }
     void startBackup(boolean nas){
-        Runnable prepare=()->{
-            if(hasSecrets())passwordDialog(true,password->{
-                Runnable protect=()->{try{byte[] plain=backupBytes(true);runBackupTask(()->{try{return BackupEnvelope.encrypt(plain,password);}finally{Arrays.fill(password,'\0');Arrays.fill(plain,(byte)0);}},bytes->deliverBackup(bytes,nas,true));}
-                    catch(Exception e){Arrays.fill(password,'\0');toast("Could not read secret notes for backup");}};
-                if(resumed&&credentialEpoch==accessEpoch)protect.run();else requestCredential(protect);
-            });
-            else try{deliverBackup(backupBytes(false),nas,false);}catch(Exception e){toast("Could not prepare backup");}
-        };
-        if(hasSecrets())requestCredential(prepare);else prepare.run();
+        Runnable choose=()->new AlertDialog.Builder(this).setTitle("Protect this backup")
+            .setItems(hasSecrets()?new String[]{"Password","YubiKey"}:new String[]{"Password","YubiKey","Plain JSON"},(d,n)->{
+                if(n==0)passwordBackup(nas);
+                else if(n==1)hardwareBackups().createBackup(nas);
+                else try{deliverBackup(backupBytes(false),nas,false);}catch(Exception e){toast("Could not prepare backup");}
+            }).setNegativeButton("Cancel",null).show();
+        if(hasSecrets())requestCredential(choose);else choose.run();
+    }
+    void passwordBackup(boolean nas){
+        passwordDialog(true,password->{
+            Runnable protect=()->{try{byte[] plain=backupBytes(hasSecrets());runBackupTask(()->{try{return BackupEnvelope.encrypt(plain,password);}finally{Arrays.fill(password,'\0');Arrays.fill(plain,(byte)0);}},bytes->deliverBackup(bytes,nas,true));}
+                catch(Exception e){Arrays.fill(password,'\0');toast("Could not read notes for backup");}};
+            if(!hasSecrets()||(resumed&&credentialEpoch==accessEpoch))protect.run();else requestCredential(protect);
+        });
     }
     boolean nasBusy=false;
     void deliverBackup(byte[] bytes,boolean nas,boolean protectedBackup){
@@ -390,7 +403,8 @@ public class MainActivity extends Activity {
                 .putExtra(Intent.EXTRA_TITLE,protectedBackup?"wormwright-notes-backup.wwnotes":"wormwright-notes-backup.json"),10);
         }catch(Exception e){if(pendingExport!=null)pendingExport.delete();pendingExport=null;toast("Could not prepare backup file");}
     }
-    void offerRestore(byte[] bytes,boolean encrypted){
+    void offerRestore(byte[] bytes,boolean encrypted){offerRestore(bytes,encrypted,()->{});}
+    void offerRestore(byte[] bytes,boolean encrypted,Runnable afterRestore){
         try{JSONObject backup=new JSONObject(new String(bytes,StandardCharsets.UTF_8));String format=backup.getString("format");
             if(!"wormwright-notes-v1".equals(format)&&!(encrypted&&"wormwright-notes-v2".equals(format)))throw new IOException();
             JSONArray notes=backup.getJSONArray("notes");boolean secrets=false;
@@ -399,7 +413,7 @@ public class MainActivity extends Activity {
             Runnable confirm=()->new AlertDialog.Builder(this).setTitle("Restore "+notes.length()+" notes?")
                 .setMessage("These will be added to your existing notes. Secret notes remain secret. Restoring the same backup again creates duplicates.")
                 .setNegativeButton("Cancel",null).setPositiveButton("Restore",(d,w)->{
-                    try{restoreNotes(notes);home();toast("Notes restored");}catch(Exception e){toast("Restore failed; no notes added");}
+                    try{restoreNotes(notes);home();toast("Notes restored");afterRestore.run();}catch(Exception e){toast("Restore failed; no notes added");}
                 }).show();
             if(secrets)requestCredential(confirm);else confirm.run();
         }catch(Exception e){toast("Could not read this backup");}finally{Arrays.fill(bytes,(byte)0);}
