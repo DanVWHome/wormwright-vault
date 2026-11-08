@@ -104,6 +104,7 @@ jobs:
               assert result.returncode==0 and 'PASS Pocket NAS backup:' in output, name+' UI regression failed'
           PYTEST
       - name: Verify independent encrypted snapshots on the share
+        if: always()
         run: |
           python - <<'PYVERIFY'
           from pathlib import Path
