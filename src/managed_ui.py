@@ -624,7 +624,7 @@ class ManagedWindow(QMainWindow):
         splitter=QSplitter(Qt.Orientation.Horizontal);layout.addWidget(splitter)
         user_panel=QWidget();user_layout=QVBoxLayout(user_panel);user_layout.addWidget(QLabel('Users'))
         users=QListWidget();users.setObjectName('management_users');user_layout.addWidget(users)
-        user_details=QLabel('Select a user to see their groups.');user_details.setWordWrap(True);user_layout.addWidget(user_details)
+        user_details=QLabel('Select a user to see their groups.');user_details.setWordWrap(True);user_details.setMinimumHeight(user_details.fontMetrics().lineSpacing()*4);user_layout.addWidget(user_details)
         group_panel=QWidget();group_layout=QVBoxLayout(group_panel);group_layout.addWidget(QLabel('Groups'))
         groups=QListWidget();groups.setObjectName('management_groups');group_layout.addWidget(groups)
         group_details=QLabel('Select a group to see its members and entry counts.');group_details.setWordWrap(True);group_layout.addWidget(group_details)

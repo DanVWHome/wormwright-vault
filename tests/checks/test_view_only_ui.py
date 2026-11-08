@@ -20,6 +20,8 @@ with tempfile.TemporaryDirectory() as directory:
     def set_permission():
         try:
             dialog=app.activeModalWidget()
+            details=next(label for label in dialog.findChildren(QLabel) if label.text()=='Select a user to see their groups.')
+            assert details.minimumHeight()>=details.fontMetrics().lineSpacing()*4
             users=dialog.findChild(QListWidget,'management_users')
             for index in range(users.count()):
                 if users.item(index).data(256)==uid:users.setCurrentRow(index);break
