@@ -1,5 +1,7 @@
 name: Pocket NAS backup regression
 on:
+  push:
+    branches: [feature/pocket-nas-backup]
   workflow_dispatch:
 permissions:
   contents: read
