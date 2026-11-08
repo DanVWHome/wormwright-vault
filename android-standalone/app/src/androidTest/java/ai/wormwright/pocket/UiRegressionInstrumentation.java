@@ -65,7 +65,7 @@ public class UiRegressionInstrumentation extends Instrumentation {
         String raw=new String(java.nio.file.Files.readAllBytes(new java.io.File(activity.getNoBackupFilesDir(),"nas-settings.enc").toPath()),java.nio.charset.StandardCharsets.UTF_8);check(!raw.contains("Synthetic2468Test")&&!raw.contains("10.0.2.2"),"settings encrypted on disk");
         runOnMainSync(()->invoke("configureNasBackup"));waitForIdleSync();runOnMainSync(()->dialog().getButton(-2).performClick());check(store.exists(),"Cancel preserves saved settings");
         for(int pass=0;pass<2;pass++){
-            runOnMainSync(()->invoke("backupToNas"));waitForIdleSync();runOnMainSync(()->{List<EditText> secret=new ArrayList<>();collectInputs(dialog().getWindow().getDecorView(),secret);secret.get(0).setText("InventedBackupSecret-2468");secret.get(1).setText("InventedBackupSecret-2468");dialog().getButton(-1).performClick();invoke("backupToNas");check(dialog()==null,"busy prevents duplicate backup prompt");});
+            runOnMainSync(()->invoke("backupToNas"));waitForIdleSync();runOnMainSync(()->{List<EditText> secret=new ArrayList<>();collectInputs(dialog().getWindow().getDecorView(),secret);secret.get(0).setText("InventedBackupSecret-2468");secret.get(1).setText("InventedBackupSecret-2468");AlertDialog owner=dialog();owner.getButton(-1).performClick();invoke("backupToNas");check(busy()&&(dialog()==null||dialog()==owner),"busy prevents duplicate backup prompt");});
             await(()->!busy()&&statusText().contains("NAS backup saved and verified"),"NAS backup succeeds");
         }
         org.json.JSONObject bad=store.load();bad.put("password","wrong-test-password");store.save(bad);
