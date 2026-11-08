@@ -67,6 +67,7 @@ jobs:
       - name: Install, start, upgrade and remove inside Fedora 44
         run: |
           docker run --rm -v "$PWD:/work:ro" -w /work fedora:44 bash -euxc '
+            export QT_QPA_PLATFORM=offscreen
             dnf install -y /work/dist-fedora/x86_64/*.rpm
             QT_QPA_PLATFORM=offscreen /usr/bin/wormwright-vault --check-yubikey-runtime
             python3 tests/smoke_linux_bundle.py /usr/bin/wormwright-vault
