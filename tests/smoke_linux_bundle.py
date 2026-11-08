@@ -14,6 +14,8 @@ with tempfile.TemporaryDirectory(prefix='wormwright-rpm-') as directory:
     vault.parent.mkdir()
     environment = {**os.environ, 'XDG_DATA_HOME': directory, 'XDG_RUNTIME_DIR': str(vault.parent),
                    'QT_QPA_PLATFORM': os.environ.get('QT_QPA_PLATFORM', 'xcb')}
+    # The client must resolve the same runtime socket as the child.
+    os.environ['XDG_RUNTIME_DIR'] = environment['XDG_RUNTIME_DIR']
     child = subprocess.Popen([str(executable), str(vault)], env=environment)
     try:
         deadline = time.monotonic() + 40
