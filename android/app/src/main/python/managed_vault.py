@@ -221,6 +221,8 @@ class ManagedVault:
         digest = hashlib.sha256()
         for key in ('version', 'vault_id', 'manager', 'mode', 'verify'):
             digest.update(pack([key, b64(self.meta[key])]))
+        if 'entry_owners' in self.meta:
+            digest.update(pack(['entry_owners', b64(self.meta['entry_owners'])]))
         # Credential and hardware changes authenticate by decrypting to the
         # private keys bound by the Manager-signed directory. Policy is signed.
         for table, columns in [('users', 'id,login,recovery,directory'), ('groups', 'id,payload'), ('exclusions', 'id,payload')]:
@@ -233,13 +235,29 @@ class ManagedVault:
         data = verify(self.meta['verify'].decode(), document)
         expected = {'vault': self.meta['vault_id'].decode(), 'hash': self._authority_hash()}
         if 'features' in data:
-            expected['features'] = ['view-only-users-v1']
+            features = data['features']
+            if not isinstance(features,list) or not features or features != sorted(set(features)) or any(f not in ('view-only-users-v1','entry-ownership-v1') for f in features):
+                raise VaultError('Update this app to support the vault permissions.')
+            expected['features'] = features
         if data != expected:
             raise VaultError('The vault access policy was changed or damaged.')
         if 'display_name' in self.meta:self.display_name # Authenticate optional names without changing format-2 policy signatures.
 
     def _publish(self):
+        self.meta = dict(self.db.execute('SELECT name,value FROM metadata'))
         admin = self.administration()
+        # Bind legacy entry owners into Manager-signed policy before enabling
+        # owner editing. New IDs bind their immutable creator in the ID itself.
+        rows=list(self.db.execute('SELECT id,payload FROM entries'))
+        owners=json.loads(self.meta.get('entry_owners', b'{}'))
+        entry_ids={eid for eid,_ in rows}
+        owners={eid:uid for eid,uid in owners.items() if eid in entry_ids}
+        for eid,payload in rows:
+            if ':' not in eid and eid not in owners:
+                owners[eid]=self._read(eid,payload)['creator']
+        if owners or 'entry_owners' in self.meta:
+            self.meta['entry_owners']=pack(owners)
+            self.db.execute("INSERT INTO metadata VALUES ('entry_owners',?) ON CONFLICT(name) DO UPDATE SET value=excluded.value",(self.meta['entry_owners'],))
         for gid, group in admin['groups'].items():
             self.db.execute('UPDATE groups SET payload=? WHERE id=?', (self._encode(group), gid))
         graph = {uid: {k: data['identity'][k] for k in ('id', 'box', 'sign', 'disabled')}
@@ -254,15 +272,17 @@ class ManagedVault:
             labels = {gid: group['name'] for gid, group in admin['groups'].items()
                       if uid in group['members'] or uid == self.meta['manager'].decode()}
             cap = {'vault': self.meta['vault_id'].decode(), 'user': uid, 'graph': graph,
-                   'groups': groups, 'labels': labels, 'excluded': excluded}
+                   'groups': groups, 'labels': labels, 'excluded': excluded,
+                   'owners': json.loads(self.meta.get('entry_owners', b'{}'))}
             directory = SealedBox(PublicKey(un64(graph[uid]['box']))).encrypt(pack(sign(self._signer(), cap)))
             self.db.execute('UPDATE users SET directory=? WHERE id=?', (directory, uid))
         policy = {'vault': self.meta['vault_id'].decode(), 'hash': self._authority_hash()}
         # Keep this compatibility barrier once enabled: old engines reject the
         # extra signed field rather than silently granting write access.
         previous = json.loads(self.meta['authority'])['data'] if 'authority' in self.meta else {}
-        if 'features' in previous or any(u.get('view_only') for u in graph.values()):
-            policy['features'] = ['view-only-users-v1']
+        features = set(previous.get('features', [])) | {'entry-ownership-v1'}
+        if any(u.get('view_only') for u in graph.values()):features.add('view-only-users-v1')
+        policy['features'] = sorted(features)
         authority = pack(sign(self._signer(), policy))
         self.db.execute("INSERT INTO metadata VALUES ('authority',?) ON CONFLICT(name) DO UPDATE SET value=excluded.value", (authority,))
         self.meta['authority'] = authority
@@ -323,7 +343,7 @@ class ManagedVault:
         if record.get('deleted'):
             return {self.meta['manager'].decode()}
         members = {uid for gid in record['groups'] for uid in self.cap['groups'].get(gid, [])}
-        members.add(record['creator'])
+        members.add(self.owner_id(record))
         members -= set(self.cap['excluded'].get(record['id'], []))
         members.add(self.meta['manager'].decode())
         return {uid for uid in members if uid in self.cap['graph'] and not self.cap['graph'][uid]['disabled']}
@@ -341,6 +361,9 @@ class ManagedVault:
         record = json.loads(secret.SecretBox(key).decrypt(un64(envelope['ciphertext'])))
         if record['id'] != eid:
             raise VaultError('Entry identity check failed.')
+        if self.ownership_enabled and eid not in self.cap.get('owners', {}):
+            if eid.partition(':')[0] != record['creator'] or ':' not in eid:
+                raise VaultError('Entry creator identity was changed or is not bound by the Manager.')
         assignment = record['assignment']
         author = assignment['data']['author']
         policy = verify(self.cap['graph'][author]['sign'], assignment)
@@ -355,16 +378,19 @@ class ManagedVault:
         writer = envelope['author']
         if not self._can_write(record, writer):
             raise VaultError('Entry update was not authorized.')
+        record['owner'] = self.owner_id(record)
         return record
 
     def _can_write(self, record, uid):
         if uid == self.meta['manager'].decode():
             return True
-        if self.cap['graph'][uid].get('view_only', False):
-            return False
         if uid in self.cap['excluded'].get(record['id'], []) or self.cap['graph'][uid]['disabled']:
             return False
-        return uid == record['creator'] or any(uid in self.cap['groups'].get(gid, []) for gid in record['groups'])
+        if self.ownership_enabled and uid == self.owner_id(record):
+            return True
+        if self.cap['graph'][uid].get('view_only', False):
+            return False
+        return uid == self.owner_id(record) or any(uid in self.cap['groups'].get(gid, []) for gid in record['groups'])
 
     def entries(self, include_deleted=False):
         if not self.unlocked:
@@ -396,6 +422,7 @@ class ManagedVault:
             'id': record['id'], 'author': self.uid, 'creator': record['creator'], 'groups': record['groups']})
 
     def _write(self, record):
+        record=dict(record);record.pop('owner',None)
         key = utils.random(32)
         envelope = {'vault': self.meta['vault_id'].decode(), 'id': record['id'], 'author': self.uid,
             'ciphertext': b64(secret.SecretBox(key).encrypt(pack(record))),
@@ -404,6 +431,49 @@ class ManagedVault:
         envelope['signed'] = sign(self._signer(), dict(envelope))
         self.db.execute('INSERT INTO entries VALUES (?,?) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload',
                         (record['id'], pack(envelope)))
+
+    @property
+    def ownership_enabled(self):
+        return bool(self.meta and 'entry-ownership-v1' in json.loads(self.meta['authority'])['data'].get('features', []))
+
+    def owner_id(self, record):
+        # The signed Manager policy is authoritative, never the mutable entry's
+        # claimed owner. A former creator cannot sign themselves back in.
+        return self.cap.get('owners', {}).get(record['id'], record['creator'])
+
+    def owner_name(self, record):
+        uid = self.owner_id(record)
+        return 'You' if uid == self.uid else self.cap['graph'].get(uid, {}).get('name', 'Another user')
+
+    @property
+    def can_create(self):
+        if not self.unlocked:return False
+        self._refresh_cap()
+        return self.ownership_enabled or self.can_edit
+
+    def can_edit_entry(self, record):
+        if not self.unlocked or not record:return False
+        try:current=self._record(record['id'])
+        except VaultError:return False
+        return self._can_write(current,self.uid) and (not current.get('deleted') or self.manager)
+
+    def enable_ownership(self):
+        self._management_change(lambda: None)
+
+    def set_owner(self, eid, uid):
+        admin=self.administration()
+        if uid not in admin['users'] or admin['users'][uid]['identity']['disabled']:
+            raise VaultError('Choose an enabled user as the owner.')
+        record=self._record(eid)
+        if record.get('deleted'):raise VaultError('Restore the entry before changing its owner.')
+        owners=json.loads(self.meta.get('entry_owners', b'{}'));owners[eid]=uid
+        def operation():
+            # Ownership implies access; remove any older exclusion for this user.
+            for key,payload in list(self.db.execute('SELECT id,payload FROM exclusions')):
+                if self._decode(payload)=={'entry':eid,'user':uid}:
+                    self.db.execute('DELETE FROM exclusions WHERE id=?',(key,))
+            self.db.execute("INSERT INTO metadata VALUES ('entry_owners',?) ON CONFLICT(name) DO UPDATE SET value=excluded.value",(pack(owners),))
+        self._management_change(operation)
 
     @property
     def can_edit(self):
@@ -425,21 +495,24 @@ class ManagedVault:
         if not self.unlocked:
             raise VaultError('Unlock first.')
         self._refresh_cap()
-        if not self.can_edit:
-            raise VaultError('Your account is view only. You can view and copy entries, but cannot change them.')
+        if not self.can_create and not record.get('id'):
+            raise VaultError('The Manager must enable owned-entry editing before you can create personal entries.')
         incoming = dict(record)
         existing = self._record(incoming['id']) if incoming.get('id') else None
+        if 'owner' in incoming and incoming['owner'] != (self.owner_id(existing) if existing else self.uid):
+            raise VaultError('Only the Manager can transfer ownership using Change Entry Owner.')
         if existing and (not self._can_write(existing, self.uid) or (existing.get('deleted') and not self.manager)):
             raise VaultError('You cannot edit this entry.')
-        result = dict(existing or {'id': identifier(), 'creator': self.uid, 'deleted': False})
+        result = dict(existing or {'id': self.uid+':'+identifier() if self.ownership_enabled else identifier(), 'creator': self.uid, 'deleted': False})
+        result.pop('owner', None)
         for field in ('description', 'link', 'user_name', 'password', 'notes'):
             result[field] = str(incoming.get(field, ''))
         if not result['description'].strip():
             raise VaultError('A description is required.')
         if self.manager or not existing:
-            result['groups'] = list(dict.fromkeys(incoming.get('groups', [gid for gid,name in self.available_groups().items() if name == 'Generic'] if self.manager else list(self.available_groups()))))
-            if not result['groups'] or any(gid not in self.available_groups() for gid in result['groups']):
-                raise VaultError('Choose at least one of your available groups.')
+            result['groups'] = list(dict.fromkeys(incoming.get('groups', [] if not self.can_edit else ([gid for gid,name in self.available_groups().items() if name == 'Generic'] if self.manager else list(self.available_groups())))))
+            if (not result['groups'] and not self.ownership_enabled) or any(gid not in self.available_groups() for gid in result['groups']):
+                raise VaultError('Choose valid groups, or enable owner permissions for a private entry.')
             self._assignment(result)
         elif 'groups' in incoming and incoming['groups'] != existing['groups']:
             raise VaultError('Only the Manager may change an existing entry’s groups.')

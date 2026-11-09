@@ -44,11 +44,12 @@ with tempfile.TemporaryDirectory() as directory:
     w.lock();w.vault.unlock('reader-test-password','Reader');w.update_state();w.refresh();w.table.selectRow(0)
     assert w.records[0]['id']==eid
     for button in w.controls:
-        if button.text() in ('Add','Edit','Clone','Delete'):assert not button.isEnabled(),button.text()
+        if button.text() in ('Edit','Delete'):assert not button.isEnabled(),button.text()
+        if button.text() in ('Add','Clone'):assert button.isEnabled(),button.text()
     w.open_view(False)
-    assert all(not b.isEnabled() for b in w.companion.buttons if b.text()!='Lock')
+    assert all(not b.isEnabled() for b in w.companion.buttons if b.text() in ('Edit','Delete'))
     with patch('app.EntryDialog',side_effect=AssertionError('Editor opened for view-only user')):
-        w.add();w.edit();w.clone()
+        w.edit()
     w.copy_field('password');assert app.clipboard().text()=='copyable-secret'
     w.lock();assert not app.clipboard().text()
     w.close_ready=True;w.close()

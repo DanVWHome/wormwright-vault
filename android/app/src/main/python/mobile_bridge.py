@@ -80,7 +80,9 @@ def detail(entry_id):
     if record.get('deleted'):
         raise VaultError('Entry is unavailable.')
     result={k: record.get(k, '') for k in ('id', 'description', 'user_name', 'link', 'password', 'notes', 'groups')}
-    result['view_only']=not _vault.can_edit
+    result['view_only']=not _vault.can_edit_entry(record)
+    result['owner']=_vault.owner_id(record)
+    result['owner_name']=_vault.owner_name(record)
     return json.dumps(result, ensure_ascii=False)
 
 
@@ -95,8 +97,8 @@ def lock():
 def editing_info():
     if not session_ready(): raise VaultError('Unlock first.')
     paired = mobile_sync.read_config(_vault.path)
-    return json.dumps({'can_edit': _vault.can_edit and not isinstance(_vault, ReadOnlyVault) and (_sample or Path(str(_vault.path)+'.local-only').is_file() or bool(paired and paired.get('paired'))),
-                       'view_only': not _vault.can_edit, 'manager': _vault.manager, 'groups': _vault.available_groups()})
+    return json.dumps({'can_edit': _vault.can_create and not isinstance(_vault, ReadOnlyVault) and (_sample or Path(str(_vault.path)+'.local-only').is_file() or bool(paired and paired.get('paired'))),
+                       'view_only': not _vault.can_edit, 'ownership_enabled': _vault.ownership_enabled, 'manager': _vault.manager, 'groups': _vault.available_groups()})
 
 
 def save_entry(document):

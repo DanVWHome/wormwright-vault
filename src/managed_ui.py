@@ -113,7 +113,7 @@ class ManagedWindow(QMainWindow):
         data_menu.addAction('Delete Vault Backups…',self.delete_vault_backups)
         self.database_export_action=data_menu.addAction('Export Database…',self.export_database)
         self.management_menu=self.menuBar().addMenu('Manage');self.management_actions=[]
-        for text,callback in [('Users & Groups…',self.manage),('Individual Exclusions…',self.exclusions),('Restore Selected Entry',self.restore_entry),('Permanently Delete Selected Entry…',self.purge),('Emergency Lockdown…',self.emergency_lockdown)]:
+        for text,callback in [('Users & Groups…',self.manage),('Individual Exclusions…',self.exclusions),('Restore Selected Entry',self.restore_entry),('Permanently Delete Selected Entry…',self.purge),('Emergency Lockdown…',self.emergency_lockdown),('Change Selected Entry Owner…',self.change_owner),('Enable Owned-Entry Editing',self.enable_owned_editing)]:
             action=self.management_menu.addAction(text);action.triggered.connect(callback);self.management_actions.append(action)
         view_menu=self.menuBar().addMenu('View');view_menu.addAction('Open Vault View',lambda:self.open_view(False));view_menu.addAction('Open Manager View',lambda:self.open_view(True))
         settings_menu=self.menuBar().addMenu('Settings');self.settings_actions=[]
@@ -194,7 +194,11 @@ class ManagedWindow(QMainWindow):
         self.master.setVisible(password_visible and not missing);self.unlock_button.setVisible(password_visible and not missing);self.unlock_button.setText('Unlock Vault')
         self.key_button.setVisible(not unlocked and has_key);self.fallback.setVisible(not unlocked and has_key and not self.password_fallback)
         self.manager_row.setVisible(self.vault.manager);self.search.setEnabled(unlocked)
-        for button in self.controls:button.setEnabled(unlocked and not self.task and (button.text() not in ('Add','Edit','Clone','Delete','Restore') or self.vault.can_edit))
+        for button in self.controls:button.setEnabled(unlocked and not self.task)
+        if unlocked:
+            for button in self.controls:
+                if button.text() in ('Add','Clone'):button.setEnabled(not self.task and self.vault.can_create)
+                elif button.text() in ('Edit','Delete','Restore'):button.setEnabled(not self.task and self.vault.can_edit_entry(self.selected()))
         self.management_menu.menuAction().setVisible(self.vault.manager)
         for action in self.management_actions:action.setEnabled(unlocked and not self.task)
         for action in self.location_actions+self.settings_actions:action.setEnabled(not self.task)
@@ -340,10 +344,11 @@ class ManagedWindow(QMainWindow):
             self.table.setRowCount(len(self.records))
             for i,record in enumerate(self.records):
                 values=[record['description']+(' [Deleted]' if record.get('deleted') else ''),record.get('link',''),record.get('user_name',''),'••••••••',
-                    ', '.join(self.vault.available_groups().get(g,'Shared group') for g in record['groups']),
+                    ', '.join(self.vault.available_groups().get(g,'Shared group') for g in record['groups']) or 'Private (owner and Manager)',
                     f'Used in {counts[record["password"]]} entries' if counts[record.get('password','')]>1 else '']
                 for j,value in enumerate(values):
                     item=QTableWidgetItem(value)
+                    if j==0:item.setToolTip('Owner: '+(self.vault.administration()['users'][self.vault.owner_id(record)]['identity']['name'] if self.vault.manager else self.vault.owner_name(record)))
                     if record.get('deleted'):
                         item.setBackground(QColor('#ffe0e0'));item.setForeground(QColor('#7c1515'));item.setToolTip('Deleted entry — select to restore')
                     self.table.setItem(i,j,item)
@@ -363,14 +368,21 @@ class ManagedWindow(QMainWindow):
         finally:self.table.blockSignals(False);self.table.setUpdatesEnabled(True)
 
     def edit_record(self,record=None):
-        if not self.vault.unlocked or self.task or not self.vault.can_edit:return
+        if not self.vault.unlocked or self.task:return
+        if record and record.get('id'):
+            if not self.vault.can_edit_entry(record):return
+        elif not self.vault.can_create:return
         from app import EntryDialog
         dialog=EntryDialog(self,record);self.dialog=dialog
         group_widget=None
         if self.vault.manager or not record or not record.get('id'):
             labels=self.vault.available_groups()
-            defaults=record.get('groups',list(labels)[:1]) if record else [g for g,n in labels.items() if n=='Generic'] or list(labels)[:1]
-            group_widget=groups_list(labels,defaults);dialog.layout().insertWidget(1,QLabel('Groups:'));dialog.layout().insertWidget(2,group_widget)
+            defaults=record.get('groups',[]) if record else ([] if not self.vault.can_edit else ([g for g,n in labels.items() if n=='Generic'] or list(labels)[:1]))
+            group_widget=groups_list(labels,defaults);dialog.layout().insertWidget(1,QLabel('Share with groups (leave unchecked for owner and Manager only):'));dialog.layout().insertWidget(2,group_widget)
+        if record and record.get('id'):
+            owner=self.vault.owner_id(record)
+            name=self.vault.administration()['users'][owner]['identity']['name'] if self.vault.manager else self.vault.owner_name(record)
+            dialog.layout().insertWidget(1,QLabel('Owner: '+name))
         try:
             if dialog.exec()==QDialog.DialogCode.Accepted and self.vault.unlocked:
                 value=dialog.value()
@@ -393,9 +405,13 @@ class ManagedWindow(QMainWindow):
         record=self.selected()
         restoring=bool(record and record.get('deleted') and self.vault.manager)
         self.delete_button.setText('Restore' if restoring else 'Delete')
-        self.delete_button.setEnabled(bool(record) and self.vault.can_edit and not self.task and not self.dialog)
+        self.delete_button.setEnabled(bool(record) and self.vault.can_edit_entry(record) and not self.task and not self.dialog)
+        for button in self.controls:
+            if button.text()=='Edit':button.setEnabled(bool(record) and self.vault.can_edit_entry(record) and not self.task and not self.dialog)
         if self.companion:
             self.companion.delete_button.setText(self.delete_button.text())
+            for button in self.companion.buttons:
+                if button.text() in ('Edit','Delete','Restore'):button.setEnabled(bool(record) and self.vault.can_edit_entry(record) and not self.task and not self.dialog)
 
     def delete(self):
         record=self.selected()
@@ -618,6 +634,21 @@ class ManagedWindow(QMainWindow):
         buttons=QDialogButtonBox(QDialogButtonBox.StandardButton.Open|QDialogButtonBox.StandardButton.Cancel);layout.addWidget(buttons);buttons.accepted.connect(dialog.accept);buttons.rejected.connect(dialog.reject)
         if dialog.exec()==QDialog.DialogCode.Accepted and items.currentItem() and not self.task:self.open_path(Path(items.currentItem().data(Qt.ItemDataRole.UserRole)))
         dialog.deleteLater()
+    def change_owner(self):
+        if not self.vault.manager or self.task or not self.selected():return
+        try:
+            admin=self.vault.administration();people=[(uid,data['identity']['name']) for uid,data in admin['users'].items() if not data['identity']['disabled']]
+            people.sort(key=lambda person:person[1].casefold());labels=[name+' ('+uid[:8]+')' for uid,name in people]
+            current=self.vault.owner_id(self.selected());index=next((i for i,p in enumerate(people) if p[0]==current),0)
+            label,ok=QInputDialog.getItem(self,'Change Entry Owner','New owner:',labels,index,False)
+            if ok:self.vault.set_owner(self.selected()['id'],people[labels.index(label)][0]);self.refresh();self.auto_sync()
+        except Exception as error:self.warning(error)
+
+    def enable_owned_editing(self):
+        if not self.vault.manager or self.task:return
+        try:self.vault.enable_ownership();self.update_state();self.refresh();self.auto_sync()
+        except Exception as error:self.warning(error)
+
     def manage(self):
         if not self.vault.manager or self.task:return
         dialog=QDialog(self);dialog.setWindowTitle('Wormwright Vault Manager — Users & Groups');dialog.resize(900,540);layout=QVBoxLayout(dialog)
@@ -670,7 +701,7 @@ class ManagedWindow(QMainWindow):
             name=QLineEdit();password=QLineEdit();password.setEchoMode(QLineEdit.EchoMode.Password);confirm=QLineEdit();confirm.setEchoMode(QLineEdit.EchoMode.Password)
             labels=self.vault.available_groups();choices=groups_list(labels,[g for g,n in labels.items() if n=='Generic'])
             form.addRow('Username:',name);form.addRow('Password:',password);form.addRow('Confirm:',confirm);form.addRow('Groups:',choices)
-            view_only=QCheckBox('View only — can view and copy entries');view_only.setObjectName('new_user_view_only');form.addRow('Permissions:',view_only)
+            view_only=QCheckBox('Shared entries are view only; can create and edit own entries');view_only.setObjectName('new_user_view_only');form.addRow('Permissions:',view_only)
             warning=QLabel('Group members receive entries in those groups. Review the access list before creating the account.');warning.setWordWrap(True);form.addRow(warning)
             buttons=QDialogButtonBox(QDialogButtonBox.StandardButton.Ok|QDialogButtonBox.StandardButton.Cancel);form.addRow(buttons);buttons.accepted.connect(form_dialog.accept);buttons.rejected.connect(form_dialog.reject)
             try:
@@ -707,9 +738,9 @@ class ManagedWindow(QMainWindow):
                 QMessageBox.information(dialog,'Manager permissions','The Manager always has editing access.');return
             identity=self.vault.administration()['users'][uid]['identity']
             d=QDialog(dialog);d.setWindowTitle('User Permissions');form=QFormLayout(d)
-            view_only=QCheckBox('View only — can view and copy, but cannot add, edit or delete entries')
+            view_only=QCheckBox('Shared entries are view only; owned entries remain editable')
             view_only.setObjectName('user_view_only');view_only.setChecked(identity.get('view_only',False));form.addRow(view_only)
-            note=QLabel('Applies on desktop and Android after syncing. Update all devices before enabling. Offline copies keep their previous permissions until synced.');note.setWordWrap(True);form.addRow(note)
+            note=QLabel('Applies to shared entries on desktop and Android after syncing. Owners can edit their own entries. Update all devices before enabling; offline copies retain their previous policy.');note.setWordWrap(True);form.addRow(note)
             buttons=QDialogButtonBox(QDialogButtonBox.StandardButton.Save|QDialogButtonBox.StandardButton.Cancel);form.addRow(buttons);buttons.accepted.connect(d.accept);buttons.rejected.connect(d.reject)
             if d.exec()==QDialog.DialogCode.Accepted:self.vault.set_view_only(uid,view_only.isChecked())
             d.deleteLater()

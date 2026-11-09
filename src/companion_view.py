@@ -40,7 +40,7 @@ class CompanionView(QMainWindow):
         c=self.controller;unlocked=c.vault.unlocked
         self.status.setText(('Unlocked' if unlocked else 'Locked — unlock in the main window')+' • '+str(c.vault.path))
         self.search.blockSignals(True);self.search.setText(c.search.text());self.search.blockSignals(False);self.search.setEnabled(unlocked and (not self.manager or c.vault.manager))
-        for b in self.buttons:b.setEnabled(unlocked and (not self.manager or c.vault.manager) and not c.task and not c.dialog and (b.text()=='Lock' or c.vault.can_edit))
+        for b in self.buttons:b.setEnabled(unlocked and (not self.manager or c.vault.manager) and not c.task and not c.dialog and (b.text()=='Lock' or (c.vault.can_create if b.text()=='Add' else c.vault.can_edit_entry(c.selected()))))
         self.delete_button.setText(c.delete_button.text())
         self.delete_button.setEnabled(self.delete_button.isEnabled() and c.selected() is not None)
         for a in self.management:a.setEnabled(c.vault.manager and not c.task and not c.dialog)

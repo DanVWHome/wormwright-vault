@@ -433,6 +433,7 @@ public class MainActivity extends Activity {
             panel.addView(reveal);
             panel.addView(button("Copy password", () -> copyValue(record.optString("password"))));
             panel.addView(button("Copy username", () -> copyValue(record.optString("user_name"))));
+            panel.addView(label("Owner: " + record.optString("owner_name", "Another user"), 14));
             if (record.optBoolean("view_only", false)) panel.addView(label("View only — managed on desktop", 15));
             if (!record.optBoolean("view_only", false)) panel.addView(button("Edit entry", () -> { if (detailDialog != null) detailDialog.dismiss(); openEditor(record); }));
             if (!record.optBoolean("view_only", false)) panel.addView(button("Delete entry", () -> confirmDelete(record)));
@@ -624,6 +625,7 @@ public class MainActivity extends Activity {
     }
     private void openEditor(JSONObject record) {
         if (!unlocked || busy || nasRunning || conflictReview != null) return;
+        if (!record.optString("id").isEmpty() && record.optBoolean("view_only", false)) { status.setText("This shared entry is view only. You can create and edit your own entries."); return; }
         job(() -> bridge().callAttr("editing_info").toString(), value -> {
             JSONObject info = new JSONObject(value);
             if (!info.getBoolean("can_edit")) { status.setText(info.optBoolean("view_only", false) ? "Your account is view only. You can view and copy passwords." : "Complete the first NAS sync before editing."); return; }
@@ -651,10 +653,10 @@ public class MainActivity extends Activity {
             for(int i=0;i<ids.size();i++) {
                 if(assigned!=null) for(int j=0;j<assigned.length();j++) if(ids.get(i).equals(assigned.getString(j))) selected[i]=true;
                 else {} // Existing assignments are preserved below for ordinary accounts.
-                if(assigned==null) selected[i]=!info.getBoolean("manager") || "Generic".equals(groups.getString(ids.get(i)));
+                if(assigned==null) selected[i]=!info.optBoolean("view_only",false) && (!info.getBoolean("manager") || "Generic".equals(groups.getString(ids.get(i))));
             }
             if(info.getBoolean("manager") || !record.has("id")) {
-                form.addView(label("Groups",14));
+                form.addView(label("Share with groups (leave unchecked for owner and Manager only)",14));
                 for(int i=0;i<ids.size();i++) {
                     final int index=i; android.widget.CheckBox check=new android.widget.CheckBox(this);
                     check.setText(groups.getString(ids.get(i))); check.setChecked(selected[i]);
@@ -679,7 +681,7 @@ public class MainActivity extends Activity {
                     JSONArray chosen=new JSONArray();
                     if(!info.getBoolean("manager") && assigned!=null) chosen=assigned;
                     else for(int i=0;i<ids.size();i++) if(selected[i]) chosen.put(ids.get(i));
-                    if(chosen.length()==0) { notice.setText("Choose at least one group."); return; }
+                    if(chosen.length()==0 && !info.optBoolean("ownership_enabled",false)) { notice.setText("Choose a group, or ask the Manager to enable owned-entry editing."); return; }
                     document.put("groups",chosen); dialog.dismiss();
                     final String query=search.getText().toString();
                     job(()->{ bridge().callAttr("save_entry",document.toString()); return bridge().callAttr("list_entries",query).toString(); },
