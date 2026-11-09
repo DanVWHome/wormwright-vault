@@ -1,0 +1,27 @@
+[
+  {
+    "name": "FamilyManager",
+    "password": "Demo-Manager-2026!",
+    "summary": "all 23 entries; administration on desktop"
+  },
+  {
+    "name": "Dan",
+    "password": "Demo-Dan-2026!",
+    "summary": "16 entries; his gifts are private"
+  },
+  {
+    "name": "Nikki",
+    "password": "Demo-Nikki-2026!",
+    "summary": "16 entries; her gifts are private"
+  },
+  {
+    "name": "Macie",
+    "password": "Demo-Macie-2026!",
+    "summary": "11 entries; 5 personal entries editable"
+  },
+  {
+    "name": "Onyx",
+    "password": "Demo-Onyx-2026!",
+    "summary": "Netflix only; view only"
+  }
+]

@@ -182,7 +182,7 @@ class ManagedVault:
                 self.db.executemany('INSERT INTO metadata VALUES (?,?)', self.meta.items())
                 gid = identifier()
                 self.db.execute('INSERT INTO groups VALUES (?,?)',
-                    (gid, self._encode({'id': gid, 'name': 'Generic', 'members': [self.uid]})))
+                    (gid, self._encode({'id': gid, 'name': 'Generic', 'members': [self.uid], 'default': True})))
                 self._insert_user(self.uid, username.strip(), password, self.material)
                 self._publish()
             self._refresh_cap()
@@ -264,6 +264,7 @@ class ManagedVault:
                  for uid, data in admin['users'].items()}
         for uid, data in admin['users'].items():
             graph[uid]['view_only'] = bool(data['identity'].get('view_only', False))
+        default_group=next((gid for gid,g in admin['groups'].items() if g.get('default')),next((gid for gid,g in admin['groups'].items() if g['name']=='Generic'),next(iter(admin['groups']),None)))
         groups = {gid: group['members'] for gid, group in admin['groups'].items()}
         excluded = {}
         for rule in admin['exclusions']:
@@ -273,6 +274,7 @@ class ManagedVault:
                       if uid in group['members'] or uid == self.meta['manager'].decode()}
             cap = {'vault': self.meta['vault_id'].decode(), 'user': uid, 'graph': graph,
                    'groups': groups, 'labels': labels, 'excluded': excluded,
+                   'default_group': default_group if default_group in labels else None,
                    'owners': json.loads(self.meta.get('entry_owners', b'{}'))}
             directory = SealedBox(PublicKey(un64(graph[uid]['box']))).encrypt(pack(sign(self._signer(), cap)))
             self.db.execute('UPDATE users SET directory=? WHERE id=?', (directory, uid))
@@ -338,6 +340,15 @@ class ManagedVault:
         if not self.unlocked:
             raise VaultError('Unlock first.')
         return dict(self.cap['labels'])
+
+    def default_group_id(self):
+        labels=self.available_groups()
+        gid=self.cap.get('default_group')
+        if gid in labels:return gid
+        if self.manager:
+            groups=self.administration()['groups']
+            return next((gid for gid,g in groups.items() if g.get('default')),next((gid for gid,g in groups.items() if g['name']=='Generic'),next(iter(groups),None)))
+        return next((gid for gid,name in labels.items() if name=='Generic'),next(iter(labels),None))
 
     def _recipients(self, record):
         if record.get('deleted'):
@@ -510,7 +521,7 @@ class ManagedVault:
         if not result['description'].strip():
             raise VaultError('A description is required.')
         if self.manager or not existing:
-            result['groups'] = list(dict.fromkeys(incoming.get('groups', [] if not self.can_edit else ([gid for gid,name in self.available_groups().items() if name == 'Generic'] if self.manager else list(self.available_groups())))))
+            result['groups'] = list(dict.fromkeys(incoming.get('groups', [] if not self.can_edit else (([self.default_group_id()] if self.default_group_id() else []) if self.manager else list(self.available_groups())))))
             if (not result['groups'] and not self.ownership_enabled) or any(gid not in self.available_groups() for gid in result['groups']):
                 raise VaultError('Choose valid groups, or enable owner permissions for a private entry.')
             self._assignment(result)
@@ -567,7 +578,7 @@ class ManagedVault:
         admin = self.administration()
         if any(u['identity']['name'].casefold() == name.strip().casefold() for u in admin['users'].values()):
             raise VaultError('That username already exists.')
-        selected = list(groups) if groups is not None else [next(gid for gid,g in admin['groups'].items() if g['name'] == 'Generic')]
+        selected = list(groups) if groups is not None else ([self.default_group_id()] if self.default_group_id() else [])
         if not selected or any(gid not in admin['groups'] for gid in selected):
             raise VaultError('Select valid groups for this user.')
         uid = identifier()
@@ -596,6 +607,19 @@ class ManagedVault:
             self.db.execute('INSERT INTO groups VALUES (?,?)', (gid, self._encode({'id': gid, 'name': name.strip(), 'members': [self.meta['manager'].decode()]})))
         self._management_change(operation)
         return gid
+
+    def rename_group(self, gid, name):
+        admin=self.administration()
+        if gid not in admin['groups']:raise VaultError('Choose an existing group.')
+        if not isinstance(name,str) or not name.strip():raise VaultError('Enter a group name.')
+        name=name.strip()
+        if any(other!=gid and group['name'].casefold()==name.casefold() for other,group in admin['groups'].items()):
+            raise VaultError('That group name already exists.')
+        group=dict(admin['groups'][gid])
+        if group['name']==name:return
+        if gid==self.default_group_id():group['default']=True
+        group['name']=name
+        self._management_change(lambda:self.db.execute('UPDATE groups SET payload=? WHERE id=?',(self._encode(group),gid)))
 
     def set_memberships(self, uid, groups):
         admin = self.administration()

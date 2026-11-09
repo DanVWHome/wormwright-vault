@@ -98,7 +98,7 @@ def editing_info():
     if not session_ready(): raise VaultError('Unlock first.')
     paired = mobile_sync.read_config(_vault.path)
     return json.dumps({'can_edit': _vault.can_create and not isinstance(_vault, ReadOnlyVault) and (_sample or Path(str(_vault.path)+'.local-only').is_file() or bool(paired and paired.get('paired'))),
-                       'view_only': not _vault.can_edit, 'ownership_enabled': _vault.ownership_enabled, 'manager': _vault.manager, 'groups': _vault.available_groups()})
+                       'view_only': not _vault.can_edit, 'ownership_enabled': _vault.ownership_enabled, 'default_group': _vault.default_group_id(), 'manager': _vault.manager, 'groups': _vault.available_groups()})
 
 
 def save_entry(document):

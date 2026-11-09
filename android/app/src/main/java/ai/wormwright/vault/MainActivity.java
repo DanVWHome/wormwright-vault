@@ -71,6 +71,8 @@ public class MainActivity extends Activity {
     private boolean startupChoicePending;
     private volatile boolean unlocked = false, resumed = false;
     private boolean busy = false, sampleMode = false, nasRunning = false;
+    private boolean familyDemoMode=false;
+    private String familyDemoUser="";
     private volatile int generation = 0;
     private int searchVersion = 0;
     private String ownedClip = null;
@@ -151,9 +153,11 @@ public class MainActivity extends Activity {
             PopupMenu menu = new PopupMenu(this, help);
             if(compact&&!sampleMode){menu.getMenu().add("Sync now");menu.getMenu().add("NAS connection settings");menu.getMenu().add("Export encrypted phone backup");}
             menu.getMenu().add("Create new vault"); menu.getMenu().add("Vaults"); menu.getMenu().add("Delete selected vault…"); menu.getMenu().add("Rename current vault"); menu.getMenu().add("Delete current vault"); menu.getMenu().add("Delete selected backups");
+            menu.getMenu().add("Family demo help");
+            if(familyDemoMode){menu.getMenu().add("Switch family demo user");menu.getMenu().add("Reset family demo");}
             menu.getMenu().add("About");
             menu.getMenu().add("Wormwright Website");
-            menu.setOnMenuItemClickListener(item -> { String choice=item.getTitle().toString(); if(choice.equals("Sync now")){if(nasSettings.exists())refreshNas(true);else configureNas();} else if(choice.equals("NAS connection settings"))configureNas(); else if(choice.equals("Export encrypted phone backup"))chooseExport(); else if(choice.equals("Create new vault")) createPhoneVault(); else if(choice.equals("Vaults")) listVaults(false); else if(choice.equals("Delete selected vault…")) listVaults(true); else if(choice.equals("Rename current vault")) renamePhoneVault(); else if(choice.equals("Delete current vault")) deletePhoneVault(); else if(choice.equals("Delete selected backups")) maintenance.chooseBackups(); else if (choice.equals("About")) about(); else openWebsite(); return true; });
+            menu.setOnMenuItemClickListener(item -> { String choice=item.getTitle().toString(); if(choice.equals("Family demo help"))showFamilyDemoHelp(); else if(choice.equals("Switch family demo user"))chooseFamilyDemoUser(); else if(choice.equals("Reset family demo"))confirmResetFamilyDemo(); else if(choice.equals("Sync now")){if(nasSettings.exists())refreshNas(true);else configureNas();} else if(choice.equals("NAS connection settings"))configureNas(); else if(choice.equals("Export encrypted phone backup"))chooseExport(); else if(choice.equals("Create new vault")) createPhoneVault(); else if(choice.equals("Vaults")) listVaults(false); else if(choice.equals("Delete selected vault…")) listVaults(true); else if(choice.equals("Rename current vault")) renamePhoneVault(); else if(choice.equals("Delete current vault")) deletePhoneVault(); else if(choice.equals("Delete selected backups")) maintenance.chooseBackups(); else if (choice.equals("About")) about(); else openWebsite(); return true; });
             menu.show();
         });
         heading.addView(help);
@@ -279,6 +283,7 @@ public class MainActivity extends Activity {
         form.addView(button("Create new vault",this::createPhoneVault)); form.addView(button("Vaults",()->listVaults(false)));
         if(vaultFile.exists())form.addView(button("Delete current vault",this::deletePhoneVault));
         form.addView(button("Try the sample vault", this::loadSample));
+        form.addView(button("Try the family permissions demo", this::chooseFamilyDemoUser));
         form.addView(button("NAS connection settings", this::configureNas));
         if (vaultFile.exists()) form.addView(button("Export encrypted phone backup", this::chooseExport));
         status = label(message, 15); form.addView(status);
@@ -366,8 +371,8 @@ public class MainActivity extends Activity {
     }
     private void showEntries(String result) throws Exception {
         String name=bridge().callAttr("vault_name").toString();
-        if(!sampleMode){selectedVaultName=name;saveSelectedVault(vaultFile,name);}
-        frame(sampleMode ? "Invented sample vault" : (name.isEmpty()?"Unnamed vault":name), true);
+        if(!sampleMode){familyDemoMode=false;selectedVaultName=name;saveSelectedVault(vaultFile,name);}
+        frame(sampleMode ? (familyDemoMode ? "Family demo · "+familyDemoUser : "Invented sample vault") : (name.isEmpty()?"Unnamed vault":name), true);
         LinearLayout actions = new LinearLayout(this);
         actions.addView(button("Lock", () -> lockNow("Vault locked.")),new LinearLayout.LayoutParams(0,-2,1));
         actions.addView(button("New entry", () -> openEditor(new JSONObject())),new LinearLayout.LayoutParams(0,-2,1));
@@ -509,6 +514,52 @@ public class MainActivity extends Activity {
                 : "Imported. Enter the same account name and password you use on Linux."),
             "Import stopped. Sync pending edits first, and choose a valid encrypted format-2 vault (up to 64 MB). The previous copy is unchanged.");
     }
+    private String demoAssetText(String name) throws Exception {
+        try(InputStream input=getAssets().open(name);java.io.ByteArrayOutputStream output=new java.io.ByteArrayOutputStream()) {
+            byte[] buffer=new byte[8192];int count;
+            while((count=input.read(buffer))!=-1)output.write(buffer,0,count);
+            return new String(output.toByteArray(),java.nio.charset.StandardCharsets.UTF_8);
+        }
+    }
+    private void showFamilyDemoHelp() {
+        try {
+            TextView text=label(demoAssetText("family-demo-readme.txt"),15);text.setTextIsSelectable(true);text.setPadding(dp(20),dp(12),dp(20),dp(12));
+            ScrollView scroll=new ScrollView(this);scroll.addView(text);
+            new AlertDialog.Builder(this).setTitle("Family demo — logins and test guide").setView(scroll).setPositiveButton("Done",null).show();
+        } catch(Exception error){status.setText("Could not read the bundled family demo guide.");}
+    }
+    private void chooseFamilyDemoUser() {
+        if(busy||nasRunning)return;
+        try {
+            JSONArray accounts=new JSONArray(demoAssetText("family-demo-accounts.json"));String[] labels=new String[accounts.length()];
+            for(int i=0;i<accounts.length();i++){JSONObject a=accounts.getJSONObject(i);labels[i]=a.getString("name")+" — "+a.getString("summary");}
+            new AlertDialog.Builder(this).setTitle("Family demo — choose an account")
+                .setItems(labels,(dialog,index)->{try{JSONObject a=accounts.getJSONObject(index);openFamilyDemo(a.getString("name"),a.getString("password"),false);}catch(Exception error){status.setText("Could not open the chosen demo account.");}})
+                .setNeutralButton("Demo guide",(dialog,which)->showFamilyDemoHelp()).setNegativeButton("Cancel",null).show();
+        } catch(Exception error){status.setText("Could not read the family demo accounts.");}
+    }
+    private void confirmResetFamilyDemo() {
+        if(busy||nasRunning)return;
+        new AlertDialog.Builder(this).setTitle("Reset family demo?")
+            .setMessage("Discard changes only in the family practice copy and restore its original 23 invented entries? Your real phone vaults and NAS are kept.")
+            .setNegativeButton("Cancel",null).setPositiveButton("Reset demo",(dialog,which)->openFamilyDemo("FamilyManager","Demo-Manager-2026!",true)).show();
+    }
+    private void openFamilyDemo(String account,String secret,boolean reset) {
+        if(busy||nasRunning)return;
+        lockNow("Opening the fictional family practice vault…");
+        job("Opening family demo…",()->{
+            File sample=new File(getNoBackupFilesDir(),"family-sample.db");
+            if(reset||!sample.exists()) {
+                File temporary=new File(getNoBackupFilesDir(),"family-sample.pending");
+                try(InputStream input=getAssets().open("family-demo.sqlite");FileOutputStream output=new FileOutputStream(temporary)){
+                    byte[] buffer=new byte[65536];int count;while((count=input.read(buffer))!=-1)output.write(buffer,0,count);
+                }
+                Files.move(temporary.toPath(),sample.toPath(),StandardCopyOption.REPLACE_EXISTING);
+            }
+            return bridge().callAttr("unlock",sample.getAbsolutePath(),account,secret,true,true).toString();
+        },result->{unlocked=true;sampleMode=true;familyDemoMode=true;familyDemoUser=account;showEntries(result);status.setText("FAMILY DEMO · "+account+" · Local practice only; no NAS sync");resetIdleTimer();},
+            "Family demo could not open. Your real phone vaults are unchanged.");
+    }
     private void loadSample() {
         if (busy) return;
         if (vaultFile.exists()) {
@@ -526,7 +577,7 @@ public class MainActivity extends Activity {
                 while ((count = input.read(buffer)) != -1) output.write(buffer, 0, count);
             }
             return bridge().callAttr("unlock", sample.getAbsolutePath(), "Demo", "SampleOnly-October2026!", true, true).toString();
-        }, result -> { unlocked = true; sampleMode = true; showEntries(result); status.setText("SAMPLE VAULT · Invented entries only"); resetIdleTimer(); },
+        }, result -> { unlocked = true; sampleMode = true; familyDemoMode=false; showEntries(result); status.setText("SAMPLE VAULT · Invented entries only"); resetIdleTimer(); },
             "Sample vault could not open on this device. The real phone copy is unchanged.");
     }
     private void resetIdleTimer() {
@@ -653,7 +704,7 @@ public class MainActivity extends Activity {
             for(int i=0;i<ids.size();i++) {
                 if(assigned!=null) for(int j=0;j<assigned.length();j++) if(ids.get(i).equals(assigned.getString(j))) selected[i]=true;
                 else {} // Existing assignments are preserved below for ordinary accounts.
-                if(assigned==null) selected[i]=!info.optBoolean("view_only",false) && (!info.getBoolean("manager") || "Generic".equals(groups.getString(ids.get(i))));
+                if(assigned==null) selected[i]=!info.optBoolean("view_only",false) && (!info.getBoolean("manager") || ids.get(i).equals(info.optString("default_group", "")));
             }
             if(info.getBoolean("manager") || !record.has("id")) {
                 form.addView(label("Share with groups (leave unchecked for owner and Manager only)",14));

@@ -85,7 +85,7 @@ class ManagedWindow(QMainWindow):
         heading=QLabel('Welcome — choose how to get started');heading.setStyleSheet('font-size:20px;font-weight:bold');welcome_layout.addWidget(heading)
         help_text=QLabel('Create a new vault to start from scratch. Open a local copy of an existing vault, or load the optional demo to learn. Local vaults can be saved anywhere on this computer; a separate folder is optional.');help_text.setWordWrap(True);welcome_layout.addWidget(help_text)
         welcome_row=QHBoxLayout()
-        for text,callback in [('Create New Vault…',self.new_vault),('Open Existing Vault…',self.open_existing),('Load Demo Vault…',self.load_demo)]:
+        for text,callback in [('Create New Vault…',self.new_vault),('Open Existing Vault…',self.open_existing),('Load Demo Vault…',self.load_demo),('Load Family Demo Vault…',self.load_family_demo)]:
             b=QPushButton(text);b.clicked.connect(callback);welcome_row.addWidget(b)
         welcome_layout.addLayout(welcome_row);layout.addWidget(self.welcome)
         row=QHBoxLayout();self.search=QLineEdit();self.search.setPlaceholderText('Search description, username, link or notes');self.search.textChanged.connect(self.refresh);row.addWidget(self.search)
@@ -104,7 +104,7 @@ class ManagedWindow(QMainWindow):
         self.location_actions=[]
         for text,callback in [('Open Existing Vault…',self.open_existing),('Create New Vault…',self.new_vault),('Vaults…',self.recent),('Choose Folder for New Vaults…',self.choose_folder)]:
             action=vault_menu.addAction(text);action.triggered.connect(callback);self.location_actions.append(action)
-        vault_menu.addAction('Load Demo Vault…',self.load_demo)
+        vault_menu.addAction('Load Demo Vault…',self.load_demo);vault_menu.addAction('Load Family Demo Vault…',self.load_family_demo)
         vault_menu.addSeparator();vault_menu.addAction('Rename Current Vault…',self.rename_vault);vault_menu.addAction('Delete Current Local Vault…',self.delete_local_vault)
         vault_menu.addAction('Delete Shared NAS Vault…',self.delete_shared_vault)
         vault_menu.addAction('Vault Locations Explained…',self.location_help)
@@ -154,17 +154,24 @@ class ManagedWindow(QMainWindow):
         show_help(self)
 
     def load_demo(self):
+        self._load_demo_copy('wormwright-demo.sqlite','wormwright-demo.sqlite','DemoManager',
+            'This is disposable test data.\nUsername: DemoManager\nPassword: DemoVault123!\n\nSee Help → Searchable Help → Learn with the demo vault for other accounts. The vault remains locked until you sign in.')
+
+    def load_family_demo(self):
+        self._load_demo_copy('family-demo.sqlite','family-demo.sqlite','FamilyManager',
+            'This second demo contains 23 entirely fictional family entries.\nManager username: FamilyManager\nPassword: Demo-Manager-2026!\n\nOther users: Dan, Nikki, Macie and Onyx. See Help → Searchable Help → Family demo for their logins and test steps.\n\nManage appears only after signing in as FamilyManager. Opening the Manager application alone does not grant those rights.')
+
+    def _load_demo_copy(self,filename,suggested,username,message):
         if self.task:return
-        source=Path(getattr(sys,'_MEIPASS',Path(__file__).parent.parent))/'assets/demo/wormwright-demo.sqlite'
-        path,_=QFileDialog.getSaveFileName(self,'Save a local demo copy',str(managed_locations.local_folder()/'wormwright-demo.sqlite'),'SQLite vault (*.sqlite)',options=QFileDialog.Option.DontConfirmOverwrite)
+        source=Path(getattr(sys,'_MEIPASS',Path(__file__).parent.parent))/'assets/demo'/filename
+        path,_=QFileDialog.getSaveFileName(self,'Save a local demo copy',str(managed_locations.local_folder()/suggested),'SQLite vault (*.sqlite)',options=QFileDialog.Option.DontConfirmOverwrite)
         if not path:return
         target=Path(path)
         try:
-            # Exclusive creation: never overwrite a real vault or a previous demo.
             with source.open('rb') as incoming,target.open('xb') as outgoing:
                 target.chmod(0o600);shutil.copyfileobj(incoming,outgoing)
-            self.open_path(target);self.username.setText('DemoManager')
-            QMessageBox.information(self,'Demo vault ready','This is disposable test data.\nUsername: DemoManager\nPassword: DemoVault123!\n\nSee Help → Searchable Help → Learn with the demo vault for other accounts. The vault remains locked until you sign in.')
+            self.open_path(target);self.username.setText(username)
+            QMessageBox.information(self,'Demo vault ready',message)
         except FileExistsError:self.warning('That file already exists. Choose a new filename to keep it safe.')
         except Exception as error:self.warning(error)
 
@@ -378,7 +385,7 @@ class ManagedWindow(QMainWindow):
         group_widget=None
         if self.vault.manager or not record or not record.get('id'):
             labels=self.vault.available_groups()
-            defaults=record.get('groups',[]) if record else ([] if not self.vault.can_edit else ([g for g,n in labels.items() if n=='Generic'] or list(labels)[:1]))
+            defaults=record.get('groups',[]) if record else ([] if not self.vault.can_edit else ([self.vault.default_group_id()] if self.vault.default_group_id() else []))
             group_widget=groups_list(labels,defaults);dialog.layout().insertWidget(1,QLabel('Share with groups (leave unchecked for owner and Manager only):'));dialog.layout().insertWidget(2,group_widget)
         if record and record.get('id'):
             owner=self.vault.owner_id(record)
@@ -697,10 +704,16 @@ class ManagedWindow(QMainWindow):
         def add_group():
             name,ok=QInputDialog.getText(dialog,'New group','Group name:')
             if ok:self.vault.add_group(name)
+        def rename_selected_group():
+            if not groups.currentItem():raise VaultError('Select a group.')
+            gid=groups.currentItem().data(Qt.ItemDataRole.UserRole)
+            current=self.vault.administration()['groups'][gid]['name']
+            name,ok=QInputDialog.getText(dialog,'Rename Group','Group name:',text=current)
+            if ok:self.vault.rename_group(gid,name)
         def user_form():
             form_dialog=QDialog(dialog);form_dialog.setWindowTitle('Add User');form_dialog.resize(600,420);form_dialog.setMinimumWidth(560);form=QFormLayout(form_dialog)
             name=QLineEdit();password=QLineEdit();password.setEchoMode(QLineEdit.EchoMode.Password);confirm=QLineEdit();confirm.setEchoMode(QLineEdit.EchoMode.Password)
-            labels=self.vault.available_groups();choices=groups_list(labels,[g for g,n in labels.items() if n=='Generic'])
+            labels=self.vault.available_groups();choices=groups_list(labels,[self.vault.default_group_id()] if self.vault.default_group_id() else [])
             form.addRow('Username:',name);form.addRow('Password:',password);form.addRow('Confirm:',confirm);form.addRow('Groups:',choices)
             view_only=QCheckBox('Shared entries are view only; can create and edit own entries');view_only.setObjectName('new_user_view_only');form.addRow('Permissions:',view_only)
             warning=QLabel('Group members receive entries in those groups. Review the access list before creating the account.');warning.setWordWrap(True);form.addRow(warning)
@@ -770,6 +783,7 @@ class ManagedWindow(QMainWindow):
         members=QPushButton('View Members…');members.clicked.connect(lambda:action(group_members));group_layout.addWidget(members)
         rename=QPushButton('Rename Manager…');rename.clicked.connect(lambda:action(rename_manager));user_layout.addWidget(rename)
         add=QPushButton('Add Group…');add.clicked.connect(lambda:action(add_group));group_layout.addWidget(add)
+        rename_group_button=QPushButton('Rename Group…');rename_group_button.clicked.connect(lambda:action(rename_selected_group));group_layout.addWidget(rename_group_button)
         close=QPushButton('Close');close.clicked.connect(dialog.accept);layout.addWidget(close)
         populate();self.dialog=dialog;dialog.exec();self.dialog=None;dialog.deleteLater();self.update_state();self.auto_sync()
 
