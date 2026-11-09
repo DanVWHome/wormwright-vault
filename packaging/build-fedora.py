@@ -37,6 +37,7 @@ def prepare(source, stage):
     docs = stage / 'usr/share/doc/wormwright-vault'
     shutil.copytree(source / 'usr/share/doc/vanwormai-vault', docs)
     shutil.copy2(ROOT / 'docs/FEDORA.md', docs / 'FEDORA.md')
+    shutil.copy2(ROOT / 'docs/DESKTOP-0.3.14-STABLE.md', docs / 'DESKTOP-0.3.14-STABLE.md')
     for name in ('RELEASE-0.3.11.md', 'DESKTOP-PREVIEWS-0.3.11.md', 'FOUR-YUBIKEYS.md', 'FEDORA-0.3.11-preview2.md', 'FEDORA-0.3.11-STABLE.md'):
         shutil.copy2(ROOT / 'docs' / name, docs / name)
 

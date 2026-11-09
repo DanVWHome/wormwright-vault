@@ -31,6 +31,7 @@ def main():
     bundle = work / 'bundle/WormwrightVault'
     subprocess.run([str(bundle / 'WormwrightVault.exe'), '--check-yubikey-runtime'], check=True)
     docs = bundle / 'docs'; docs.mkdir(exist_ok=True)
+    shutil.copy2(ROOT / 'docs/DESKTOP-0.3.14-STABLE.md', docs / 'DESKTOP-0.3.14-STABLE.md')
     shutil.copy2(ROOT / 'docs/VIEW-ONLY-USERS.md', docs / 'VIEW-ONLY-USERS.md')
     shutil.copy2(ROOT / 'docs/RELEASE-0.3.12.md', docs / 'RELEASE-0.3.12.md')
     shutil.copy2(ROOT / 'docs/RELEASE-0.3.13.md', docs / 'RELEASE-0.3.13.md')

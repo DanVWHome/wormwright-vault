@@ -1,8 +1,6 @@
-name: Build view-only desktop installers 0.3.12
+name: Build Windows and Fedora stable installers 0.3.14
 on:
   workflow_dispatch:
-  push:
-    branches: ['builds/view-only-0.3.12']
 permissions:
   contents: read
 jobs:
@@ -31,11 +29,11 @@ jobs:
           if (!(Test-Path $compiler)) { choco install innosetup --yes --no-progress; if ($LASTEXITCODE -ne 0) { throw 'Inno Setup installation failed' } }
           & $compiler packaging/windows-installer.iss
           if ($LASTEXITCODE -ne 0) { throw 'Installer compilation failed' }
-      - run: python tests/check_windows_icons.py build-windows/bundle/WormwrightVault/WormwrightVault.exe dist-installer/wormwright-vault_0.3.12_windows_x64_setup.exe
+      - run: python tests/check_windows_icons.py build-windows/bundle/WormwrightVault/WormwrightVault.exe dist-installer/wormwright-vault_0.3.14_windows_x64_setup.exe
       - run: python tests/check_windows_installer.py
       - uses: actions/upload-artifact@v4
         with:
-          name: windows-preview-0.3.12
+          name: windows-stable-0.3.14
           path: |
             dist-windows/*.zip
             dist-installer/*_setup.exe
@@ -61,23 +59,39 @@ jobs:
       - name: Verify RPM metadata and absence of personal data
         run: |
           rpm -qp --queryformat '%{NAME} %{VERSION} %{ARCH}\n' dist-fedora/x86_64/*.rpm | tee rpm-metadata.txt
-          test "$(cat rpm-metadata.txt)" = 'wormwright-vault 0.3.12 x86_64'
+          test "$(cat rpm-metadata.txt)" = 'wormwright-vault 0.3.14 x86_64'
           rpm -qpl dist-fedora/x86_64/*.rpm > rpm-files.txt
-          test -z "$(rg '\.(jks|keystore|sqlite|db)$' rpm-files.txt | rg -v '/assets/demo/wormwright-demo.sqlite$' || true)"
+          test -z "$(rg '\.(jks|keystore|sqlite|db)$' rpm-files.txt | rg -v '/assets/demo/(wormwright-demo|family-demo)\.sqlite$' || true)"
+      - name: Download verified previous RPM for upgrade check
+        run: |
+          curl --fail --location --retry 2 --output previous-fedora.rpm https://github.com/DanVWHome/wormwright-vault/releases/download/v0.3.11-fedora/wormwright-vault-0.3.11-3.fc44.x86_64.rpm
+          echo '0acdeb6bbc4a1a3b7a5c57c943a7e80759e546620f357d157999dcf02e9063ea  previous-fedora.rpm' | sha256sum --check
       - name: Install, start, upgrade and remove inside Fedora 44
         run: |
           docker run --rm -v "$PWD:/work:ro" -w /work fedora:44 bash -euxc '
-            export QT_QPA_PLATFORM=offscreen
+            dnf install -y /work/previous-fedora.rpm xorg-x11-server-Xvfb
+            mkdir -p /root/.local/share/wormwright-vault-beta
+            echo migration-check > /root/.local/share/wormwright-vault-beta/stable-upgrade-marker
             dnf install -y /work/dist-fedora/x86_64/*.rpm
+            test "$(rpm -q --queryformat %{VERSION}-%{RELEASE} wormwright-vault)" = 0.3.14-3.fc44
+            test "$(cat /root/.local/share/wormwright-vault-beta/stable-upgrade-marker)" = migration-check
             QT_QPA_PLATFORM=offscreen /usr/bin/wormwright-vault --check-yubikey-runtime
-            python3 tests/smoke_linux_bundle.py /usr/bin/wormwright-vault
+            QT_QPA_PLATFORM=offscreen python3 tests/smoke_linux_bundle.py /usr/bin/wormwright-vault
+            QT_QPA_PLATFORM=offscreen python3 tests/smoke_linux_bundle.py /usr/bin/wormwright-vault-manager
+            Xvfb :99 -screen 0 1280x800x24 &
+            display_pid=$!
+            trap "kill $display_pid" EXIT
+            for attempt in $(seq 1 50); do test -S /tmp/.X11-unix/X99 && break; sleep 0.2; done
+            export DISPLAY=:99
+            QT_QPA_PLATFORM=xcb python3 tests/smoke_linux_bundle.py /usr/bin/wormwright-vault
+            QT_QPA_PLATFORM=xcb python3 tests/smoke_linux_bundle.py /usr/bin/wormwright-vault-manager
             dnf reinstall -y /work/dist-fedora/x86_64/*.rpm
-            python3 tests/smoke_linux_bundle.py /usr/bin/wormwright-vault
+            QT_QPA_PLATFORM=offscreen python3 tests/smoke_linux_bundle.py /usr/bin/wormwright-vault
             dnf remove -y wormwright-vault
             test ! -e /usr/bin/wormwright-vault
           '
       - uses: actions/upload-artifact@v4
         with:
-          name: fedora-preview-0.3.12
+          name: fedora-stable-0.3.14
           path: dist-fedora/x86_64/*.rpm
           if-no-files-found: error
