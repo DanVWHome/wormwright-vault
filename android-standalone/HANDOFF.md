@@ -1,14 +1,7 @@
 # Submission-chat handoff — pending device acceptance
 
 Publisher: Dan Van Wormer; support: danvanwormer@pm.me.
-App: Wormwright Pocket, version 0.1.0-test.8/versionCode 8.
-Package: ai.wormwright.vault.standalone (permanent). Existing companion:
-ai.wormwright.vault.preview. Approved pocket-and-lock mascot icon is in
-app/src/main/res/drawable-nodpi/pocket_icon.png. There are no content providers, shared
-user IDs, companion paths/aliases, storage permissions or NAS connection settings.
-Only USE_BIOMETRIC is declared; no Internet permission. Application sandbox and
-Keystore aliases separate it from the companion. Installation identifiers were
-checked statically; actual coexistence/update/uninstall testing remains pending.
+App: Wormwright Pocket 0.1.0-test.26/versionCode 26, package ai.wormwright.vault.standalone. Uses the existing update signing identity. Optional NAS backups add INTERNET permission alongside biometric and NFC permissions. NAS credentials are app-keystore encrypted; backups use the existing separately password-protected portable format. No companion sync is added. Check NAS read/write/rename permissions and perform a restore test before relying on a backup.
 
 Test.4 fixes record-to-editor dialog ownership and adds opening feedback. Safe-area
 spacing and grouped record controls remain. The existing NAS companion gets

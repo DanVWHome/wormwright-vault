@@ -115,6 +115,8 @@ public class MainActivity extends Activity {
     private String safeError(Exception e) {
         StackTraceElement[] trace=e.getStackTrace();
         android.util.Log.e("PocketFailure",e.getClass().getSimpleName()+(trace.length==0?"":" at "+trace[0].toString()));
+        if(e instanceof NasBackup.Failure)return "NAS backup failed. "+e.getMessage()+" Your phone vault is safe.";
+        if(e instanceof IOException && "NAS backup failed".equals(e.getMessage()))return "NAS backup failed. Your phone vault is safe. Check Wi-Fi, NAS address, login, folder and write permissions, then try again.";
         if (e instanceof PyException) {
             String value = e.getMessage();
             if (value != null && value.startsWith("VaultError: ")) return value.substring(12);
@@ -134,12 +136,12 @@ public class MainActivity extends Activity {
         Button helpButton = new Button(this); helpButton.setText(compact ? "More" : "Help"); helpButton.setAllCaps(false);
         helpButton.setOnClickListener(v -> {
             onUserInteraction(); PopupMenu menu = new PopupMenu(this,helpButton);
-            if(compact){menu.getMenu().add("Recently deleted");if(!sample){menu.getMenu().add("Export portable backup");menu.getMenu().add("Export for desktop and NAS");menu.getMenu().add("Change optional vault password");}}
+            if(compact){menu.getMenu().add("Recently deleted");if(!sample){menu.getMenu().add("Export portable backup");menu.getMenu().add("Save backup to NAS");menu.getMenu().add("NAS backup settings");menu.getMenu().add("Test NAS connection");menu.getMenu().add("Export for desktop and NAS");menu.getMenu().add("Change optional vault password");}}
             menu.getMenu().add("Create new vault"); menu.getMenu().add("Vaults"); menu.getMenu().add("Rename current vault"); menu.getMenu().add("Delete current vault"); menu.getMenu().add("Delete vault…"); menu.getMenu().add("Delete all phone vaults"); menu.getMenu().add("Delete selected backups");
             if(unlocked&&!sample){menu.getMenu().add("Enroll YubiKey");menu.getMenu().add("Manage YubiKeys");}
             menu.getMenu().add("Backup and recovery"); menu.getMenu().add("About"); menu.getMenu().add("Wormwright Website");
             menu.setOnMenuItemClickListener(item -> { String choice=item.getTitle().toString();
-                if(choice.equals("Manage YubiKeys")) manageHardware(); else if(choice.equals("Enroll YubiKey")) confirmEnrollHardware(); else if(choice.equals("Recently deleted")) recentlyDeleted(); else if(choice.equals("Export portable backup")) export(false); else if(choice.equals("Export for desktop and NAS")) export(true); else if(choice.equals("Change optional vault password")) changePassword(); else if(choice.equals("Create new vault")) newVault(); else if(choice.equals("Vaults")) switchVault(); else if(choice.equals("Rename current vault")) renameVault(); else if(choice.equals("Delete current vault")) deleteCurrentVault(); else if(choice.equals("Delete vault…")) chooseVaultForDeletion(); else if(choice.equals("Delete all phone vaults")) deletePhoneVaults(); else if(choice.equals("Delete selected backups")) maintenance.chooseBackups(); else if (choice.equals("About")) about(); else if (choice.equals("Backup and recovery")) help(); else openWebsite(); return true; }); menu.show();
+                if(choice.equals("Test NAS connection")) testNasConnection(); else if(choice.equals("Save backup to NAS")) backupToNas(); else if(choice.equals("NAS backup settings")) configureNasBackup(); else if(choice.equals("Manage YubiKeys")) manageHardware(); else if(choice.equals("Enroll YubiKey")) confirmEnrollHardware(); else if(choice.equals("Recently deleted")) recentlyDeleted(); else if(choice.equals("Export portable backup")) export(false); else if(choice.equals("Export for desktop and NAS")) export(true); else if(choice.equals("Change optional vault password")) changePassword(); else if(choice.equals("Create new vault")) newVault(); else if(choice.equals("Vaults")) switchVault(); else if(choice.equals("Rename current vault")) renameVault(); else if(choice.equals("Delete current vault")) deleteCurrentVault(); else if(choice.equals("Delete vault…")) chooseVaultForDeletion(); else if(choice.equals("Delete all phone vaults")) deletePhoneVaults(); else if(choice.equals("Delete selected backups")) maintenance.chooseBackups(); else if (choice.equals("About")) about(); else if (choice.equals("Backup and recovery")) help(); else openWebsite(); return true; }); menu.show();
         });
         heading.addView(helpButton); root.addView(heading); if(!compact)root.addView(text("Version " + installedVersion())); status = text(""); if(compact)status.setVisibility(View.GONE); root.addView(status);
         progressRow = column(); LinearLayout loading = new LinearLayout(this); loading.setGravity(Gravity.CENTER_VERTICAL);
@@ -354,13 +356,14 @@ public class MainActivity extends Activity {
         });
     }
     private EditText input(LinearLayout parent, String hint, boolean secret) {
-        EditText field = new EditText(this); field.setHint(hint); field.setSingleLine(secret);
-        field.setInputType(secret ? InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD : InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE);
+        EditText field = secret ? new PrivatePasswordInput(this) : new EditText(this); field.setHint(hint); if(!secret)field.setSingleLine(false);
+        if(!secret)field.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE);
         field.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS);
-        parent.addView(field); return field;
+        DialogUserActivity.watch(field,this::onUserInteraction);parent.addView(field); return field;
     }
     private void password(String title, boolean confirmation, boolean optional, PasswordDone done) {
-        LinearLayout fields = column(); fields.setPadding(dp(20),dp(8),dp(20),dp(8));
+        android.view.autofill.AutofillManager autofill=getSystemService(android.view.autofill.AutofillManager.class);if(autofill!=null)autofill.cancel();
+        LinearLayout fields = column(); fields.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS); fields.setImportantForContentCapture(View.IMPORTANT_FOR_CONTENT_CAPTURE_NO_EXCLUDE_DESCENDANTS); fields.setPadding(dp(20),dp(8),dp(20),dp(8));
         if(optional) fields.addView(text("Leave blank to use phone authentication only. If you add a password, enter it in both fields (at least 12 characters)."));
         EditText first = input(fields, "Password or recovery key", true);
         EditText second = confirmation ? input(fields, "Confirm password", true) : null;
@@ -380,7 +383,7 @@ public class MainActivity extends Activity {
                 prompt.dismiss();
                 try { done.accept(value); } catch (Exception e) { message(safeError(e)); }
             });
-        }); ai.wormwright.hardware.YubiKeyKeyboardGuard.install(prompt.getWindow());prompt.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE); prompt.show();
+        }); ai.wormwright.hardware.YubiKeyKeyboardGuard.install(prompt.getWindow());prompt.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE); prompt.show();fitSecretDialog(prompt,passwordScroll);
     }
 
     private void vaultScreen() {
@@ -504,6 +507,82 @@ public class MainActivity extends Activity {
         password(title,true,false,p->task(()->{
             File target=new File(base,"export-"+UUID.randomUUID()+".sqlite");call("export",target.getPath(),p);return target.getPath();
         },v->{pendingExport=new File(v);Intent intent=new Intent(Intent.ACTION_CREATE_DOCUMENT).setType("application/octet-stream").addCategory(Intent.CATEGORY_OPENABLE).putExtra(Intent.EXTRA_TITLE,migration?"wormwright-desktop.sqlite":"wormwright-portable-backup.sqlite");startActivityForResult(intent,101);}));
+    }
+    private void fitSecretDialog(AlertDialog prompt,ScrollView content) {
+        Window window=prompt.getWindow();DialogUserActivity.install(window,this::onUserInteraction);window.setDecorFitsSystemWindows(true);
+        window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
+        View decor=window.getDecorView();
+        Runnable resize=()->{
+            if(!prompt.isShowing()||decor.getHeight()==0)return;
+            WindowInsets insets=decor.getRootWindowInsets();
+            android.graphics.Rect bounds=getWindowManager().getCurrentWindowMetrics().getBounds();
+            int top=0,bottom=0;
+            if(insets!=null){android.graphics.Insets bars=insets.getInsets(WindowInsets.Type.systemBars()|WindowInsets.Type.displayCutout());android.graphics.Insets ime=insets.getInsets(WindowInsets.Type.ime());top=bars.top;bottom=Math.max(bars.bottom,ime.bottom);}
+            int available=bounds.height()-top-bottom-dp(32);
+            android.graphics.Rect visible=new android.graphics.Rect();decor.getWindowVisibleDisplayFrame(visible);
+            if(!visible.isEmpty())available=Math.min(available,visible.height()-dp(32));
+            int natural=content.getChildCount()==0?dp(400):content.getChildAt(0).getMeasuredHeight();if(natural<=0)natural=dp(400);
+            int chrome=Math.max(dp(120),decor.getHeight()-content.getHeight());
+            int height=Math.max(dp(48),Math.min(natural,Math.min(dp(400),available-chrome)));
+            ViewGroup.LayoutParams params=content.getLayoutParams();
+            if(params.height!=height){params.height=height;content.setLayoutParams(params);}
+        };
+        decor.setOnApplyWindowInsetsListener((view,insets)->{content.post(resize);return view.onApplyWindowInsets(insets);});
+        decor.getViewTreeObserver().addOnGlobalLayoutListener(()->{if(prompt.isShowing())resize.run();});
+        content.post(resize);decor.requestApplyInsets();
+    }
+    private void configureNasBackup() {
+        if(busy||!unlocked||sample)return;
+        final NasSettings storage=new NasSettings(this);final JSONObject saved;
+        try{JSONObject old=storage.load();saved=old==null?new JSONObject():old;}catch(Exception e){message("Could not read NAS settings. Your vault is safe.");return;}
+        LinearLayout form=column();form.setPadding(dp(16),dp(8),dp(16),dp(8));
+        form.addView(text("Enter the shared folder’s name exactly as configured on your NAS (for example, share). Put folders inside it in Subfolder path."));
+        String[] keys={"host","share","folder","user","domain","password"};
+        String[] labels={"NAS IP address","NAS shared folder name","Subfolder path (optional)","Username","Domain (optional)","NAS password"};
+        String[] defaults={"192.168.1.144","share","PasswordVault/Dans-Vault","","",""};
+        EditText[] fields=new EditText[keys.length];
+        for(int i=0;i<keys.length;i++){form.addView(text(labels[i]));fields[i]=input(form,labels[i],i==5);if(i!=5){fields[i].setSingleLine(true);fields[i].setText(saved.optString(keys[i],defaults[i]));}else if(!saved.optString("password").isEmpty())fields[i].setHint("Password saved — leave blank to keep it");}
+        form.addView(text("NAS login is stored encrypted on this phone. The backup password is chosen separately and is never saved here."));
+        ScrollView scroll=new ScrollView(this);scroll.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS);scroll.setImportantForContentCapture(View.IMPORTANT_FOR_CONTENT_CAPTURE_NO_EXCLUDE_DESCENDANTS);scroll.addView(form);final int token=epoch;
+        final AlertDialog prompt=new AlertDialog.Builder(this).setTitle("NAS backup settings").setView(scroll).setNegativeButton("Cancel",null).setNeutralButton("Forget settings",null).setPositiveButton("Save",null).create();dialog=prompt;
+        prompt.setOnDismissListener(d->{fields[5].setText("");if(dialog==prompt)dialog=null;});
+        prompt.setOnShowListener(d->{
+            prompt.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{if(token!=epoch||!unlocked)return;try{
+                JSONObject values=new JSONObject();for(int i=0;i<keys.length;i++)values.put(keys[i],i==5?(fields[i].length()==0?saved.optString("password"):fields[i].getText().toString()):fields[i].getText().toString().trim());
+                for(int i:new int[]{0,1,3})if(fields[i].getText().toString().trim().isEmpty()){fields[i].setError("Required");fields[i].requestFocus();return;}
+                try{NasBackup.folder(values.optString("folder"));}catch(IOException invalid){fields[2].setError("Use a path inside the NAS shared folder, such as PasswordVault/Dans-Vault.");fields[2].requestFocus();return;}
+                NasBackup.validate(values);storage.save(values);prompt.dismiss();message("NAS backup settings saved on this phone.");
+            }catch(Exception e){message("Could not save NAS settings. Your existing settings were kept.");}});
+            prompt.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener(v->{if(token!=epoch||!unlocked)return;try{storage.clear();prompt.dismiss();message("NAS settings forgotten. Existing backups remain on the NAS.");}catch(Exception e){message("Could not forget NAS settings.");}});
+        });prompt.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);prompt.show();fitSecretDialog(prompt,scroll);
+    }
+    private boolean requireNasNetwork() {
+        if(!NasNetworkAccess.allowed(this)){
+            final AlertDialog prompt=new AlertDialog.Builder(this).setTitle("Allow Pocket network access")
+                .setMessage("Network access is blocked for Wormwright Pocket. To save a NAS backup, open this app’s settings, choose Permissions → Network, and select Allow. Then return, unlock the vault and try again. Notes has its own separate permission.")
+                .setNegativeButton("Cancel",null).setPositiveButton("Open app settings",(d,w)->startActivity(new Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,android.net.Uri.parse("package:"+getPackageName())))).create();
+            dialog=prompt;prompt.setOnDismissListener(d->{if(dialog==prompt)dialog=null;});prompt.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);prompt.show();return false;
+        }
+        return true;
+    }
+    private void testNasConnection() {
+        if(busy||!unlocked||sample||!requireNasNetwork())return;
+        try{JSONObject settings=new NasSettings(this).load();if(settings==null){message("Save NAS backup settings first.");configureNasBackup();return;}
+            task("Testing NAS connection…",()->NasBackup.test(settings),path->message("NAS connection passed: login, folder access, write, read-back verification, rename and cleanup succeeded. No vault data was sent."));
+        }catch(Exception e){message("Check NAS backup settings. Your phone vault is safe.");}
+    }
+    private void backupToNas() {
+        if(busy||!unlocked||sample)return;
+        if(!requireNasNetwork())return;
+        final JSONObject settings;
+        try{settings=new NasSettings(this).load();if(settings==null){message("Save NAS backup settings first, then choose Save backup to NAS.");configureNasBackup();return;}NasBackup.validate(settings);}
+        catch(Exception e){message("Check your NAS backup settings. Your vault is safe.");return;}
+        password("NAS backup password or generated recovery key — keep it separately",true,false,p->task("Saving encrypted backup to NAS…",()->{
+            File snapshot=new File(base,"export-"+UUID.randomUUID()+".sqlite");byte[] bytes=null;
+            try{call("export",snapshot.getPath(),p);bytes=Files.readAllBytes(snapshot.toPath());return NasBackup.upload(settings,bytes);}
+            catch(Exception e){if(e instanceof PyException||e instanceof NasBackup.Failure)throw e;throw new IOException("NAS backup failed",e);}
+            finally{if(bytes!=null)java.util.Arrays.fill(bytes,(byte)0);snapshot.delete();}
+        },path->message("Encrypted NAS backup saved and verified: "+path+". Keep its backup secret separately. To restore, copy this file to your phone and choose Restore portable encrypted backup.")));
     }
     private void chooseRestore() {
         new AlertDialog.Builder(this).setMessage("Restore creates a new local vault protected by this phone. The previous encrypted file is retained privately. Keep an exported backup of the current vault before replacing it. Select a portable backup and enter its backup secret, not your phone PIN.").setNegativeButton("Cancel",null).setPositiveButton("Choose backup",(d,w)->startActivityForResult(new Intent(Intent.ACTION_OPEN_DOCUMENT).setType("*/*").addCategory(Intent.CATEGORY_OPENABLE),100)).show();

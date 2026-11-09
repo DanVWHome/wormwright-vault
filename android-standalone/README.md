@@ -42,9 +42,7 @@ Create a vault, leave the optional vault-password fields blank for phone-only
 access, then authenticate. Add descriptions, usernames, passwords, links and notes.
 Search covers descriptions, usernames and links. Copy any field; password display
 requires an explicit Reveal action. Edits save locally; deletes move entries to
-Recently deleted, where they can be restored. No NAS, managed-account or group
-administration appears in this app. No Internet permission, cloud connection,
-analytics, ads or AI functionality is included. Android autofill is not implemented.
+Recently deleted, where they can be restored. NAS backups are optional manual encrypted snapshots. Companion sharing/sync and managed-account or group administration are not included. Network access is used only when you choose Save backup to NAS. No cloud connection, analytics, ads or AI functionality is included. Android autofill is not implemented.
 
 Leaving the activity locks the vault; reopening requires app-specific phone
 authentication. The idle timeout is two minutes. The clipboard clears after 30
@@ -176,3 +174,29 @@ DEVICE-TESTS.md and HANDOFF.md for remaining validation and submission requireme
 
 Help includes Create new vault, vault deletion, and Delete selected backups. Deletion requires fresh authorization and typing DELETE after reviewing its scope. Exported backups are selected explicitly in the Android Files picker, where multiple selection can select all backups in a folder. Offline copies and provider trash remain; deletion is not a guarantee of forensic storage erasure.
 A recognizable vault name is required for creation and restore. Vaults lists names, marks the current vault and reopens the chosen vault after authentication. With multiple vaults, the chooser appears when the app is reopened. Rename current vault names existing unnamed vaults. Create new vault preserves the current vault. Delete current vault removes only that vault; Delete vault… chooses one named vault. Both show Cancel before authentication and on the final typed review, and preserve other vaults and exported backups. Delete all phone vaults removes active and retained private personal vaults and their device keys, plus sample and temporary data. Desktop, NAS and exported copies remain.
+
+## NAS backups (test.22)
+
+Unlock a personal vault, open **More → NAS backup settings**, and enter the NAS address, existing SMB share, optional existing folder, username and NAS password. Settings are encrypted with an app-specific Android Keystore key. **Forget settings** removes this saved login without deleting backups.
+
+Choose **More → Save backup to NAS**, set and confirm a separate backup password (at least 12 characters) or generate a recovery key, and keep that secret separately. Each action uploads one encrypted portable SQLite backup to a unique timestamped filename, verifies the bytes by reading them back, then renames the temporary file. Earlier backups and the phone vault are retained. An SMB signing-capable NAS and folder write/read/rename permissions are required. A failed upload reports an error and keeps the local vault.
+
+To restore, copy the chosen backup from the NAS to your phone, then use **Restore portable encrypted backup** and its backup secret. Your phone PIN is not its recovery password. These are independent snapshots; there is no automatic sync, sharing, scheduling or backup pruning.
+
+The app now requests Android INTERNET permission for this optional NAS connection. Existing offline use, phone/YubiKey unlocking, and vault encryption are unchanged.
+
+### Password entry fixes (test.23)
+
+Reopening NAS settings leaves the password editor empty and masked. Leave it blank to keep the saved NAS password, or enter a replacement. Forget settings removes the saved login. NAS and backup-secret fields opt out of password-manager autofill, keyboard suggestions/learning and saved view state.
+
+### Notes-compatible NAS settings (test.24)
+
+Enter a plain IP address under NAS IP address, keep the same share name as Notes, and enter the save path under Folder within share. Dialog scrolling adjusts for the keyboard so Cancel remains visible. Folder validation errors are attached to the folder field.
+
+### Active dialog use and NAS diagnostics (test.25)
+
+Typing, touching and scrolling dialogs reset the existing two-minute idle countdown. Inactivity and leaving the app still lock it. More → Test NAS connection tests the saved connection without vault data and removes its unique test file. Network permission is checked before starting; connection errors identify reachability, login, share, folder, write, read-back verification, rename or cleanup.
+
+### Clearer NAS field labels
+
+**NAS shared folder name** is the actual shared folder configured on the NAS, such as `share`. **Subfolder path (optional)** is the path inside that shared folder, such as `PasswordVault/Dans-Vault`. Existing saved settings are retained; no nickname field is added.

@@ -1,3 +1,7 @@
+# 0.1.0-preview.6
+
+Clearer NAS shared folder name and Subfolder path (optional) labels with explanatory text. Saved connection settings and all note/backup formats are unchanged. No nickname field is added.
+
 # Changes
 
 ## 0.1.0-preview.4 — November 7, 2026

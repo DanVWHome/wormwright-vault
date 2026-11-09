@@ -23,7 +23,7 @@ with zipfile.ZipFile(apk) as archive:
 output=subprocess.check_output([str(sdk/'build-tools/36.0.0/aapt'),'dump','badging',str(apk)],text=True)
 assert "package: name='ai.wormwright.vault.standalone'" in output
 assert "targetSdkVersion:'36'" in output
-assert 'android.permission.INTERNET' not in output
+assert 'android.permission.INTERNET' in output
 assert 'android.permission.USE_BIOMETRIC' in output
 assert 'android.permission.NFC' in output
 manifest=subprocess.check_output([str(sdk/'build-tools/36.0.0/aapt'),'dump','xmltree',str(apk),'AndroidManifest.xml'],text=True)

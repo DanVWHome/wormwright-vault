@@ -57,3 +57,7 @@ Java 17, Android platform 35 and build-tools 35.0.0 are required. Open this proj
 With Gradle 8.13, run `gradle testDebugUnitTest` for encryption, backup integrity, database migration, privacy, relocking and sharing regressions. `assembleDebugAndroidTest` builds the disposable-emulator PIN test; `.github/workflows/android-notes-privacy.yml` in the parent repository runs it. The older `tests/NasBackupTest.java` checks NAS paths and incomplete/corrupt uploads.
 
 See LICENSE, LICENSING.md, THIRD-PARTY-NOTICES.txt and licenses/. Application code is GNU GPLv3 only; Wormwright branding is separate.
+
+### Clearer NAS field labels
+
+**NAS shared folder name** is the actual shared folder configured on the NAS, such as `share`. **Subfolder path (optional)** is the path inside that shared folder, such as `PasswordVault/Dans-Vault`. Existing saved settings are retained; no nickname field is added.

@@ -13,6 +13,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 /** Real Android dialog/message-loop regression checks; invented sample data only. */
 public class UiRegressionInstrumentation extends Instrumentation {
     private MainActivity activity;
+    private boolean nasBackupOnly;
     private boolean rotationOnly;
     private boolean layoutOnly;
     private boolean editorsOnly;
@@ -21,13 +22,15 @@ public class UiRegressionInstrumentation extends Instrumentation {
     private String lockMethod = "lock";
     private String sampleButton = "Open invented sample vault";
     private String jobMethod = "task";
-    @Override public void onCreate(Bundle args) { super.onCreate(args);layoutOnly=args!=null&&"true".equals(args.getString("layoutOnly"));rotationOnly=args!=null&&"true".equals(args.getString("rotationOnly"));editorsOnly=args!=null&&"true".equals(args.getString("editorsOnly")); confirmationOnly=args!=null&&"true".equals(args.getString("confirmationOnly")); start(); }
+    @Override public void onCreate(Bundle args) { super.onCreate(args);nasBackupOnly=args!=null&&"true".equals(args.getString("nasBackupOnly"));layoutOnly=args!=null&&"true".equals(args.getString("layoutOnly"));rotationOnly=args!=null&&"true".equals(args.getString("rotationOnly"));editorsOnly=args!=null&&"true".equals(args.getString("editorsOnly")); confirmationOnly=args!=null&&"true".equals(args.getString("confirmationOnly")); start(); }
     @Override public void onStart() {
         Bundle result=new Bundle();
         try {
             unlockFixtureScreen();
             activity=(MainActivity)startActivitySync(new Intent(getTargetContext(),MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
-            waitForIdleSync();capture("01-home");
+            waitForIdleSync();
+            if(nasBackupOnly){nasBackupFlow();result.putString("stream","PASS Pocket NAS backup: dialog typing stays unlocked beyond two minutes; connection test, field validation/encryption/cancel/forget, verified encrypted snapshots, login-stage failure cleanup, restore compatibility and lock guards\n");runOnMainSync(()->activity.finish());finish(Activity.RESULT_OK,result);return;}
+            capture("01-home");
             runOnMainSync(()->findButton(root(),"Create personal vault").performClick());capture("03-name");
             setVaultName("Practice vault");capture("04-optional-password");
             runOnMainSync(()->dialog().getButton(AlertDialog.BUTTON_POSITIVE).performClick());confirmPin();await(()->unlocked()&&!busy(),"practice vault created");
@@ -49,6 +52,55 @@ public class UiRegressionInstrumentation extends Instrumentation {
             runOnMainSync(()->invoke("about"));capture("15-about");
             result.putString("stream","PASS Pocket tutorial captures\n");finish(Activity.RESULT_OK,result);
         }catch(Throwable error){result.putString("stream",android.util.Log.getStackTraceString(error));finish(Activity.RESULT_CANCELED,result);}
+    }
+    private void checkCancelWithKeyboard() throws Exception {
+        final AlertDialog owner=dialog();
+        final EditText[] target=new EditText[1];
+        runOnMainSync(()->{activity.onUserInteraction();List<EditText> inputs=new ArrayList<>();collectInputs(owner.getWindow().getDecorView(),inputs);target[0]=inputs.get(inputs.size()-1);target[0].requestFocus();});
+        waitForIdleSync();
+        await(()->target[0].hasWindowFocus()&&((android.view.inputmethod.InputMethodManager)activity.getSystemService(android.content.Context.INPUT_METHOD_SERVICE)).isActive(target[0]),"new password dialog receives keyboard focus");
+        runOnMainSync(()->((android.view.inputmethod.InputMethodManager)activity.getSystemService(android.content.Context.INPUT_METHOD_SERVICE)).showSoftInput(target[0],android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT));
+        await(()->{android.view.WindowInsets i=owner.getWindow().getDecorView().getRootWindowInsets();return i!=null&&i.isVisible(android.view.WindowInsets.Type.ime());},"NAS dialog keyboard opens");
+        SystemClock.sleep(800);waitForIdleSync();
+        runOnMainSync(()->{Button cancel=owner.getButton(-2);android.graphics.Rect rect=new android.graphics.Rect();check(cancel.getGlobalVisibleRect(rect)&&rect.height()>=cancel.getHeight()-2,"entire Cancel button is visible");int[] position=new int[2];cancel.getLocationOnScreen(position);android.graphics.Rect visible=new android.graphics.Rect();owner.getWindow().getDecorView().getWindowVisibleDisplayFrame(visible);check(position[1]+cancel.getHeight()<=visible.bottom,"Cancel stays above keyboard in screen coordinates");((android.view.inputmethod.InputMethodManager)activity.getSystemService(android.content.Context.INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(cancel.getWindowToken(),0);});
+        await(()->{android.view.WindowInsets i=owner.getWindow().getDecorView().getRootWindowInsets();return i!=null&&!i.isVisible(android.view.WindowInsets.Type.ime());},"NAS dialog keyboard closes");
+    }
+    private void checkPrivatePassword(EditText field){
+        check(field.getTransformationMethod() instanceof android.text.method.PasswordTransformationMethod,"NAS and backup passwords are masked");
+        check(field.getAutofillType()==View.AUTOFILL_TYPE_NONE&&field.getAutofillValue()==null,"password-manager autofill is disabled");
+        check(!field.isSuggestionsEnabled()&&!field.isSaveEnabled(),"suggestions and saved view text disabled");
+        android.view.inputmethod.EditorInfo info=new android.view.inputmethod.EditorInfo();field.onCreateInputConnection(info);
+        check((info.imeOptions&android.view.inputmethod.EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING)!=0,"keyboard learning disabled");
+    }
+    private String statusText(){try{return ((TextView)field("status")).getText().toString();}catch(Exception e){throw new RuntimeException(e);}}
+    private void nasBackupFlow() throws Exception {
+        runOnMainSync(()->findButton(root(),sampleButton).performClick());await(()->unlocked()&&!busy()&&hasEntryRows(),"sample opens");
+        runOnMainSync(()->{try{Field f=MainActivity.class.getDeclaredField("sample");f.setAccessible(true);f.set(activity,false);f=MainActivity.class.getDeclaredField("active");f.setAccessible(true);f.set(activity,new org.json.JSONObject().put("name","Invented NAS test vault"));invoke("vaultScreen");invoke("backupToNas");}catch(Exception e){throw new RuntimeException(e);}});
+        waitForIdleSync();check(dialog()!=null,"missing settings opens setup");
+        final List<EditText> fields=new ArrayList<>();runOnMainSync(()->collectInputs(dialog().getWindow().getDecorView(),fields));check(fields.size()==6,"NAS form fields");runOnMainSync(()->{checkPrivatePassword(fields.get(5));check(fields.get(0).getText().toString().equals("192.168.1.144")&&fields.get(1).getText().toString().equals("share")&&fields.get(2).getText().toString().equals("PasswordVault/Dans-Vault"),"connection defaults match Notes");});checkCancelWithKeyboard();
+        final AlertDialog editingSettings=dialog();
+        for(int step=0;step<3;step++){
+            SystemClock.sleep(45000);
+            final int index=step;
+            runOnMainSync(()->{check(unlocked()&&dialog()==editingSettings&&editingSettings.isShowing(),"active settings remain open beyond original idle deadline");fields.get(3).setText("Still typing "+index);});
+        }
+        runOnMainSync(()->fields.get(3).setText(""));
+        runOnMainSync(()->{dialog().getButton(-1).performClick();check(fields.get(3).getError()!=null&&fields.get(0).getError()==null,"missing username is not reported as an IP format error");
+            String[] values={"10.0.2.2","pocket-test","backups","runner","","Synthetic2468Test"};for(int i=0;i<6;i++)fields.get(i).setText(values[i]);fields.get(2).setText("../outside");dialog().getButton(-1).performClick();check(dialog().isShowing()&&fields.get(2).getError()!=null&&fields.get(0).getError()==null,"invalid save path error belongs to the folder field");fields.get(2).setText("backups");dialog().getButton(-1).performClick();});waitForIdleSync();
+        NasSettings store=new NasSettings(activity);check(store.load().getString("password").equals("Synthetic2468Test"),"keystore settings roundtrip");
+        String raw=new String(java.nio.file.Files.readAllBytes(new java.io.File(activity.getNoBackupFilesDir(),"nas-settings.enc").toPath()),java.nio.charset.StandardCharsets.UTF_8);check(!raw.contains("Synthetic2468Test")&&!raw.contains("10.0.2.2"),"settings encrypted on disk");
+        runOnMainSync(()->invoke("configureNasBackup"));waitForIdleSync();runOnMainSync(()->{List<EditText> reopened=new ArrayList<>();collectInputs(dialog().getWindow().getDecorView(),reopened);check(reopened.get(5).length()==0,"saved NAS password is never placed in reopened editor");checkPrivatePassword(reopened.get(5));dialog().getButton(-1).performClick();});check(store.load().getString("password").equals("Synthetic2468Test"),"saving an unchanged empty editor keeps saved NAS login");
+        runOnMainSync(()->invoke("configureNasBackup"));waitForIdleSync();runOnMainSync(()->dialog().getButton(-2).performClick());check(store.exists(),"Cancel preserves saved settings");
+        runOnMainSync(()->invoke("testNasConnection"));await(()->!busy()&&statusText().contains("NAS connection passed"),"connection test checks the saved settings without a backup password");
+        for(int pass=0;pass<2;pass++){
+            runOnMainSync(()->{activity.onUserInteraction();invoke("backupToNas");});waitForIdleSync();checkCancelWithKeyboard();runOnMainSync(()->{List<EditText> secret=new ArrayList<>();collectInputs(dialog().getWindow().getDecorView(),secret);for(EditText field:secret)checkPrivatePassword(field);secret.get(0).requestFocus();check(dialog().isShowing()&&unlocked(),"focusing backup secret keeps the dialog and vault open");secret.get(0).setText("InventedBackupSecret-2468");secret.get(1).setText("InventedBackupSecret-2468");AlertDialog owner=dialog();owner.getButton(-1).performClick();invoke("backupToNas");check(busy()&&(dialog()==null||dialog()==owner),"busy prevents duplicate backup prompt");});
+            await(()->!busy()&&statusText().contains("NAS backup saved and verified"),"NAS backup succeeds");
+        }
+        org.json.JSONObject bad=store.load();bad.put("password","wrong-test-password");store.save(bad);
+        runOnMainSync(()->{activity.onUserInteraction();invoke("backupToNas");});waitForIdleSync();runOnMainSync(()->{List<EditText> secret=new ArrayList<>();collectInputs(dialog().getWindow().getDecorView(),secret);for(EditText field:secret)field.setText("InventedBackupSecret-2468");dialog().getButton(-1).performClick();});await(()->!busy()&&statusText().contains("NAS backup failed")&&statusText().contains("login"),"failed login identifies the login stage");
+        for(java.io.File file:activity.getNoBackupFilesDir().listFiles())check(!file.getName().startsWith("export-"),"temporary export removed on success and failure");
+        runOnMainSync(()->invoke("configureNasBackup"));waitForIdleSync();runOnMainSync(()->dialog().getButton(-3).performClick());check(!store.exists(),"forget settings removes saved login");
+        runOnMainSync(()->findButton(root(),"Lock vault").performClick());runOnMainSync(()->{activity.onUserInteraction();invoke("backupToNas");});check(!busy()&&dialog()==null,"locked vault cannot start NAS backup");
     }
     private void callExport(boolean migration){runOnMainSync(()->{try{Method m=MainActivity.class.getDeclaredMethod("export",boolean.class);m.setAccessible(true);m.invoke(activity,migration);}catch(Exception e){throw new RuntimeException(e);}});}
     private void capture(String name)throws Exception{
