@@ -1,6 +1,6 @@
 # Changes
 
-## 0.1.0-preview.6 — November 9, 2026
+## 0.1.0-preview.7 — November 9, 2026
 
 - Adds an Android plain-text/Markdown share target and More → Import text with explicit Paste.
 - Reviews title, text, Note/Checklist choice and checklist preview before Save; Cancel saves nothing.
