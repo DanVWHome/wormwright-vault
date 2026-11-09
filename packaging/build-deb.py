@@ -75,6 +75,7 @@ printf '%s\\n' 'Desktop launcher enabled for this login and future logins.'
     shutil.copy2(ROOT / 'docs/VIEW-ONLY-USERS.md', docs / 'VIEW-ONLY-USERS.md')
     shutil.copy2(ROOT / 'docs/RELEASE-0.3.12.md', docs / 'RELEASE-0.3.12.md')
     shutil.copy2(ROOT / 'docs/RELEASE-0.3.13.md', docs / 'RELEASE-0.3.13.md')
+    shutil.copy2(ROOT / 'docs/RELEASE-0.3.14.md', docs / 'RELEASE-0.3.14.md')
     shutil.copy2(ROOT / 'docs/ENTRY-OWNERSHIP.md', docs / 'ENTRY-OWNERSHIP.md')
     shutil.copy2(ROOT / 'docs/INTEGRATION.txt', docs / 'INTEGRATION.txt')
     notices = docs / 'third-party'

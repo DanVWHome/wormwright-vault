@@ -1,4 +1,5 @@
 """An extra view of one controller/session, with no database or sync worker."""
+from table_columns import configure_columns
 from website import add_website_action
 from update_check import add_update_actions
 from PySide6.QtCore import Qt
@@ -29,7 +30,7 @@ class CompanionView(QMainWindow):
             a=menu.addAction('Only deleted entries');a.setCheckable(True);a.toggled.connect(controller.only_deleted.setChecked);self.only_deleted_action=a
         self.table=QTableWidget(0,4);self.table.setHorizontalHeaderLabels(['Description','Link','User Name','Password'])
         self.table.horizontalHeaderItem(3).setToolTip('Password sorting is disabled to protect password privacy.')
-        self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers);self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows);self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection);self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers);self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows);self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection);configure_columns(self.table,'companion-manager' if manager else 'companion-vault',[280,300,200,240])
         self.table.horizontalHeader().setSortIndicatorShown(True);self.table.horizontalHeader().sectionClicked.connect(controller.sort_entries)
         self.table.currentCellChanged.connect(self.select);self.table.cellDoubleClicked.connect(controller.edit);layout.addWidget(self.table)
         layout.addWidget(QLabel('Shares the main session. Both views lock together. Close this view to keep the main window open.'))
@@ -60,6 +61,7 @@ class CompanionView(QMainWindow):
                 self.table.insertRow(i)
                 for j,key in enumerate(['description','link','user_name']):
                     item=QTableWidgetItem(r.get(key,'')+(' [Deleted]' if j==0 and r.get('deleted') else ''))
+                    item.setToolTip(item.text())
                     if r.get('deleted'):item.setBackground(QColor('#ffe0e0'));item.setForeground(QColor('#7c1515'))
                     self.table.setItem(i,j,item)
                 box=QWidget()

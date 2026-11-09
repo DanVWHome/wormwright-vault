@@ -1,5 +1,5 @@
 """Application version and release description shared by the interface."""
-VERSION = '0.3.13'
+VERSION = '0.3.14'
 WINDOWS_PREVIEW = None
 import sys
 import platform

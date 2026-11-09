@@ -1,3 +1,4 @@
+from table_columns import configure_columns
 from website import add_website_action
 from update_check import add_update_actions
 from key_ui import request_key_pin, choose_key, enroll_with_guidance, ENROLLMENT_STEPS
@@ -298,7 +299,7 @@ class Window(QMainWindow):
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.setAlternatingRowColors(True)
         self.table.verticalHeader().hide()
-        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        configure_columns(self.table,'personal',[70,250,280,200,240,150])
         self.table.setStyleSheet('QTableWidget { alternate-background-color: #c9eaf5; background-color: white; color: #202020; } QHeaderView::section { background: silver; color: black; padding: 6px; }')
         self.table.cellDoubleClicked.connect(lambda *_: self.edit())
         layout.addWidget(self.table)
@@ -1005,6 +1006,7 @@ class Window(QMainWindow):
             values = [str(row + 1), record['description'], record['link'], record['user_name'], '', f"Used in {counts[record['password']]} entries" if counts[record['password']] > 1 else '']
             for column, value in enumerate(values):
                 item = QTableWidgetItem(value)
+                if column != 4:item.setToolTip(value)
                 item.setData(Qt.ItemDataRole.UserRole, record['id'])
                 self.table.setItem(row, column, item)
             password_cell = QWidget()

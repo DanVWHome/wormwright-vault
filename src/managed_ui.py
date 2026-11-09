@@ -1,4 +1,5 @@
 """Managed-format UI shared by Vault and the optional Vault Manager launcher."""
+from table_columns import configure_columns
 from website import add_website_action
 from update_check import add_update_actions
 from key_ui import request_key_pin, choose_key, enroll_with_guidance
@@ -126,8 +127,7 @@ class ManagedWindow(QMainWindow):
         self.table=QTableWidget(0,6);self.table.setHorizontalHeaderLabels(['Description','Link','User Name','Password','Groups','Duplicate Password'])
         self.table.horizontalHeaderItem(3).setToolTip('Password sorting is disabled to protect password privacy.')
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows);self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers);self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        self.table.horizontalHeader().setSectionResizeMode(3,QHeaderView.ResizeMode.Fixed);self.table.setColumnWidth(3,240)
+        self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers);configure_columns(self.table,'managed',[250,280,200,240,150,150])
         self.table.horizontalHeader().setSortIndicatorShown(True);self.table.horizontalHeader().setSortIndicator(0,Qt.SortOrder.AscendingOrder)
         self.table.horizontalHeader().sectionClicked.connect(self.sort_entries)
         self.table.cellDoubleClicked.connect(self.edit);self.table.currentCellChanged.connect(self.selection_changed);layout.addWidget(self.table)
@@ -348,7 +348,8 @@ class ManagedWindow(QMainWindow):
                     f'Used in {counts[record["password"]]} entries' if counts[record.get('password','')]>1 else '']
                 for j,value in enumerate(values):
                     item=QTableWidgetItem(value)
-                    if j==0:item.setToolTip('Owner: '+(self.vault.administration()['users'][self.vault.owner_id(record)]['identity']['name'] if self.vault.manager else self.vault.owner_name(record)))
+                    if j!=3:item.setToolTip(str(value))
+                    if j==0:item.setToolTip(str(value)+'\nOwner: '+(self.vault.administration()['users'][self.vault.owner_id(record)]['identity']['name'] if self.vault.manager else self.vault.owner_name(record)))
                     if record.get('deleted'):
                         item.setBackground(QColor('#ffe0e0'));item.setForeground(QColor('#7c1515'));item.setToolTip('Deleted entry — select to restore')
                     self.table.setItem(i,j,item)

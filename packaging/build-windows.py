@@ -34,6 +34,7 @@ def main():
     shutil.copy2(ROOT / 'docs/VIEW-ONLY-USERS.md', docs / 'VIEW-ONLY-USERS.md')
     shutil.copy2(ROOT / 'docs/RELEASE-0.3.12.md', docs / 'RELEASE-0.3.12.md')
     shutil.copy2(ROOT / 'docs/RELEASE-0.3.13.md', docs / 'RELEASE-0.3.13.md')
+    shutil.copy2(ROOT / 'docs/RELEASE-0.3.14.md', docs / 'RELEASE-0.3.14.md')
     shutil.copy2(ROOT / 'docs/ENTRY-OWNERSHIP.md', docs / 'ENTRY-OWNERSHIP.md')
     for license_name in ('LICENSE', 'LICENSING.md'):
         shutil.copy2(ROOT / license_name, docs / license_name)
