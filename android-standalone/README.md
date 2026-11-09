@@ -192,3 +192,7 @@ Reopening NAS settings leaves the password editor empty and masked. Leave it bla
 ### Notes-compatible NAS settings (test.24)
 
 Enter a plain IP address under NAS IP address, keep the same share name as Notes, and enter the save path under Folder within share. Dialog scrolling adjusts for the keyboard so Cancel remains visible. Folder validation errors are attached to the folder field.
+
+### Active dialog use and NAS diagnostics (test.25)
+
+Typing, touching and scrolling dialogs reset the existing two-minute idle countdown. Inactivity and leaving the app still lock it. More → Test NAS connection tests the saved connection without vault data and removes its unique test file. Network permission is checked before starting; connection errors identify reachability, login, share, folder, write, read-back verification, rename or cleanup.

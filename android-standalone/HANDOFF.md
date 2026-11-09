@@ -1,7 +1,7 @@
 # Submission-chat handoff — pending device acceptance
 
 Publisher: Dan Van Wormer; support: danvanwormer@pm.me.
-App: Wormwright Pocket 0.1.0-test.24/versionCode 24, package ai.wormwright.vault.standalone. Uses the existing update signing identity. Optional NAS backups add INTERNET permission alongside biometric and NFC permissions. NAS credentials are app-keystore encrypted; backups use the existing separately password-protected portable format. No companion sync is added. Check NAS read/write/rename permissions and perform a restore test before relying on a backup.
+App: Wormwright Pocket 0.1.0-test.25/versionCode 25, package ai.wormwright.vault.standalone. Uses the existing update signing identity. Optional NAS backups add INTERNET permission alongside biometric and NFC permissions. NAS credentials are app-keystore encrypted; backups use the existing separately password-protected portable format. No companion sync is added. Check NAS read/write/rename permissions and perform a restore test before relying on a backup.
 
 Test.4 fixes record-to-editor dialog ownership and adds opening feedback. Safe-area
 spacing and grouped record controls remain. The existing NAS companion gets
