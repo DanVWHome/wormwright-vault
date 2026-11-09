@@ -17,10 +17,7 @@ import java.util.concurrent.TimeUnit;
 public final class NasBackup {
     static String folder(String input) throws IOException {
         String f=input.replace('/', '\\');
-        if(!f.isEmpty()) for(String part:f.split("\\\\",-1)) {
-            if(part.isEmpty()||part.equals(".")||part.equals("..")||part.endsWith(".")||part.endsWith(" "))throw new IOException("Invalid folder");
-            for(char c:part.toCharArray())if(c<32||"<>:\"|?*".indexOf(c)>=0)throw new IOException("Invalid folder");
-        }
+        if(f.startsWith("\\")||f.endsWith("\\")||Arrays.asList(f.split("\\\\",-1)).contains("..")||f.indexOf(':')>=0)throw new IOException("Invalid folder");
         return f;
     }
     static void verify(InputStream in, byte[] snapshot) throws IOException {
@@ -34,8 +31,6 @@ public final class NasBackup {
     }
     static void validate(JSONObject settings) throws Exception {
         for(String key:new String[]{"host","share","user"})if(settings.optString(key).trim().isEmpty())throw new IOException("Enter NAS address, share and username");
-        for(String key:new String[]{"host","share"})for(char c:settings.getString(key).toCharArray())
-            if(c<32||"\\/:<>\"|?*".indexOf(c)>=0)throw new IOException("Use an address and share name without smb:// or folder separators");
         folder(settings.optString("folder"));
     }
     public static String upload(JSONObject settings,byte[] snapshot) throws Exception {

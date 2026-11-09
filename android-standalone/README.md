@@ -188,3 +188,7 @@ The app now requests Android INTERNET permission for this optional NAS connectio
 ### Password entry fixes (test.23)
 
 Reopening NAS settings leaves the password editor empty and masked. Leave it blank to keep the saved NAS password, or enter a replacement. Forget settings removes the saved login. NAS and backup-secret fields opt out of password-manager autofill, keyboard suggestions/learning and saved view state.
+
+### Notes-compatible NAS settings (test.24)
+
+Enter a plain IP address under NAS IP address, keep the same share name as Notes, and enter the save path under Folder within share. Dialog scrolling adjusts for the keyboard so Cancel remains visible. Folder validation errors are attached to the folder field.

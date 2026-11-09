@@ -382,7 +382,7 @@ public class MainActivity extends Activity {
                 prompt.dismiss();
                 try { done.accept(value); } catch (Exception e) { message(safeError(e)); }
             });
-        }); ai.wormwright.hardware.YubiKeyKeyboardGuard.install(prompt.getWindow());prompt.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE); prompt.show();
+        }); ai.wormwright.hardware.YubiKeyKeyboardGuard.install(prompt.getWindow());prompt.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE); prompt.show();fitSecretDialog(prompt,passwordScroll);
     }
 
     private void vaultScreen() {
@@ -507,16 +507,37 @@ public class MainActivity extends Activity {
             File target=new File(base,"export-"+UUID.randomUUID()+".sqlite");call("export",target.getPath(),p);return target.getPath();
         },v->{pendingExport=new File(v);Intent intent=new Intent(Intent.ACTION_CREATE_DOCUMENT).setType("application/octet-stream").addCategory(Intent.CATEGORY_OPENABLE).putExtra(Intent.EXTRA_TITLE,migration?"wormwright-desktop.sqlite":"wormwright-portable-backup.sqlite");startActivityForResult(intent,101);}));
     }
+    private void fitSecretDialog(AlertDialog prompt,ScrollView content) {
+        Window window=prompt.getWindow();window.setDecorFitsSystemWindows(true);
+        window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
+        View decor=window.getDecorView();
+        Runnable resize=()->{
+            if(!prompt.isShowing()||decor.getHeight()==0)return;
+            WindowInsets insets=decor.getRootWindowInsets();
+            android.graphics.Rect bounds=getWindowManager().getCurrentWindowMetrics().getBounds();
+            int top=0,bottom=0;
+            if(insets!=null){android.graphics.Insets bars=insets.getInsets(WindowInsets.Type.systemBars()|WindowInsets.Type.displayCutout());android.graphics.Insets ime=insets.getInsets(WindowInsets.Type.ime());top=bars.top;bottom=Math.max(bars.bottom,ime.bottom);}
+            int available=bounds.height()-top-bottom-dp(32);
+            int chrome=Math.max(dp(120),decor.getHeight()-content.getHeight());
+            int height=Math.max(dp(48),Math.min(dp(400),available-chrome));
+            ViewGroup.LayoutParams params=content.getLayoutParams();
+            if(params.height!=height){params.height=height;content.setLayoutParams(params);}
+        };
+        decor.setOnApplyWindowInsetsListener((view,insets)->{content.post(resize);return view.onApplyWindowInsets(insets);});
+        decor.getViewTreeObserver().addOnGlobalLayoutListener(()->{if(prompt.isShowing())resize.run();});
+        content.post(resize);decor.requestApplyInsets();
+    }
     private void configureNasBackup() {
         if(busy||!unlocked||sample)return;
         final NasSettings storage=new NasSettings(this);final JSONObject saved;
         try{JSONObject old=storage.load();saved=old==null?new JSONObject():old;}catch(Exception e){message("Could not read NAS settings. Your vault is safe.");return;}
         LinearLayout form=column();form.setPadding(dp(16),dp(8),dp(16),dp(8));
-        form.addView(text("Save independent encrypted backups to your home NAS over SMB. Enter the existing share and backup folder. This does not connect your vault to Companion sync."));
+        form.addView(text("Use the same plain IP address, share name and folder as Notes. Put the save path in Folder within share."));
         String[] keys={"host","share","folder","user","domain","password"};
-        String[] labels={"NAS address (for example 192.168.1.10)","Share name","Folder within share (optional)","Username","Domain (optional)","NAS password"};
+        String[] labels={"NAS IP address","Share name","Folder within share","Username","Domain (optional)","NAS password"};
+        String[] defaults={"192.168.1.144","share","PasswordVault/Dans-Vault","","",""};
         EditText[] fields=new EditText[keys.length];
-        for(int i=0;i<keys.length;i++){form.addView(text(labels[i]));fields[i]=input(form,labels[i],i==5);if(i!=5){fields[i].setSingleLine(true);fields[i].setText(saved.optString(keys[i]));}else if(!saved.optString("password").isEmpty())fields[i].setHint("Password saved — leave blank to keep it");}
+        for(int i=0;i<keys.length;i++){form.addView(text(labels[i]));fields[i]=input(form,labels[i],i==5);if(i!=5){fields[i].setSingleLine(true);fields[i].setText(saved.optString(keys[i],defaults[i]));}else if(!saved.optString("password").isEmpty())fields[i].setHint("Password saved — leave blank to keep it");}
         form.addView(text("NAS login is stored encrypted on this phone. The backup password is chosen separately and is never saved here."));
         ScrollView scroll=new ScrollView(this);scroll.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS);scroll.setImportantForContentCapture(View.IMPORTANT_FOR_CONTENT_CAPTURE_NO_EXCLUDE_DESCENDANTS);scroll.addView(form);final int token=epoch;
         final AlertDialog prompt=new AlertDialog.Builder(this).setTitle("NAS backup settings").setView(scroll).setNegativeButton("Cancel",null).setNeutralButton("Forget settings",null).setPositiveButton("Save",null).create();dialog=prompt;
@@ -524,10 +545,12 @@ public class MainActivity extends Activity {
         prompt.setOnShowListener(d->{
             prompt.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{if(token!=epoch||!unlocked)return;try{
                 JSONObject values=new JSONObject();for(int i=0;i<keys.length;i++)values.put(keys[i],i==5?(fields[i].length()==0?saved.optString("password"):fields[i].getText().toString()):fields[i].getText().toString().trim());
+                for(int i:new int[]{0,1,3})if(fields[i].getText().toString().trim().isEmpty()){fields[i].setError("Required");fields[i].requestFocus();return;}
+                try{NasBackup.folder(values.optString("folder"));}catch(IOException invalid){fields[2].setError("Use a folder within the share, such as PasswordVault/Dans-Vault.");fields[2].requestFocus();return;}
                 NasBackup.validate(values);storage.save(values);prompt.dismiss();message("NAS backup settings saved on this phone.");
-            }catch(Exception e){fields[0].setError("Check address, share, username and folder. Use a share name without smb:// or slashes.");}});
+            }catch(Exception e){message("Could not save NAS settings. Your existing settings were kept.");}});
             prompt.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener(v->{if(token!=epoch||!unlocked)return;try{storage.clear();prompt.dismiss();message("NAS settings forgotten. Existing backups remain on the NAS.");}catch(Exception e){message("Could not forget NAS settings.");}});
-        });prompt.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);prompt.show();
+        });prompt.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);prompt.show();fitSecretDialog(prompt,scroll);
     }
     private void backupToNas() {
         if(busy||!unlocked||sample)return;
