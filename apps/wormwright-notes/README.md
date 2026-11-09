@@ -1,10 +1,20 @@
-# Wormwright Notes — 0.1.0-preview.5
+# Wormwright Notes — 0.1.0-preview.6
 
 Offline Android notes and checklists with autosave, search, pins, Trash, sharing and manual NAS backups. No ads, purchases, analytics or app account. Ordinary notes require Android 8 or later; secret notes require Android 11 or later with a secure phone screen lock.
 
 ## Notes and checklists
 
 Tap **+ New note**, then **Note** or **Checklist**. Changes save automatically on the phone. Use **Options** to pin, share, change between plain text and a checklist, or move a note to Trash. Use **More → Open trash** to restore or permanently delete a note.
+
+## Import text from ChatGPT or another app
+
+Share selected plain text to **Wormwright Notes**, or copy it and use **More → Import text → Paste text**. The review screen lets you edit the title and text, choose **Note** or **Checklist**, and preview the result. Nothing is saved until **Save**; Cancel leaves existing notes unchanged. Imported content always creates a new non-secret entry. To protect it afterward, open **Options → Make secret**.
+
+For a handwritten page, attach its photo in ChatGPT and ask for a faithful transcription. For lists, request one item per line without introductory commentary. Check unclear handwriting, then copy/share the actual reply text into Notes. A conversation-sharing link is just a URL; use Copy on the reply instead if that is what your ChatGPT version shares. Notes receives text, not photos, and does not run handwriting recognition itself.
+
+Checklist import recognizes common bullets, numbered items and checked/unchecked markers. The review preserves the source text while showing how it will be saved. Note imports preserve text and line breaks, including literal checkbox-looking text. Note/checklist choice is retained when reopening or backing up. The SQLite schema upgrades from versions 1/2 to 3 in place; existing content and secret ciphertext are preserved. Older public/password/YubiKey backups remain readable. Do not downgrade to an older APK after upgrading the database.
+
+This is an explicit Android sharing/paste workflow. No new server, account, API key or AI charge is introduced. It does not expose an API or allow hands-free live-voice editing.
 
 ## Secret notes
 
@@ -46,7 +56,7 @@ Saved NAS credentials are separately encrypted on this phone and excluded from a
 
 ## Install or update
 
-Download `Wormwright-Notes-0.1.0-preview.5.apk` from [the Notes page](https://wormwright.com/notes.html), open it on your phone and approve installation. Back up notes first, then install over the existing app. The package and signing identity match the earlier previews. Do not uninstall to update.
+Download `Wormwright-Notes-0.1.0-preview.6.apk` from [the Notes page](https://wormwright.com/notes.html), open it on your phone and approve installation. Back up notes first, then install over the existing app. The package and signing identity match the earlier previews. Do not uninstall to update.
 
 The app upgrades its database in place while preserving existing notes, checklists, pins and Trash. User reports confirmed preview 2 working, including sharing and NAS backups. The user reported preview 3 looks good. The user confirmed on physical hardware that preview 5 successfully registered a YubiKey over NFC, created a YubiKey-protected backup, removed the key registration from the app, and saved a backup to NAS. Automated regression results are recorded with the release. This user confirmation covers backup creation, not restoration.
 

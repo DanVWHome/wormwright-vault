@@ -56,11 +56,29 @@ public final class SecretUiInstrumentation extends Instrumentation {
             main(()->{activity.hardwareBackups().enroll("Disposable emulator key",BackupKeyRegistry.empty());return null;});
             waitFor(()->button(getUiAutomation().getRootInActiveWindow(),"Continue")!=null,10000);tapText("Cancel");
             check(main(()->activity.hardwareBackups().state().getJSONArray("keys").length()==0),"cancel did not register a key");
-            result.putString("stream","PASS real Android credential-only PIN, cancel, wrong PIN, encrypted secret checklist, sharing, relock and native YubiKey dialog cancellation\n");finish(-1,result);
+            // Android resolves a real ACTION_SEND into the review activity; no write happens on receipt.
+            int beforeImport=main(()->{try(android.database.Cursor c=activity.db.rawQuery("SELECT count(*) FROM notes",null)){c.moveToFirst();return c.getInt(0);}});
+            Intent shared=new Intent(Intent.ACTION_SEND).setType("text/plain").setPackage(getTargetContext().getPackageName()).putExtra(Intent.EXTRA_TEXT,"- Milk\n- [x] Bread").putExtra(Intent.EXTRA_SUBJECT,"Sample groceries").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            check(getTargetContext().getPackageManager().resolveActivity(shared,0)!=null,"Android text share target resolves");
+            TextImportActivity review=(TextImportActivity)startActivitySync(shared);
+            check(main(()->{try(android.database.Cursor c=activity.db.rawQuery("SELECT count(*) FROM notes",null)){c.moveToFirst();return c.getInt(0)==beforeImport;}}),"sharing did not save automatically");
+            tapText("Checklist");main(()->{review.title.setText("Reviewed groceries");return null;});captureImportReview();tapText("Save");
+            waitFor(()->main(()->{try(android.database.Cursor c=activity.db.rawQuery("SELECT title,body,secret,kind FROM notes WHERE title='Reviewed groceries'",null)){return c.moveToFirst()&&"[ ] Milk\n[x] Bread".equals(c.getString(1))&&c.getInt(2)==0&&c.getInt(3)==1;}}),10000);
+            check(main(()->activity.isSecret(id)),"text import did not change existing secret note");
+            TextImportActivity noteReview=(TextImportActivity)startActivitySync(new Intent(Intent.ACTION_SEND).setClass(getTargetContext(),TextImportActivity.class).setType("text/plain").putExtra(Intent.EXTRA_TEXT,"[ ] Literal text for a note").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            main(()->{noteReview.title.setText("Reviewed written note");return null;});tapText("Save");
+            waitFor(()->main(()->{try(android.database.Cursor c=activity.db.rawQuery("SELECT kind,body FROM notes WHERE title='Reviewed written note'",null)){return c.moveToFirst()&&c.getInt(0)==0&&"[ ] Literal text for a note".equals(c.getString(1));}}),10000);
+            result.putString("stream","PASS real Android credential-only PIN, cancel, wrong PIN, encrypted secret checklist, sharing, relock native YubiKey dialog cancellation, and reviewed text-share imports as note/checklist\n");finish(-1,result);
         }catch(Throwable error){
             StringWriter trace=new StringWriter();error.printStackTrace(new PrintWriter(trace));
             result.putString("stream","FAIL secret-note device regression\n"+trace+"\n"+tree(getUiAutomation().getRootInActiveWindow(),0));finish(1,result);
         }
+    }
+    void captureImportReview()throws Exception{
+        waitForIdleSync();SystemClock.sleep(500);
+        android.graphics.Bitmap bitmap=getUiAutomation().takeScreenshot();check(bitmap!=null,"import review screenshot");
+        File folder=getTargetContext().getExternalFilesDir("screenshots");check(folder!=null,"screenshot directory");
+        try(FileOutputStream out=new FileOutputStream(new File(folder,"notes-text-import.png"))){check(bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG,100,out),"PNG screenshot");}finally{bitmap.recycle();}
     }
     interface Condition{boolean get()throws Exception;}
     void waitFor(Condition condition,long timeout)throws Exception{long end=SystemClock.elapsedRealtime()+timeout;while(SystemClock.elapsedRealtime()<end){if(condition.get())return;SystemClock.sleep(100);}throw new AssertionError("Timed out waiting for expected test state");}

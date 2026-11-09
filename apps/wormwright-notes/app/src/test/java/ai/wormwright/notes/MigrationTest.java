@@ -16,8 +16,20 @@ public class MigrationTest {
    old.execSQL("INSERT INTO notes VALUES(42,'Old title','[x] milk',1,1,100)");old.setVersion(1);
   }
   try(org.robolectric.android.controller.ActivityController<MainActivity> c=Robolectric.buildActivity(MainActivity.class).setup()){
-   MainActivity a=c.get();assertEquals(2,a.db.getVersion());
+   MainActivity a=c.get();assertEquals(3,a.db.getVersion());
    try(Cursor row=a.db.rawQuery("SELECT id,title,body,pinned,deleted,secret FROM notes",null)){assertTrue(row.moveToFirst());assertEquals(42,row.getLong(0));assertEquals("Old title",row.getString(1));assertEquals("[x] milk",row.getString(2));assertEquals(1,row.getInt(3));assertEquals(1,row.getInt(4));assertEquals(0,row.getInt(5));}
   }
  }
+ @Test public void upgradingPreview5PreservesSecretCiphertextAndLegacyChecklistInference(){
+  android.app.Application app=RuntimeEnvironment.getApplication();app.deleteDatabase("notes.db");java.io.File file=app.getDatabasePath("notes.db");file.getParentFile().mkdirs();
+  try(SQLiteDatabase old=SQLiteDatabase.openOrCreateDatabase(file,null)){
+   old.execSQL("CREATE TABLE notes(id INTEGER PRIMARY KEY AUTOINCREMENT,title TEXT NOT NULL,body TEXT NOT NULL,pinned INTEGER NOT NULL DEFAULT 0,deleted INTEGER NOT NULL DEFAULT 0,updated INTEGER NOT NULL,secret INTEGER NOT NULL DEFAULT 0)");
+   old.execSQL("INSERT INTO notes VALUES(1,'','unchanged ciphertext',1,0,100,1)");old.execSQL("INSERT INTO notes VALUES(2,'Groceries','[ ] Milk',0,0,101,0)");old.setVersion(2);
+  }
+  try(org.robolectric.android.controller.ActivityController<MainActivity> c=Robolectric.buildActivity(MainActivity.class).setup()){
+   MainActivity a=c.get();assertEquals(3,a.db.getVersion());try(Cursor row=a.db.rawQuery("SELECT body,secret,kind FROM notes WHERE id=1",null)){row.moveToFirst();assertEquals("unchanged ciphertext",row.getString(0));assertEquals(1,row.getInt(1));assertEquals(-1,row.getInt(2));}
+   a.editor(2);assertTrue(a.checklistMode);assertEquals("[ ] Milk",a.body.getText().toString());
+  }
+ }
+
 }

@@ -45,6 +45,7 @@ jobs:
           adb shell am force-stop com.android.launcher3
           adb shell am instrument -w ai.wormwright.notes.test/ai.wormwright.notes.SecretUiInstrumentation | tee notes-test-results/pin-regression.txt
           grep -q 'PASS real Android credential-only PIN' notes-test-results/pin-regression.txt
+          adb pull /sdcard/Android/data/ai.wormwright.notes/files/screenshots/. notes-test-results/
       - name: Retain diagnostics
         if: always()
         run: |

@@ -39,6 +39,7 @@ public class MainActivity extends Activity {
     LinearLayout checklist;
     ScrollView checklistScroll;
     boolean checklistMode=false;
+    int explicitKind=-1;
     long editing = -1;
     boolean trash = false, loading = false;
     String query = "";
@@ -48,19 +49,20 @@ public class MainActivity extends Activity {
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
-        db = new SQLiteOpenHelper(this,"notes.db",null,2) {
-            public void onCreate(SQLiteDatabase d) { d.execSQL("CREATE TABLE notes (id INTEGER PRIMARY KEY AUTOINCREMENT,title TEXT NOT NULL,body TEXT NOT NULL,pinned INTEGER NOT NULL DEFAULT 0,deleted INTEGER NOT NULL DEFAULT 0,updated INTEGER NOT NULL,secret INTEGER NOT NULL DEFAULT 0)"); }
-            public void onConfigure(SQLiteDatabase d) { try(Cursor c=d.rawQuery("PRAGMA secure_delete=ON",null)){c.moveToFirst();} }
-            public void onUpgrade(SQLiteDatabase d,int old,int next) {
-                if(old==1&&next==2)d.execSQL("ALTER TABLE notes ADD COLUMN secret INTEGER NOT NULL DEFAULT 0");
-                else throw new IllegalStateException("Unsupported database upgrade");
-            }
-        }.getWritableDatabase();
+        db = NotesDatabase.open(this);
         if(state!=null) { editing=state.getLong("editing",-1); trash=state.getBoolean("trash"); query=state.getString("query","");
             String name=state.getString("pendingExport");
             if(name!=null&&name.matches("notes-export-[a-f0-9-]+\\.tmp"))pendingExport=new File(getCacheDir(),name);
         }
+        if(state==null&&getIntent().hasExtra("open_imported_note"))editing=getIntent().getLongExtra("open_imported_note",-1);
         if(editing!=-1) editor(editing); else home();
+    }
+    @Override protected void onNewIntent(Intent intent){
+        super.onNewIntent(intent);setIntent(intent);
+        if(intent.hasExtra("open_imported_note")){
+            if(currentSecret)concealSecret();else if(!save())return;
+            unlockedId=-1;editor(intent.getLongExtra("open_imported_note",-1));
+        }
     }
     int dp(int n) { return (int)(getResources().getDisplayMetrics().density*n); }
     LinearLayout column() { LinearLayout l=new LinearLayout(this); l.setOrientation(1); return l; }
@@ -78,14 +80,15 @@ public class MainActivity extends Activity {
         root.addView(label(trash?"Restore notes or remove them permanently.":"A little space for your thoughts.",15));
         LinearLayout actions=new LinearLayout(this);
         actions.addView(button(trash?"Back to notes":"+ New note",()->{if(trash){trash=false;home();}else new AlertDialog.Builder(this).setTitle("Create").setItems(new String[]{"Note","Checklist"},(d,n)->{editor(-1);if(n==1){body.setText("[ ] ");checklistMode=true;showChecklist();save();}}).show();}));
-        actions.addView(button("More",()->new AlertDialog.Builder(this).setItems(new String[]{"Back up all notes","Restore backup","Open trash","About","NAS settings","Save backup to NAS","YubiKey backup keys"},(d,n)->{
+        actions.addView(button("More",()->new AlertDialog.Builder(this).setItems(new String[]{"Back up all notes","Restore backup","Open trash","About","NAS settings","Save backup to NAS","YubiKey backup keys","Import text"},(d,n)->{
             if(n==0)startBackup(false);
             if(n==1) startActivityForResult(new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*"),11);
             if(n==2){trash=true;home();}
             if(n==4)nasSettings();
             if(n==5)startBackup(true);
             if(n==6)hardwareBackups().manage();
-            if(n==3)new AlertDialog.Builder(this).setTitle("Wormwright Notes").setMessage("No ads. No purchases. No account.\n\nNotes stay in this app on your phone. Use backup to keep a separate copy. Uninstalling removes local notes.\n\nVersion 0.1.0-preview.4").setPositiveButton("OK",null).show();
+            if(n==7)startActivity(new Intent(this,TextImportActivity.class));
+            if(n==3)new AlertDialog.Builder(this).setTitle("Wormwright Notes").setMessage("No ads. No purchases. No account.\n\nNotes stay in this app on your phone. Use backup to keep a separate copy. Uninstalling removes local notes.\n\nVersion 0.1.0-preview.6").setPositiveButton("OK",null).show();
         }).show()));root.addView(actions);
         EditText search=new EditText(this);search.setSingleLine();search.setHint("Search notes");search.setText(query);root.addView(search);
         ScrollView scroll=new ScrollView(this);cards=column();scroll.addView(cards);root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
@@ -110,12 +113,12 @@ public class MainActivity extends Activity {
     void editor(long id) {
         boolean secret=isSecret(id);
         if(secret&&unlockedId!=id){home();requestCredential(()->{unlockedId=id;editor(id);});return;}
-        String noteTitle="",noteBody="";
-        if(id!=-1)try(Cursor c=db.rawQuery("SELECT title,body FROM notes WHERE id=?",new String[]{""+id})){
+        String noteTitle="",noteBody="";explicitKind=-1;
+        if(id!=-1)try(Cursor c=db.rawQuery("SELECT title,body,kind FROM notes WHERE id=?",new String[]{""+id})){
             if(!c.moveToFirst()){home();return;}
-            if(secret){try{JSONObject content=new JSONObject(secretCipher.decrypt(id,c.getString(1)));noteTitle=content.getString("title");noteBody=content.getString("body");}
+            if(secret){try{JSONObject content=new JSONObject(secretCipher.decrypt(id,c.getString(1)));noteTitle=content.getString("title");noteBody=content.getString("body");explicitKind=content.optInt("kind",-1);}
                 catch(Exception e){home();toast("Could not unlock this secret note. Restore a password-protected backup if its phone key was lost.");return;}}
-            else{noteTitle=c.getString(0);noteBody=c.getString(1);}
+            else{noteTitle=c.getString(0);noteBody=c.getString(1);explicitKind=c.getInt(2);}
         }
         if(secret&&draftId==id){noteTitle=draftTitle;noteBody=draftBody;}
         currentSecret=secret;editing=id;
@@ -133,7 +136,7 @@ public class MainActivity extends Activity {
         title.setText(noteTitle);body.setText(noteBody);
         if(secret){privateInput(title);privateInput(body);}
         loading=false;
-        checklistMode=body.getText().toString().startsWith("[ ] ")||body.getText().toString().startsWith("[x] ");
+        checklistMode=explicitKind==1||(explicitKind==-1&&(body.getText().toString().startsWith("[ ] ")||body.getText().toString().startsWith("[x] ")));
         showChecklist();
         TextWatcher w=watcher(()->{if(!loading){status.setText("Saving…");handler.removeCallbacks(saveLater);handler.postDelayed(saveLater,400);}});title.addTextChangedListener(w);body.addTextChangedListener(w);
     }
@@ -143,9 +146,9 @@ public class MainActivity extends Activity {
         if(editing==-1&&title.length()==0&&body.length()==0)return true;
         try{if(currentSecret&&unlockedId!=editing)return false;
             ContentValues v=new ContentValues();String textTitle=title.getText().toString(),textBody=body.getText().toString();
-            if(currentSecret){v.put("title","");v.put("body",secretCipher.encrypt(editing,new JSONObject().put("title",textTitle).put("body",textBody).toString()));}
+            if(currentSecret){v.put("title","");v.put("body",secretCipher.encrypt(editing,new JSONObject().put("title",textTitle).put("body",textBody).put("kind",explicitKind).toString()));}
             else{v.put("title",textTitle);v.put("body",textBody);}
-            v.put("updated",System.currentTimeMillis());
+            v.put("kind",currentSecret?-1:explicitKind);v.put("updated",System.currentTimeMillis());
             if(editing==-1)editing=db.insertOrThrow("notes",null,v);else db.update("notes",v,"id=?",new String[]{""+editing});status.setText(currentSecret?"Secret · saved on this phone":"Saved on this phone");if(draftId==editing){draftId=-1;draftTitle=null;draftBody=null;}return true;
         }catch(Exception e){status.setText("Could not save. Keep this note open.");return false;}
     }
@@ -156,7 +159,7 @@ public class MainActivity extends Activity {
             if(n==1)shareNote();
             if(n==4){if(currentSecret)confirmMakePublic();else confirmMakeSecret();}
             if(n==5){if(currentSecret)concealSecret();else toast("This note is not secret");}
-            if(n==3){checklistMode=!checklistMode;if(checklistMode){String text=body.getText().toString();StringBuilder b=new StringBuilder();for(String line:text.split("\n",-1)){if(b.length()>0)b.append("\n");b.append(line.startsWith("[ ] ")||line.startsWith("[x] ")?line:"[ ] "+line);}body.setText(b.toString());}if(!checklistMode){body.setText(body.getText().toString().replaceAll("(?m)^\\[(?: |x)\\] ",""));}showChecklist();save();}
+            if(n==3){checklistMode=!checklistMode;explicitKind=checklistMode?1:0;if(checklistMode){String text=body.getText().toString();StringBuilder b=new StringBuilder();for(String line:text.split("\n",-1)){if(b.length()>0)b.append("\n");b.append(line.startsWith("[ ] ")||line.startsWith("[x] ")?line:"[ ] "+line);}body.setText(b.toString());}if(!checklistMode){body.setText(body.getText().toString().replaceAll("(?m)^\\[(?: |x)\\] ",""));}showChecklist();save();}
             if(n==2){if(editing!=-1)db.execSQL("UPDATE notes SET deleted=1 WHERE id=?",new Object[]{editing});title=null;body=null;home();}
         }).show();
     }
@@ -315,10 +318,10 @@ public class MainActivity extends Activity {
             }).show();
     }
     void makeSecret(long id)throws Exception{
-        try(Cursor c=db.rawQuery("SELECT title,body,secret FROM notes WHERE id=?",new String[]{""+id})){
+        try(Cursor c=db.rawQuery("SELECT title,body,secret,kind FROM notes WHERE id=?",new String[]{""+id})){
             if(!c.moveToFirst()||c.getInt(2)==1)return;
-            String encrypted=secretCipher.encrypt(id,new JSONObject().put("title",c.getString(0)).put("body",c.getString(1)).toString());
-            ContentValues values=new ContentValues();values.put("title","");values.put("body",encrypted);values.put("secret",1);
+            String encrypted=secretCipher.encrypt(id,new JSONObject().put("title",c.getString(0)).put("body",c.getString(1)).put("kind",c.getInt(3)).toString());
+            ContentValues values=new ContentValues();values.put("title","");values.put("body",encrypted);values.put("secret",1);values.put("kind",-1);
             db.update("notes",values,"id=?",new String[]{""+id});
         }
     }
@@ -327,7 +330,7 @@ public class MainActivity extends Activity {
         new AlertDialog.Builder(this).setTitle("Make this note public?").setMessage("Its title and text will display without your phone screen lock.")
             .setNegativeButton("Cancel",null).setPositiveButton("Make public",(d,w)->{
                 if(!currentSecret||unlockedId!=editing||!save())return;
-                ContentValues v=new ContentValues();v.put("title",title.getText().toString());v.put("body",body.getText().toString());v.put("secret",0);
+                ContentValues v=new ContentValues();v.put("title",title.getText().toString());v.put("body",body.getText().toString());v.put("secret",0);v.put("kind",explicitKind);
                 db.update("notes",v,"id=?",new String[]{""+editing});long id=editing;unlockedId=-1;editor(id);
             }).show();
     }
@@ -349,11 +352,11 @@ public class MainActivity extends Activity {
     private byte[] snapshotBytes()throws Exception{
         boolean secretPresent=hasSecrets();
         JSONObject backup=new JSONObject();backup.put("format",secretPresent?"wormwright-notes-v2":"wormwright-notes-v1");JSONArray notes=new JSONArray();
-        try(Cursor c=db.rawQuery("SELECT id,title,body,pinned,deleted,updated,secret FROM notes",null)){
+        try(Cursor c=db.rawQuery("SELECT id,title,body,pinned,deleted,updated,secret,kind FROM notes",null)){
             while(c.moveToNext()){
                 boolean secret=c.getInt(6)==1;JSONObject n;
                 if(secret)n=new JSONObject(secretCipher.decrypt(c.getLong(0),c.getString(2)));
-                else n=new JSONObject().put("title",c.getString(1)).put("body",c.getString(2));
+                else n=new JSONObject().put("title",c.getString(1)).put("body",c.getString(2)).put("kind",c.getInt(7));
                 n.put("pinned",c.getInt(3));n.put("deleted",c.getInt(4));n.put("updated",c.getLong(5));n.put("secret",secret);notes.put(n);
             }
         }
@@ -435,8 +438,9 @@ public class MainActivity extends Activity {
                 JSONObject n=notes.getJSONObject(i);boolean secret=n.optBoolean("secret",false);ContentValues v=new ContentValues();
                 v.put("title",secret?"":n.getString("title"));v.put("body",secret?"":n.getString("body"));
                 v.put("pinned",n.getInt("pinned")==1?1:0);v.put("deleted",n.getInt("deleted")==1?1:0);v.put("updated",n.getLong("updated"));v.put("secret",secret?1:0);
+                int kind=n.optInt("kind",-1);if(kind < -1||kind>1)throw new IOException("Invalid note kind");v.put("kind",secret?-1:kind);
                 long id=db.insertOrThrow("notes",null,v);
-                if(secret){ContentValues sealed=new ContentValues();sealed.put("body",secretCipher.encrypt(id,new JSONObject().put("title",n.getString("title")).put("body",n.getString("body")).toString()));db.update("notes",sealed,"id=?",new String[]{""+id});}
+                if(secret){ContentValues sealed=new ContentValues();sealed.put("body",secretCipher.encrypt(id,new JSONObject().put("title",n.getString("title")).put("body",n.getString("body")).put("kind",kind).toString()));db.update("notes",sealed,"id=?",new String[]{""+id});}
             }db.setTransactionSuccessful();
         }finally{db.endTransaction();}
     }

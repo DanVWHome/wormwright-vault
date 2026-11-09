@@ -1,5 +1,15 @@
 # Changes
 
+## 0.1.0-preview.6 — November 9, 2026
+
+- Adds an Android plain-text/Markdown share target and More → Import text with explicit Paste.
+- Reviews title, text, Note/Checklist choice and checklist preview before Save; Cancel saves nothing.
+- Creates new non-secret entries only; incoming shares cannot read, edit or delete existing notes.
+- Preserves checked items and note/checklist choice through reopening and backups.
+- Migrates the database in place while retaining existing notes, secrets, pins, Trash and NAS/key settings.
+- Adds import, migration and real Android share-intent checks. No new service, account or API key is needed.
+
+
 ## 0.1.0-preview.4 — November 7, 2026
 
 - Adds Password and YubiKey choices for encrypted file and NAS backups.
