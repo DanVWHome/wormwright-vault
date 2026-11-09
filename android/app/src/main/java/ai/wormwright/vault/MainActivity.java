@@ -56,6 +56,7 @@ public class MainActivity extends Activity {
     private final Handler handler = new Handler(Looper.getMainLooper());
     private LinearLayout root, rows;
     private EditText username, password, search;
+    private Boolean accountNameRequired=null;
     private TextView status, progressLabel;
     private LinearLayout progressRow;
     private String progressText = "Working…";
@@ -269,7 +270,19 @@ public class MainActivity extends Activity {
         ScrollView scroll = new ScrollView(this); LinearLayout form = column();
         scroll.addView(form); root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
         form.addView(label("Your vault, wherever you are", 23));
-        username = input("Account name", false);
+        accountNameRequired=null;
+        if(vaultFile.exists()) {
+            try { accountNameRequired=new JSONObject(bridge().callAttr("login_requirements",vaultFile.getAbsolutePath()).toString()).getBoolean("username_required"); }
+            catch(Exception ignored) { /* Guidance must never block the existing unlock/recovery paths. */ }
+        }
+        String guidance=Boolean.TRUE.equals(accountNameRequired)
+            ? "This vault uses individual user accounts. Enter your account name before unlocking with either your password or YubiKey."
+            : Boolean.FALSE.equals(accountNameRequired)
+                ? "Personal vault: leave account name blank. Unlock with your vault password or enrolled YubiKey."
+                : "If this vault uses Users & Groups, enter your account name for both password and YubiKey login. Personal vaults do not require an account name.";
+        form.addView(label(guidance,16));
+        username = input(Boolean.TRUE.equals(accountNameRequired)?"Account name (required for password and YubiKey)":"Account name", false);
+        username.setSingleLine(true);
         password = input("Vault account password", true);
         form.addView(username); form.addView(password);
         password.setOnFocusChangeListener((view, focused) -> {
@@ -287,7 +300,6 @@ public class MainActivity extends Activity {
         form.addView(button("NAS connection settings", this::configureNas));
         if (vaultFile.exists()) form.addView(button("Export encrypted phone backup", this::chooseExport));
         status = label(message, 15); form.addView(status);
-        form.addView(label("Personal vault: leave account name blank.", 14));
         form.addView(label("Read and edit your encrypted vault offline. Changes sync with your NAS after unlocking, saving and while the app is open. Complete the first NAS sync before editing.", 16));
         form.addView(label("Locks when you leave the app or after two minutes idle. Screenshots and device backups are disabled. Copied values clear after 30 seconds or when you lock.", 14));
         form.addView(label("No Google Play services needed", 13));
@@ -337,8 +349,16 @@ public class MainActivity extends Activity {
         hardwareFailureDialog.setCanceledOnTouchOutside(false);
         ai.wormwright.hardware.YubiKeyKeyboardGuard.install(hardwareFailureDialog.getWindow());hardwareFailureDialog.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);hardwareFailureDialog.show();
     }
+    private boolean accountNameReady() {
+        if(Boolean.TRUE.equals(accountNameRequired)&&username.getText().toString().trim().isEmpty()) {
+            String note="Enter your account name first. This vault requires it for both password and YubiKey login.";
+            username.setError(note);username.requestFocus();status.setText(note);return false;
+        }
+        return true;
+    }
     private void unlockHardware() {
         if(busy||!vaultFile.exists()||hardware.active())return;
+        if(!accountNameReady())return;
         final String path=vaultFile.getAbsolutePath(),account=username.getText().toString();
         password.getText().clear();
         job("Reading YubiKey enrollment…",()->bridge().callAttr("hardware_requests",path,account).toString(),request->{
@@ -357,6 +377,7 @@ public class MainActivity extends Activity {
     }
     private void unlock() {
         if (busy || !vaultFile.exists()) return;
+        if(!accountNameReady())return;
         String account = username.getText().toString();
         String secret = password.getText().toString();
         password.getText().clear();

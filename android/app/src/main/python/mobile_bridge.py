@@ -4,6 +4,7 @@ No password, entry or key material is persisted by this bridge. SQLite is opened
 read-only and the original selected document is never mutated.
 """
 import json
+from contextlib import closing
 import hashlib
 import os
 import shutil
@@ -31,6 +32,18 @@ class ReadOnlyVault(ManagedVault):
 _vault = None
 _sample = False
 _pending = None
+
+
+def login_requirements(path):
+    """Read only public format/mode metadata for sign-in guidance, never authenticate."""
+    path = Path(path)
+    if not path.is_file():
+        raise VaultError('Import an encrypted vault first.')
+    with closing(sqlite3.connect(path.resolve().as_uri() + '?mode=ro', uri=True)) as db:
+        metadata = dict(db.execute("SELECT name,value FROM metadata WHERE name IN ('version','mode')"))
+    if metadata.get('version') != b'2' or metadata.get('mode') not in (b'personal', b'managed'):
+        raise VaultError('Unsupported vault format.')
+    return json.dumps({'username_required': metadata['mode'] == b'managed'})
 
 
 def validate_file(path):
