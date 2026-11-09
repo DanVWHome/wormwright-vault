@@ -518,8 +518,11 @@ public class MainActivity extends Activity {
             int top=0,bottom=0;
             if(insets!=null){android.graphics.Insets bars=insets.getInsets(WindowInsets.Type.systemBars()|WindowInsets.Type.displayCutout());android.graphics.Insets ime=insets.getInsets(WindowInsets.Type.ime());top=bars.top;bottom=Math.max(bars.bottom,ime.bottom);}
             int available=bounds.height()-top-bottom-dp(32);
+            android.graphics.Rect visible=new android.graphics.Rect();decor.getWindowVisibleDisplayFrame(visible);
+            if(!visible.isEmpty())available=Math.min(available,visible.height()-dp(32));
+            int natural=content.getChildCount()==0?dp(400):content.getChildAt(0).getMeasuredHeight();if(natural<=0)natural=dp(400);
             int chrome=Math.max(dp(120),decor.getHeight()-content.getHeight());
-            int height=Math.max(dp(48),Math.min(dp(400),available-chrome));
+            int height=Math.max(dp(48),Math.min(natural,Math.min(dp(400),available-chrome)));
             ViewGroup.LayoutParams params=content.getLayoutParams();
             if(params.height!=height){params.height=height;content.setLayoutParams(params);}
         };
