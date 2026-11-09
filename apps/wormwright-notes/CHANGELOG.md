@@ -2,6 +2,9 @@
 
 ## Release 8 — November 9, 2026
 
+- Renames the Android version and About label to Release 8, with internal version code 9 for an in-place upgrade.
+- Ships as Wormwright-Notes-Release-8.apk using the existing signing identity; checklist behavior and data formats are unchanged.
+
 - User verified that longer checklist items wrap correctly and their full text is readable.
 - Promotes the same verified build to a regular release; existing artifact and tag names are retained for compatibility.
 

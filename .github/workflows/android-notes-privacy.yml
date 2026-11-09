@@ -19,10 +19,14 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.13'
-      - name: Build and test migration, encryption, redaction, sharing and backups
+      - name: Build named release and prior APK for upgrade checks
         run: |
           sdkmanager 'platforms;android-35' 'build-tools;35.0.0' 'emulator' 'system-images;android-35;default;x86_64'
-          gradle -p apps/wormwright-notes testDebugUnitTest assembleDebug assembleDebugAndroidTest --no-daemon
+          gradle -p apps/wormwright-notes assembleDebug assembleDebugAndroidTest --no-daemon
+          git fetch --depth=1 origin tag notes-v0.1.0-preview.8
+          mkdir -p "$RUNNER_TEMP/notes-previous"
+          git archive notes-v0.1.0-preview.8 apps/wormwright-notes | tar -x -C "$RUNNER_TEMP/notes-previous"
+          gradle -p "$RUNNER_TEMP/notes-previous/apps/wormwright-notes" assembleDebug --no-daemon
       - name: Exercise the real PIN prompt on a disposable Android emulator
         timeout-minutes: 12
         run: |
@@ -40,9 +44,17 @@ jobs:
           adb shell input keyevent 82
           # Invented PIN for the isolated emulator only.
           adb shell locksettings set-pin 246813
-          adb install apps/wormwright-notes/app/build/outputs/apk/debug/app-debug.apk
+          adb install "$RUNNER_TEMP/notes-previous/apps/wormwright-notes/app/build/outputs/apk/debug/app-debug.apk"
           adb install apps/wormwright-notes/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
           adb shell am force-stop com.android.launcher3
+          adb shell am instrument -w -e upgrade seed ai.wormwright.notes.test/ai.wormwright.notes.SecretUiInstrumentation | tee notes-test-results/upgrade-seed.txt
+          grep -q 'PASS release upgrade seed' notes-test-results/upgrade-seed.txt
+          adb shell am force-stop ai.wormwright.notes
+          adb install -r apps/wormwright-notes/app/build/outputs/apk/debug/app-debug.apk
+          adb shell am instrument -w -e upgrade check ai.wormwright.notes.test/ai.wormwright.notes.SecretUiInstrumentation | tee notes-test-results/upgrade-check.txt
+          grep -q 'PASS release upgrade check' notes-test-results/upgrade-check.txt
+          # Clear only disposable emulator fixture data before the independent privacy check.
+          adb shell pm clear ai.wormwright.notes
           adb shell am instrument -w ai.wormwright.notes.test/ai.wormwright.notes.SecretUiInstrumentation | tee notes-test-results/pin-regression.txt
           grep -q 'PASS real Android credential-only PIN' notes-test-results/pin-regression.txt
           adb pull /sdcard/Android/data/ai.wormwright.notes/files/screenshots/. notes-test-results/

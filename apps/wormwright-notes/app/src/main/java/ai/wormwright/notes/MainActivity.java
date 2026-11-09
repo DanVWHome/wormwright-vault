@@ -64,6 +64,7 @@ public class MainActivity extends Activity {
             unlockedId=-1;editor(intent.getLongExtra("open_imported_note",-1));
         }
     }
+    String appVersion(){try{return getPackageManager().getPackageInfo(getPackageName(),0).versionName;}catch(android.content.pm.PackageManager.NameNotFoundException impossible){return "Wormwright Notes";}}
     int dp(int n) { return (int)(getResources().getDisplayMetrics().density*n); }
     LinearLayout column() { LinearLayout l=new LinearLayout(this); l.setOrientation(1); return l; }
     TextView label(String s,int size) { TextView t=new TextView(this); t.setText(s);t.setTextSize(size);t.setTextColor(ink);t.setPadding(0,dp(8),0,dp(8));return t; }
@@ -88,7 +89,7 @@ public class MainActivity extends Activity {
             if(n==5)startBackup(true);
             if(n==6)hardwareBackups().manage();
             if(n==7)startActivity(new Intent(this,TextImportActivity.class));
-            if(n==3)new AlertDialog.Builder(this).setTitle("Wormwright Notes").setMessage("No ads. No purchases. No account.\n\nNotes stay in this app on your phone. Use backup to keep a separate copy. Uninstalling removes local notes.\n\nVersion 0.1.0-preview.8").setPositiveButton("OK",null).show();
+            if(n==3)new AlertDialog.Builder(this).setTitle("Wormwright Notes").setMessage("No ads. No purchases. No account.\n\nNotes stay in this app on your phone. Use backup to keep a separate copy. Uninstalling removes local notes.\n\n"+appVersion()).setPositiveButton("OK",null).show();
         }).show()));root.addView(actions);
         EditText search=new EditText(this);search.setSingleLine();search.setHint("Search notes");search.setText(query);root.addView(search);
         ScrollView scroll=new ScrollView(this);cards=column();scroll.addView(cards);root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));

@@ -14,12 +14,13 @@ import java.util.concurrent.FutureTask;
 public final class SecretUiInstrumentation extends Instrumentation {
     MainActivity activity;
     long id;
-    boolean screenshots;
+    boolean screenshots;String upgradeMode;
     static final String TITLE="Test-only private checklist",BODY="[ ] invented pears\n[x] invented milk";
-    public void onCreate(Bundle arguments){super.onCreate(arguments);screenshots=arguments!=null&&"true".equals(arguments.getString("screenshots"));start();}
+    public void onCreate(Bundle arguments){super.onCreate(arguments);upgradeMode=arguments==null?null:arguments.getString("upgrade");screenshots=arguments!=null&&"true".equals(arguments.getString("screenshots"));start();}
     public void onStart(){
         Bundle result=new Bundle();
         try{
+            if(upgradeMode!=null){ReleaseUpgradeCheck.run(this,"seed".equals(upgradeMode));result.putString("stream","PASS release upgrade "+upgradeMode+"\n");finish(-1,result);return;}
             if(screenshots){ScreenshotCapture.run(this);result.putString("stream","PASS website screenshots captured from actual app screens with fictional sample notes\n");finish(-1,result);return;}
             activity=(MainActivity)startActivitySync(new Intent(getTargetContext(),MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
             android.app.KeyguardManager screen=(android.app.KeyguardManager)getTargetContext().getSystemService(android.content.Context.KEYGUARD_SERVICE);
