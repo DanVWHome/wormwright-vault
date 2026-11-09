@@ -55,7 +55,11 @@ public class UiRegressionInstrumentation extends Instrumentation {
     }
     private void checkCancelWithKeyboard() throws Exception {
         final AlertDialog owner=dialog();
-        runOnMainSync(()->{List<EditText> inputs=new ArrayList<>();collectInputs(owner.getWindow().getDecorView(),inputs);EditText last=inputs.get(inputs.size()-1);last.requestFocus();((android.view.inputmethod.InputMethodManager)activity.getSystemService(android.content.Context.INPUT_METHOD_SERVICE)).showSoftInput(last,android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT);});
+        final EditText[] target=new EditText[1];
+        runOnMainSync(()->{activity.onUserInteraction();List<EditText> inputs=new ArrayList<>();collectInputs(owner.getWindow().getDecorView(),inputs);target[0]=inputs.get(inputs.size()-1);target[0].requestFocus();});
+        waitForIdleSync();
+        await(()->target[0].hasWindowFocus()&&((android.view.inputmethod.InputMethodManager)activity.getSystemService(android.content.Context.INPUT_METHOD_SERVICE)).isActive(target[0]),"new password dialog receives keyboard focus");
+        runOnMainSync(()->((android.view.inputmethod.InputMethodManager)activity.getSystemService(android.content.Context.INPUT_METHOD_SERVICE)).showSoftInput(target[0],android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT));
         await(()->{android.view.WindowInsets i=owner.getWindow().getDecorView().getRootWindowInsets();return i!=null&&i.isVisible(android.view.WindowInsets.Type.ime());},"NAS dialog keyboard opens");
         SystemClock.sleep(800);waitForIdleSync();
         runOnMainSync(()->{Button cancel=owner.getButton(-2);android.graphics.Rect rect=new android.graphics.Rect();check(cancel.getGlobalVisibleRect(rect)&&rect.height()>=cancel.getHeight()-2,"entire Cancel button is visible");int[] position=new int[2];cancel.getLocationOnScreen(position);android.graphics.Rect visible=new android.graphics.Rect();owner.getWindow().getDecorView().getWindowVisibleDisplayFrame(visible);check(position[1]+cancel.getHeight()<=visible.bottom,"Cancel stays above keyboard in screen coordinates");((android.view.inputmethod.InputMethodManager)activity.getSystemService(android.content.Context.INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(cancel.getWindowToken(),0);});
