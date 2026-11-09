@@ -1025,7 +1025,7 @@ class ManagedWindow(QMainWindow):
         if not self.vault.manager or not other.manager:
             raise VaultError('Only the Manager can resolve account/group conflicts. Both copies are retained.')
         dialog=QDialog(self);dialog.setWindowTitle('Manager — Reconcile Access and Entries');dialog.resize(1000,520);layout=QVBoxLayout(dialog)
-        warning=QLabel('Choose one complete set of accounts, memberships, exclusions and credentials. This determines who receives the resulting entries. Both originals are backed up. Entry groups missing from those settings require explicit reassignment.');warning.setWordWrap(True);layout.addWidget(warning)
+        warning=QLabel('Choose one complete set of accounts, entry owners, memberships, exclusions and credentials. This determines who receives and owns the resulting entries. Both originals are backed up. Entry groups missing from those settings require explicit reassignment.');warning.setWordWrap(True);layout.addWidget(warning)
         authority=QComboBox();authority.addItems(['Choose access settings…','Local access settings','Shared access settings']);layout.addWidget(authority)
         a={r['id']:r for r in self.vault.entries(True)};b={r['id']:r for r in other.entries(True)};ids=sorted(set(a)|set(b))
         table=QTableWidget(len(ids),3);table.setHorizontalHeaderLabels(['Local entry','Shared entry','Keep']);table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch);table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers);layout.addWidget(table);selectors=[]

@@ -112,3 +112,19 @@ with tempfile.TemporaryDirectory() as directory:
  with a.db:a._write(original)
  m.lock();a.lock()
 print('Legacy UUID entries gain signed owner bindings; creator substitution is rejected after migration.')
+# Manager reconciliation must retain private entries and selected ownership.
+with tempfile.TemporaryDirectory() as directory:
+ from managed_sync import reconcile,state
+ root=Path(directory);share=root/'share';share.mkdir()
+ a=ManagedVault(root/'a.sqlite');a.create('manager-test-password',managed=True)
+ uid=a.add_user('Macie','macie-test-password',view_only=True);other=a.add_user('Onyx','onyx-test-password',view_only=True)
+ child=ManagedVault(a.path);child.unlock('macie-test-password','Macie');eid=child.save({'description':'Private email'});child.lock()
+ b=ManagedVault(root/'b.sqlite');a.backup(b.path);b.unlock('manager-test-password','Manager')
+ configure(a,share,2);configure(b,share,2);synchronize(a.path,a.session());synchronize(b.path,b.session())
+ a.set_owner(eid,other);b.save(dict(b._record(eid),notes='Manager kept this edit'));synchronize(b.path,b.session())
+ expected=[state(a.path),state(share/'wormwright-vault.sqlite')]
+ reconcile(a.path,a.session(),'local',{eid:'shared'},expected);a.resume(a.session())
+ record=a._record(eid);assert record['groups']==[] and record['owner']==other and record['notes']=='Manager kept this edit'
+ child=ManagedVault(a.path);child.unlock('macie-test-password','Macie');refused(lambda:child._record(eid));child.lock()
+ a.lock();b.lock()
+print('Manager reconciliation retains private entries, content edits and selected ownership policy.')

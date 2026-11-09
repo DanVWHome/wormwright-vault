@@ -232,7 +232,7 @@ def reconcile(path, session, authority_side, choices, expected, assignments=None
                         if record is None:continue
                         record=dict(record)
                         if assignments and eid in assignments:record['groups']=assignments[eid]
-                        if not record['groups'] or any(gid not in out.available_groups() for gid in record['groups']):
+                        if (not record['groups'] and not out.ownership_enabled) or any(gid not in out.available_groups() for gid in record['groups']):
                             raise VaultError('An entry’s groups do not exist in the selected settings. Explicitly assign valid groups before applying.')
                         out._assignment(record);out._write(record)
                 out.entries(True)
