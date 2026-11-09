@@ -638,7 +638,7 @@ class ManagedWindow(QMainWindow):
         if not self.vault.manager or self.task or not self.selected():return
         try:
             admin=self.vault.administration();people=[(uid,data['identity']['name']) for uid,data in admin['users'].items() if not data['identity']['disabled']]
-            people.sort(key=lambda person:person[1].casefold());labels=[name+' ('+uid[:8]+')' for uid,name in people]
+            people.sort(key=lambda person:person[1].casefold());labels=[name for uid,name in people]
             current=self.vault.owner_id(self.selected());index=next((i for i,p in enumerate(people) if p[0]==current),0)
             label,ok=QInputDialog.getItem(self,'Change Entry Owner','New owner:',labels,index,False)
             if ok:self.vault.set_owner(self.selected()['id'],people[labels.index(label)][0]);self.refresh();self.auto_sync()

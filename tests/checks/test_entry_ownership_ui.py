@@ -29,7 +29,7 @@ with tempfile.TemporaryDirectory() as directory:
  QTimer.singleShot(0,accept_edit);w.edit()
  assert w.vault._record(own)['notes']=='Owner edited this in the desktop UI.'
  w.lock();w.vault.unlock('manager-test-password','Manager');w.update_state();w.refresh();select(own)
- label='Onyx ('+other[:8]+')'
+ label='Onyx'
  with patch('managed_ui.QInputDialog.getItem',return_value=(label,True)):
   w.change_owner()
  assert w.vault.owner_id(w.vault._record(own))==other
