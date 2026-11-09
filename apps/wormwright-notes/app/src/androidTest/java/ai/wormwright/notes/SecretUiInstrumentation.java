@@ -12,7 +12,7 @@ import java.util.concurrent.FutureTask;
 
 /** Uses only invented notes and the disposable emulator's PIN. Never targets user devices. */
 public final class SecretUiInstrumentation extends Instrumentation {
-    MainActivity activity;
+    volatile MainActivity activity;
     long id;
     boolean screenshots;String upgradeMode;
     static final String TITLE="Test-only private checklist",BODY="[ ] invented pears\n[x] invented milk";
@@ -20,6 +20,7 @@ public final class SecretUiInstrumentation extends Instrumentation {
     public void onStart(){
         Bundle result=new Bundle();
         try{
+            trackMainActivity();
             if(upgradeMode!=null){ReleaseUpgradeCheck.run(this,"seed".equals(upgradeMode));result.putString("stream","PASS release upgrade "+upgradeMode+"\n");finish(-1,result);return;}
             if(screenshots){ScreenshotCapture.run(this);result.putString("stream","PASS website screenshots captured from actual app screens with fictional sample notes\n");finish(-1,result);return;}
             activity=(MainActivity)startActivitySync(new Intent(getTargetContext(),MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
@@ -69,6 +70,7 @@ public final class SecretUiInstrumentation extends Instrumentation {
             TextImportActivity noteReview=(TextImportActivity)startActivitySync(new Intent(Intent.ACTION_SEND).setClass(getTargetContext(),TextImportActivity.class).setType("text/plain").putExtra(Intent.EXTRA_TEXT,"[ ] Literal text for a note").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
             main(()->{noteReview.title.setText("Reviewed written note");return null;});tapText("Save");
             waitFor(()->main(()->{try(android.database.Cursor c=activity.db.rawQuery("SELECT kind,body FROM notes WHERE title='Reviewed written note'",null)){return c.moveToFirst()&&c.getInt(0)==0&&"[ ] Literal text for a note".equals(c.getString(1));}}),10000);
+            waitFor(()->main(()->activity.resumed&&activity.title!=null&&"Reviewed written note".contentEquals(activity.title.getText())),10000);
             String longItem="A collection of action figures with a large transforming robot and matching accessories";
             long wrappedId=main(()->{activity.editor(-1);activity.title.setText("A sample checklist");activity.body.setText("[ ] "+longItem+"\n[x] Board games for rainy afternoons");activity.checklistMode=true;activity.showChecklist();check(activity.save(),"save long checklist");return activity.editing;});
             waitFor(()->main(()->{android.widget.LinearLayout row=(android.widget.LinearLayout)activity.checklist.getChildAt(0);android.widget.EditText field=(android.widget.EditText)row.getChildAt(1);return field.getLayout()!=null&&field.getLineCount()>1;}),10000);
@@ -80,6 +82,12 @@ public final class SecretUiInstrumentation extends Instrumentation {
             StringWriter trace=new StringWriter();error.printStackTrace(new PrintWriter(trace));
             result.putString("stream","FAIL secret-note device regression\n"+trace+"\n"+tree(getUiAutomation().getRootInActiveWindow(),0));finish(1,result);
         }
+    }
+    void trackMainActivity(){
+        ((android.app.Application)getTargetContext().getApplicationContext()).registerActivityLifecycleCallbacks(new android.app.Application.ActivityLifecycleCallbacks(){
+            public void onActivityResumed(android.app.Activity current){if(current instanceof MainActivity)activity=(MainActivity)current;}
+            public void onActivityCreated(android.app.Activity a,Bundle state){}public void onActivityStarted(android.app.Activity a){}public void onActivityPaused(android.app.Activity a){}public void onActivityStopped(android.app.Activity a){}public void onActivitySaveInstanceState(android.app.Activity a,Bundle state){}public void onActivityDestroyed(android.app.Activity a){}
+        });
     }
     void captureImportReview()throws Exception{capturePublicScreen("notes-text-import.png");}
     void capturePublicScreen(String name)throws Exception{
