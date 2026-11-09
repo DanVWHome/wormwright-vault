@@ -536,9 +536,9 @@ public class MainActivity extends Activity {
         final NasSettings storage=new NasSettings(this);final JSONObject saved;
         try{JSONObject old=storage.load();saved=old==null?new JSONObject():old;}catch(Exception e){message("Could not read NAS settings. Your vault is safe.");return;}
         LinearLayout form=column();form.setPadding(dp(16),dp(8),dp(16),dp(8));
-        form.addView(text("Use the same plain IP address, share name and folder as Notes. Put the save path in Folder within share."));
+        form.addView(text("Enter the shared folder’s name exactly as configured on your NAS (for example, share). Put folders inside it in Subfolder path."));
         String[] keys={"host","share","folder","user","domain","password"};
-        String[] labels={"NAS IP address","Share name","Folder within share","Username","Domain (optional)","NAS password"};
+        String[] labels={"NAS IP address","NAS shared folder name","Subfolder path (optional)","Username","Domain (optional)","NAS password"};
         String[] defaults={"192.168.1.144","share","PasswordVault/Dans-Vault","","",""};
         EditText[] fields=new EditText[keys.length];
         for(int i=0;i<keys.length;i++){form.addView(text(labels[i]));fields[i]=input(form,labels[i],i==5);if(i!=5){fields[i].setSingleLine(true);fields[i].setText(saved.optString(keys[i],defaults[i]));}else if(!saved.optString("password").isEmpty())fields[i].setHint("Password saved — leave blank to keep it");}
@@ -550,7 +550,7 @@ public class MainActivity extends Activity {
             prompt.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{if(token!=epoch||!unlocked)return;try{
                 JSONObject values=new JSONObject();for(int i=0;i<keys.length;i++)values.put(keys[i],i==5?(fields[i].length()==0?saved.optString("password"):fields[i].getText().toString()):fields[i].getText().toString().trim());
                 for(int i:new int[]{0,1,3})if(fields[i].getText().toString().trim().isEmpty()){fields[i].setError("Required");fields[i].requestFocus();return;}
-                try{NasBackup.folder(values.optString("folder"));}catch(IOException invalid){fields[2].setError("Use a folder within the share, such as PasswordVault/Dans-Vault.");fields[2].requestFocus();return;}
+                try{NasBackup.folder(values.optString("folder"));}catch(IOException invalid){fields[2].setError("Use a path inside the NAS shared folder, such as PasswordVault/Dans-Vault.");fields[2].requestFocus();return;}
                 NasBackup.validate(values);storage.save(values);prompt.dismiss();message("NAS backup settings saved on this phone.");
             }catch(Exception e){message("Could not save NAS settings. Your existing settings were kept.");}});
             prompt.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener(v->{if(token!=epoch||!unlocked)return;try{storage.clear();prompt.dismiss();message("NAS settings forgotten. Existing backups remain on the NAS.");}catch(Exception e){message("Could not forget NAS settings.");}});

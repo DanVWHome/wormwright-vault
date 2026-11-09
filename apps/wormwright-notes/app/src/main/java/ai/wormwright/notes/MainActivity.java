@@ -241,9 +241,9 @@ public class MainActivity extends Activity {
         JSONObject old;try{old=new NasSettings(this).load();}catch(Exception e){toast("Could not read saved NAS settings");return;}
         if(old==null)old=new JSONObject();final JSONObject saved=old;
         LinearLayout form=column();form.setPadding(dp(20),0,dp(20),0);
-        form.addView(label("Same connection defaults as Wormwright Vault. Enter your NAS login once for Notes. Backups are separate JSON files; they do not change your vault.",14));
+        form.addView(label("Enter the shared folder’s name exactly as configured on your NAS (for example, share). Put folders inside it in Subfolder path. Enter your NAS login once for Notes. Backups are separate files; they do not change your vault.",14));
         String[] keys={"host","share","folder","user","domain","password"};
-        String[] names={"NAS address","Share name","Folder within share","Username","Domain (optional)","Password"};
+        String[] names={"NAS address","NAS shared folder name","Subfolder path (optional)","Username","Domain (optional)","Password"};
         String[] defaults={"192.168.1.144","share","PasswordVault/Dans-Vault","","",""};
         EditText[] fields=new EditText[keys.length];
         for(int i=0;i<keys.length;i++){form.addView(label(names[i],14));fields[i]=new EditText(this);fields[i].setSingleLine();fields[i].setText(saved.optString(keys[i],defaults[i]));if(i==5)fields[i].setInputType(129);form.addView(fields[i]);}

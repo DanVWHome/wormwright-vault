@@ -196,3 +196,7 @@ Enter a plain IP address under NAS IP address, keep the same share name as Notes
 ### Active dialog use and NAS diagnostics (test.25)
 
 Typing, touching and scrolling dialogs reset the existing two-minute idle countdown. Inactivity and leaving the app still lock it. More → Test NAS connection tests the saved connection without vault data and removes its unique test file. Network permission is checked before starting; connection errors identify reachability, login, share, folder, write, read-back verification, rename or cleanup.
+
+### Clearer NAS field labels
+
+**NAS shared folder name** is the actual shared folder configured on the NAS, such as `share`. **Subfolder path (optional)** is the path inside that shared folder, such as `PasswordVault/Dans-Vault`. Existing saved settings are retained; no nickname field is added.

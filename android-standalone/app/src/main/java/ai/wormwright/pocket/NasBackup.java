@@ -42,8 +42,8 @@ public final class NasBackup {
         switch(stage){
             case CONNECT:return "Cannot reach the NAS. Check Pocket’s Network permission, Wi-Fi, VPN rules and NAS IP address.";
             case LOGIN:return "The NAS rejected the login. Re-enter the NAS username, password and optional domain in NAS backup settings.";
-            case SHARE:return "Cannot open the NAS share. Check Share name and this NAS account’s access to that share.";
-            case FOLDER:return "Cannot open Folder within share. Check that this folder exists and the NAS account can access it.";
+            case SHARE:return "Cannot open the NAS share. Check NAS shared folder name and this NAS account’s access to that share.";
+            case FOLDER:return "Cannot open Subfolder path. Check that this folder exists and the NAS account can access it.";
             case WRITE:return "Cannot write the NAS backup file. Check free space and this NAS account’s write permissions.";
             case VERIFY:return "The NAS backup could not be read back and verified. Check read permissions and connection stability.";
             case RENAME:return "Cannot finish the NAS backup. The NAS account needs permission to rename files in the backup folder.";
