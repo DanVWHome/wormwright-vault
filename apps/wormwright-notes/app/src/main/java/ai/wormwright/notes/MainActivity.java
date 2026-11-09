@@ -88,7 +88,7 @@ public class MainActivity extends Activity {
             if(n==5)startBackup(true);
             if(n==6)hardwareBackups().manage();
             if(n==7)startActivity(new Intent(this,TextImportActivity.class));
-            if(n==3)new AlertDialog.Builder(this).setTitle("Wormwright Notes").setMessage("No ads. No purchases. No account.\n\nNotes stay in this app on your phone. Use backup to keep a separate copy. Uninstalling removes local notes.\n\nVersion 0.1.0-preview.7").setPositiveButton("OK",null).show();
+            if(n==3)new AlertDialog.Builder(this).setTitle("Wormwright Notes").setMessage("No ads. No purchases. No account.\n\nNotes stay in this app on your phone. Use backup to keep a separate copy. Uninstalling removes local notes.\n\nVersion 0.1.0-preview.8").setPositiveButton("OK",null).show();
         }).show()));root.addView(actions);
         EditText search=new EditText(this);search.setSingleLine();search.setHint("Search notes");search.setText(query);root.addView(search);
         ScrollView scroll=new ScrollView(this);cards=column();scroll.addView(cards);root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
@@ -175,9 +175,19 @@ public class MainActivity extends Activity {
             final int index=i;String line=lines[i];boolean checked=line.startsWith("[x] ");
             LinearLayout row=new LinearLayout(this);row.setGravity(Gravity.CENTER_VERTICAL);
             CheckBox box=new CheckBox(this);box.setChecked(checked);box.setContentDescription("Mark item complete");row.addView(box);
-            EditText item=new EditText(this);item.setText(line.startsWith("[ ] ")||checked?line.substring(4):line);item.setTextSize(18);item.setSingleLine(true);if(currentSecret)privateInput(item);
+            EditText item=new EditText(this);item.setText(line.startsWith("[ ] ")||checked?line.substring(4):line);item.setTextSize(18);
+            item.setInputType(android.text.InputType.TYPE_CLASS_TEXT|android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE|android.text.InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
+            item.setSingleLine(false);item.setHorizontallyScrolling(false);item.setGravity(Gravity.TOP|Gravity.START);
+            // Visual wrapping never inserts item delimiters. Pasted/typed line breaks
+            // stay within this one item instead of silently creating extra items.
+            item.setFilters(new InputFilter[]{(source,start,end,dest,dstart,dend)->{
+                String incoming=source.subSequence(start,end).toString();
+                return incoming.indexOf('\n')>=0||incoming.indexOf('\r')>=0?incoming.replace("\r\n"," ").replace('\r',' ').replace('\n',' '):null;
+            }});
+            if(currentSecret)privateInput(item);
             row.addView(item,new LinearLayout.LayoutParams(0,-2,1));
-            row.addView(button("×",()->{ArrayList<String> a=new ArrayList<>(Arrays.asList(body.getText().toString().split("\n",-1)));a.remove(index);body.setText(a.isEmpty()?"[ ] ":String.join("\n",a));showChecklist();save();}));
+            Button remove=button("×",()->{ArrayList<String> a=new ArrayList<>(Arrays.asList(body.getText().toString().split("\n",-1)));a.remove(index);body.setText(a.isEmpty()?"[ ] ":String.join("\n",a));showChecklist();save();});
+            remove.setContentDescription("Remove checklist item");remove.setMinWidth(dp(48));remove.setMinimumWidth(dp(48));row.addView(remove,new LinearLayout.LayoutParams(dp(48),-2));
             box.setOnCheckedChangeListener((b,on)->{setItem(index,(on?"[x] ":"[ ] ")+item.getText());save();});
             item.addTextChangedListener(watcher(()->setItem(index,(box.isChecked()?"[x] ":"[ ] ")+item.getText())));
             checklist.addView(row);

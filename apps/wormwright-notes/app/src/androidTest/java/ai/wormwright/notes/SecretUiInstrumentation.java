@@ -68,17 +68,24 @@ public final class SecretUiInstrumentation extends Instrumentation {
             TextImportActivity noteReview=(TextImportActivity)startActivitySync(new Intent(Intent.ACTION_SEND).setClass(getTargetContext(),TextImportActivity.class).setType("text/plain").putExtra(Intent.EXTRA_TEXT,"[ ] Literal text for a note").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
             main(()->{noteReview.title.setText("Reviewed written note");return null;});tapText("Save");
             waitFor(()->main(()->{try(android.database.Cursor c=activity.db.rawQuery("SELECT kind,body FROM notes WHERE title='Reviewed written note'",null)){return c.moveToFirst()&&c.getInt(0)==0&&"[ ] Literal text for a note".equals(c.getString(1));}}),10000);
+            String longItem="A collection of action figures with a large transforming robot and matching accessories";
+            long wrappedId=main(()->{activity.editor(-1);activity.title.setText("A sample checklist");activity.body.setText("[ ] "+longItem+"\n[x] Board games for rainy afternoons");activity.checklistMode=true;activity.showChecklist();check(activity.save(),"save long checklist");return activity.editing;});
+            waitFor(()->main(()->{android.widget.LinearLayout row=(android.widget.LinearLayout)activity.checklist.getChildAt(0);android.widget.EditText field=(android.widget.EditText)row.getChildAt(1);return field.getLayout()!=null&&field.getLineCount()>1;}),10000);
+            main(()->{android.widget.LinearLayout row=(android.widget.LinearLayout)activity.checklist.getChildAt(0);((android.widget.CheckBox)row.getChildAt(0)).setChecked(true);check(activity.save(),"save wrapped checked item");activity.home();activity.editor(wrappedId);return null;});
+            check(main(()->activity.body.getText().toString().equals("[x] "+longItem+"\n[x] Board games for rainy afternoons")&&activity.checklist.getChildCount()==3),"wrapped text stays one item through save and reopen");
+            capturePublicScreen("notes-wrapped-checklist.png");
             result.putString("stream","PASS real Android credential-only PIN, cancel, wrong PIN, encrypted secret checklist, sharing, relock native YubiKey dialog cancellation, and reviewed text-share imports as note/checklist\n");finish(-1,result);
         }catch(Throwable error){
             StringWriter trace=new StringWriter();error.printStackTrace(new PrintWriter(trace));
             result.putString("stream","FAIL secret-note device regression\n"+trace+"\n"+tree(getUiAutomation().getRootInActiveWindow(),0));finish(1,result);
         }
     }
-    void captureImportReview()throws Exception{
+    void captureImportReview()throws Exception{capturePublicScreen("notes-text-import.png");}
+    void capturePublicScreen(String name)throws Exception{
         waitForIdleSync();SystemClock.sleep(500);
         android.graphics.Bitmap bitmap=getUiAutomation().takeScreenshot();check(bitmap!=null,"import review screenshot");
         File folder=getTargetContext().getExternalFilesDir("screenshots");check(folder!=null,"screenshot directory");
-        try(FileOutputStream out=new FileOutputStream(new File(folder,"notes-text-import.png"))){check(bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG,100,out),"PNG screenshot");}finally{bitmap.recycle();}
+        try(FileOutputStream out=new FileOutputStream(new File(folder,name))){check(bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG,100,out),"PNG screenshot");}finally{bitmap.recycle();}
     }
     interface Condition{boolean get()throws Exception;}
     void waitFor(Condition condition,long timeout)throws Exception{long end=SystemClock.elapsedRealtime()+timeout;while(SystemClock.elapsedRealtime()<end){if(condition.get())return;SystemClock.sleep(100);}throw new AssertionError("Timed out waiting for expected test state");}

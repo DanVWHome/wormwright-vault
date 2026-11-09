@@ -1,5 +1,13 @@
 # Changes
 
+## 0.1.0-preview.8 — November 9, 2026
+
+- Wraps long checklist items onto multiple lines with rows that grow to show all text.
+- Gives item text more room while retaining a 48 dp remove-button touch target.
+- Keeps visual line wrapping separate from stored checklist items; pasted/typed line breaks inside one item become spaces.
+- Preserves checked state, editing, autosave, secret-field protection, imports and backup formats.
+
+
 ## 0.1.0-preview.7 — November 9, 2026
 
 - Adds an Android plain-text/Markdown share target and More → Import text with explicit Paste.
