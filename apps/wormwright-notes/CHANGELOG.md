@@ -1,6 +1,9 @@
 # Changes
 
-## 0.1.0-preview.8 — November 9, 2026
+## Release 8 — November 9, 2026
+
+- User verified that longer checklist items wrap correctly and their full text is readable.
+- Promotes the same verified build to a regular release; existing artifact and tag names are retained for compatibility.
 
 - Wraps long checklist items onto multiple lines with rows that grow to show all text.
 - Gives item text more room while retaining a 48 dp remove-button touch target.

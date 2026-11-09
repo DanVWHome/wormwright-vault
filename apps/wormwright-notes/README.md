@@ -1,4 +1,6 @@
-# Wormwright Notes — 0.1.0-preview.8
+# Wormwright Notes — Release 8
+
+The user verified on their phone that the longer checklist items wrap correctly and the whole item is readable in the build originally labeled preview 8 (now Release 8). The verified build is now a regular release. Its existing APK, source archive and download/tag identifiers are unchanged; no reinstall is needed to receive this status change.
 
 Offline Android notes and checklists with autosave, search, pins, Trash, sharing and manual NAS backups. No ads, purchases, analytics or app account. Ordinary notes require Android 8 or later; secret notes require Android 11 or later with a secure phone screen lock.
 
@@ -56,7 +58,7 @@ Saved NAS credentials are separately encrypted on this phone and excluded from a
 
 ## Install or update
 
-Download `Wormwright-Notes-0.1.0-preview.8.apk` from [the Notes page](https://wormwright.com/notes.html), open it on your phone and approve installation. Back up notes first, then install over the existing app. The package and signing identity match the earlier previews. Do not uninstall to update.
+Download `Wormwright-Notes-0.1.0-preview.8.apk` from [the Notes page](https://wormwright.com/notes.html), open it on your phone and approve installation. Back up notes first, then install over the existing app. The package and signing identity match the earlier versions. Do not uninstall to update.
 
 The app upgrades its database in place while preserving existing notes, checklists, pins and Trash. User reports confirmed preview 2 working, including sharing and NAS backups. The user reported preview 3 looks good. The user confirmed on physical hardware that preview 5 successfully registered a YubiKey over NFC, created a YubiKey-protected backup, removed the key registration from the app, and saved a backup to NAS. Automated regression results are recorded with the release. This user confirmation covers backup creation, not restoration.
 
