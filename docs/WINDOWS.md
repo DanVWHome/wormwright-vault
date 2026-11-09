@@ -1,4 +1,6 @@
-# Wormwright Vault 0.3.11 for Windows
+# Wormwright Vault 0.3.14 for Windows
+
+Includes shared view-only access, editable owned entries and Manager ownership transfer; resizable columns and full-link tooltips; a second family permissions demo with searchable Help; and Manager-only group renaming. See [current desktop release notes](docs/DESKTOP-0.3.14-STABLE.md) in the portable ZIP. Manage appears only after unlocking with the actual vault Manager account.
 
 Windows 10/11 x64. Extract the entire ZIP into a local folder and run
 WormwrightVault.exe. Open Manager.cmd opens the Manager interface. No Python
@@ -14,20 +16,16 @@ and NAS scenarios remain subject to testing.
 Device-local settings use %LOCALAPPDATA%. Choose a local working vault, and
 select a mapped SMB NAS drive or UNC shared folder in NAS settings.
 FTP-mounted shares have shown intermittent sync/lock failures; use SMB instead. Keep the working
-vault separate from the shared copy. Windows uses the same encrypted SQLite
-formats and reconciliation rules as desktop 0.3.2; there is no format migration.
-Android managed-vault support remains limited to the features of its existing
-preview; Windows does not change those capabilities.
+vault separate from the shared copy. Windows uses the current desktop format and reconciliation rules. Update all clients before enabling owned-entry permissions; older clients reject ownership-enabled vaults. Use Android companion preview.25 for current permissions and account-name login guidance.
 
 ## Installer
 
 The stable Windows release provides
-`wormwright-vault_0.3.11_windows_x64_setup.exe`. Close Vault and Manager,
+`wormwright-vault_0.3.14_windows_x64_setup.exe`. Close Vault and Manager,
 run setup, then open Wormwright Vault or Wormwright Vault Manager from the
 Start menu. The optional desktop shortcut opens Vault. Setup installs per user
 in `%LOCALAPPDATA%\Programs\Wormwright Vault`; no administrator access or Python
-installation is required. The installer is unsigned. It wraps the exact tested
-portable preview 2 binaries, without changing vault formats or sync behavior.
+installation is required. The installer is unsigned. It wraps the exact checked portable 0.3.14 binaries.
 
 Updating and uninstalling preserve separately stored vault files and settings.
 For a previous portable installation, close the old copy and use the new Start
@@ -35,8 +33,7 @@ menu shortcuts. The ZIP remains available for portable use.
 
 GitHub Actions verifies install, reinstall, executable identity, startup and
 uninstall against synthetic data. Physical Windows installer testing remains
-necessary. Installer packaging source is provided as a separate release archive;
-application source corresponds to the original preview 2 source archive.
+necessary. The GitHub release links to the exact public source commit used for both app and installer packaging.
 
 ## Test on the Windows computer
 

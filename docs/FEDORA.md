@@ -1,4 +1,6 @@
-# Wormwright Vault 0.3.11 for Fedora 44
+# Wormwright Vault 0.3.14 for Fedora 44
+
+Includes shared view-only access, editable owned entries and Manager ownership transfer; resizable columns and full-link tooltips; a second family demo with searchable Help; and Manager-only group renaming. Manage appears only after unlocking with the actual vault Manager account. See [current desktop release notes](DESKTOP-0.3.14-STABLE.md).
 
 For Fedora Workstation or KDE on x86_64 (Intel/AMD 64-bit PCs).
 Targets Fedora 44. This is a stable Wormwright release, distributed separately from the official Fedora repositories.
@@ -6,7 +8,7 @@ Targets Fedora 44. This is a stable Wormwright release, distributed separately f
 Install the downloaded package from its folder:
 
 ```sh
-sudo dnf install ./wormwright-vault-0.3.11-3.fc44.x86_64.rpm
+sudo dnf install ./wormwright-vault-0.3.14-3.fc44.x86_64.rpm
 ```
 
 Open Wormwright Vault or Wormwright Vault Manager from the applications menu.
@@ -17,7 +19,7 @@ The package includes Python and Qt; DNF installs required system libraries and
 security-key permissions. Reconnect your YubiKey after installation.
 
 Keep a local working vault and sync through an SMB share using Files. Use a
-synthetic vault for the first Fedora test. Existing vault formats are unchanged.
+synthetic vault for the first Fedora test. Update all clients before enabling owned-entry permissions; older clients reject ownership-enabled vaults. Use Android companion preview.25 for current permissions and account-name login guidance.
 The RPM installs application files only; it does not move or delete user vaults.
 Remove the application with `sudo dnf remove wormwright-vault`.
 
@@ -47,10 +49,10 @@ The first-run introduction lets you create a vault, open an existing one, or exp
 
 Validate startup in your desktop session, tutorial sound/video, YubiKey if used, NAS reconnect/restart, sync in both directions, and offline edits with a disposable vault before relying on the preview. Revocation and permission changes arrive after successful sync and cannot recall secrets already retained offline.
 
-## Preview 2 startup fix
+## Retained 0.3.11 preview 2 startup fix
 
 Revision 2 fixes AF_UNIX path-too-long startup failures using a short private local control socket directory. See [preview 2 notes](FEDORA-0.3.11-preview2.md).
 
-## Stable release
+## Current stable release
 
-RPM revision 3 removes the preview label and upgrades revision 2 in place. See [stable release notes](FEDORA-0.3.11-STABLE.md).
+Version 0.3.14 upgrades the previous stable 0.3.11 package in place. The 0.3.11 revision 3 release removed the preview label and upgraded revision 2. See [stable release notes](FEDORA-0.3.11-STABLE.md).
